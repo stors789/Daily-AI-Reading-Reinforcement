@@ -1,0 +1,5 @@
+__pycache__/
+*.py[cod]
+.DS_Store
+dist/
+addon/daily_ai_reading_reinforcement/user_files/
