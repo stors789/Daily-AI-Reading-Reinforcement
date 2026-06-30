@@ -95,8 +95,25 @@ class ReadingReinforcementDialog(QDialog):
         body = (WEB_DIR / "index.html").read_text(encoding="utf-8")
         css = (WEB_DIR / "style.css").read_text(encoding="utf-8")
         js = (WEB_DIR / "app.js").read_text(encoding="utf-8")
-        page = f"{body}\n<script>{js}</script>"
-        self.web.stdHtml(page, head=f"<style>{css}</style>", context=self)
+        page = f"""<!doctype html>
+<html>
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>AI Reading Reinforcement</title>
+  <style>{css}</style>
+</head>
+<body>
+{body}
+<script>
+window.addEventListener("error", function (event) {{
+  document.body.innerHTML = '<main class="app-shell"><section class="panel" style="padding:24px;"><h1>AI Reading Reinforcement</h1><p>Page script error: ' + String(event.message || "unknown") + '</p></section></main>';
+}});
+</script>
+<script>{js}</script>
+</body>
+</html>"""
+        self.web.setHtml(page)
 
     def _on_bridge_command(self, message: str) -> None:
         try:
