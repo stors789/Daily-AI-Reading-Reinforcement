@@ -95,8 +95,8 @@ class ReadingReinforcementDialog(QDialog):
         body = (WEB_DIR / "index.html").read_text(encoding="utf-8")
         css = (WEB_DIR / "style.css").read_text(encoding="utf-8")
         js = (WEB_DIR / "app.js").read_text(encoding="utf-8")
-        page = f"<style>{css}</style>\n{body}\n<script>{js}</script>"
-        self.web.stdHtml(page, context=self)
+        page = f"{body}\n<script>{js}</script>"
+        self.web.stdHtml(page, head=f"<style>{css}</style>", context=self)
 
     def _on_bridge_command(self, message: str) -> None:
         try:
@@ -797,11 +797,6 @@ def setup_menu() -> None:
 
 
 def setup_home_entry() -> None:
-    if not any(link[1] == "dairr-open" for link in deckbrowser.DeckBrowser.drawLinks):
-        deckbrowser.DeckBrowser.drawLinks.append(
-            ["", "dairr-open", "AI Reading Reinforcement"]
-        )
-
     original_link_handler = deckbrowser.DeckBrowser._linkHandler
     if getattr(original_link_handler, "_dairr_patched", False):
         return
@@ -814,6 +809,27 @@ def setup_home_entry() -> None:
 
     patched_link_handler._dairr_patched = True
     deckbrowser.DeckBrowser._linkHandler = patched_link_handler
+
+
+def add_deck_browser_button(deck_browser: Any, content: Any) -> None:
+    button_html = """
+<div style="margin: 22px 0 8px; text-align: center;">
+  <button onclick='pycmd("dairr-open")' style="
+    background: #2f6f73;
+    border: 0;
+    border-radius: 8px;
+    box-shadow: 0 8px 22px rgba(47, 111, 115, 0.18);
+    color: #fff;
+    cursor: pointer;
+    font-weight: 700;
+    padding: 9px 16px;
+  ">AI Reading Reinforcement</button>
+</div>
+"""
+    try:
+        content.stats += button_html
+    except Exception:
+        pass
 
 
 def register_web_exports() -> None:
@@ -832,6 +848,10 @@ def handle_webview_message(handled: Any, message: str, context: Any) -> Any:
 def setup_global_webview_handler() -> None:
     if gui_hooks is None:
         return
+    try:
+        gui_hooks.deck_browser_will_render_content.append(add_deck_browser_button)
+    except Exception:
+        pass
     try:
         gui_hooks.webview_did_receive_js_message.append(handle_webview_message)
     except Exception:
