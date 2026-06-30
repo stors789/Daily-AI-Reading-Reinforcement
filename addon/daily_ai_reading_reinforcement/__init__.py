@@ -17,7 +17,7 @@ try:
 except ImportError:
     gui_hooks = None
 from aqt import deckbrowser
-from aqt.qt import QAction, QDialog, QVBoxLayout
+from aqt.qt import QAction, QDialog, QTimer, QVBoxLayout
 from aqt.utils import showWarning
 from aqt.webview import AnkiWebView
 
@@ -95,25 +95,15 @@ class ReadingReinforcementDialog(QDialog):
         body = (WEB_DIR / "index.html").read_text(encoding="utf-8")
         css = (WEB_DIR / "style.css").read_text(encoding="utf-8")
         js = (WEB_DIR / "app.js").read_text(encoding="utf-8")
-        page = f"""<!doctype html>
-<html>
-<head>
-  <meta charset="utf-8">
-  <meta name="viewport" content="width=device-width, initial-scale=1">
-  <title>AI Reading Reinforcement</title>
-  <style>{css}</style>
-</head>
-<body>
-{body}
+        guard = """
 <script>
-window.addEventListener("error", function (event) {{
+window.addEventListener("error", function (event) {
   document.body.innerHTML = '<main class="app-shell"><section class="panel" style="padding:24px;"><h1>AI Reading Reinforcement</h1><p>Page script error: ' + String(event.message || "unknown") + '</p></section></main>';
-}});
+});
 </script>
-<script>{js}</script>
-</body>
-</html>"""
-        self.web.setHtml(page)
+"""
+        page = f"<style>{css}</style>\n{body}\n{guard}\n<script>{js}</script>"
+        self.web.stdHtml(page, context=self)
 
     def _on_bridge_command(self, message: str) -> None:
         try:
@@ -807,6 +797,10 @@ def open_dialog() -> None:
     exec_method()
 
 
+def open_dialog_deferred() -> None:
+    QTimer.singleShot(0, open_dialog)
+
+
 def setup_menu() -> None:
     action = QAction("AI Reading Reinforcement", mw)
     action.triggered.connect(open_dialog)
@@ -820,7 +814,7 @@ def setup_home_entry() -> None:
 
     def patched_link_handler(self: Any, url: str) -> Any:
         if url == "dairr-open":
-            open_dialog()
+            open_dialog_deferred()
             return False
         return original_link_handler(self, url)
 
@@ -858,7 +852,7 @@ def register_web_exports() -> None:
 
 def handle_webview_message(handled: Any, message: str, context: Any) -> Any:
     if message == "dairr-open":
-        open_dialog()
+        open_dialog_deferred()
         return (True, None)
     return handled
 
