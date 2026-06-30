@@ -95,6 +95,11 @@ h2 {
   padding: 16px;
 }
 
+.button-row {
+  display: flex;
+  gap: 8px;
+}
+
 .deck-list,
 .card-list,
 .field-list {
@@ -134,6 +139,21 @@ h2 {
 .deck-item.selected,
 .card-item:hover {
   border-color: rgba(47, 111, 115, 0.42);
+}
+
+.deck-item.group {
+  background: #f8f4ed;
+}
+
+.deck-item.hidden {
+  display: none;
+}
+
+.deck-caret {
+  color: var(--accent);
+  display: inline-block;
+  font-weight: 800;
+  width: 18px;
 }
 
 .deck-name,
@@ -197,6 +217,45 @@ h2 {
   padding: 0 14px;
 }
 
+.preset-editor {
+  border-bottom: 1px solid var(--line);
+  display: grid;
+  gap: 10px;
+  padding: 14px 18px;
+}
+
+.preset-row,
+.preset-grid {
+  display: grid;
+  gap: 8px;
+}
+
+.preset-row {
+  grid-template-columns: 1fr auto auto auto;
+}
+
+.preset-grid {
+  grid-template-columns: 1fr 1fr 1fr;
+}
+
+.preset-editor input,
+.preset-editor select,
+.preset-editor textarea {
+  background: var(--surface-strong);
+  border: 1px solid var(--line);
+  border-radius: 8px;
+  color: var(--ink);
+  font: inherit;
+  min-height: 36px;
+  padding: 8px 10px;
+  width: 100%;
+}
+
+.preset-editor textarea {
+  line-height: 1.5;
+  resize: vertical;
+}
+
 .primary-button:disabled,
 .secondary-button:disabled {
   cursor: not-allowed;
@@ -244,5 +303,10 @@ h2 {
 
   .panel {
     min-height: 280px;
+  }
+
+  .preset-row,
+  .preset-grid {
+    grid-template-columns: 1fr;
   }
 }

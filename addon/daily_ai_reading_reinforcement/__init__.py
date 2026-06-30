@@ -9,12 +9,14 @@ import urllib.request
 from dataclasses import dataclass
 from pathlib import Path
 from typing import Any
+from uuid import uuid4
 
 from aqt import mw
 try:
     from aqt import gui_hooks
 except ImportError:
     gui_hooks = None
+from aqt import deckbrowser
 from aqt.qt import QAction, QDialog, QVBoxLayout
 from aqt.utils import showWarning
 from aqt.webview import AnkiWebView
@@ -35,6 +37,17 @@ DEFAULT_CONFIG = {
     "language": "English",
     "prompt_template": "",
     "deck_field_config": {},
+    "prompt_presets": [
+        {
+            "id": "default",
+            "name": "Default",
+            "language": "",
+            "difficulty": "",
+            "instructions": "",
+            "prompt_template": "",
+        }
+    ],
+    "selected_prompt_preset_id": "default",
 }
 
 
@@ -99,8 +112,17 @@ class ReadingReinforcementDialog(QDialog):
                     str(payload.get("deckId", "")),
                     list(payload.get("fields") or []),
                 )
+            elif action == "savePromptPreset":
+                self._save_prompt_preset(dict(payload.get("preset") or {}))
+            elif action == "deletePromptPreset":
+                self._delete_prompt_preset(str(payload.get("presetId", "")))
+            elif action == "selectPromptPreset":
+                self._select_prompt_preset(str(payload.get("presetId", "")))
             elif action == "generate":
-                self._generate_article(str(payload.get("deckId", "")))
+                self._generate_article(
+                    str(payload.get("deckId", "")),
+                    str(payload.get("presetId", "")),
+                )
             else:
                 self._emit("error", {"message": f"Unknown command: {action}"})
         except Exception as exc:
@@ -112,6 +134,7 @@ class ReadingReinforcementDialog(QDialog):
             return
 
         self.deck_payloads = collect_today_decks()
+        config = load_config()
         decks = [
             {
                 "id": deck_id,
@@ -131,6 +154,9 @@ class ReadingReinforcementDialog(QDialog):
                 "decks": decks,
                 "dayStart": cutoff - 86400,
                 "dayEnd": cutoff,
+                "promptPresets": normalize_prompt_presets(config),
+                "selectedPromptPresetId": config.get("selected_prompt_preset_id")
+                or "default",
             },
         )
 
@@ -176,7 +202,72 @@ class ReadingReinforcementDialog(QDialog):
             {"deckId": deck_id, "selectedFields": selected_fields},
         )
 
-    def _generate_article(self, deck_id: str) -> None:
+    def _save_prompt_preset(self, preset: dict[str, Any]) -> None:
+        config = load_config()
+        presets = normalize_prompt_presets(config)
+        preset_id = str(preset.get("id") or f"preset-{uuid4().hex[:10]}")
+        clean_preset = {
+            "id": preset_id,
+            "name": clean_text(preset.get("name")) or "Untitled",
+            "language": clean_text(preset.get("language")),
+            "difficulty": clean_text(preset.get("difficulty")),
+            "instructions": clean_text(preset.get("instructions")),
+            "prompt_template": str(preset.get("prompt_template") or ""),
+        }
+
+        replaced = False
+        for index, existing in enumerate(presets):
+            if existing["id"] == preset_id:
+                presets[index] = clean_preset
+                replaced = True
+                break
+        if not replaced:
+            presets.append(clean_preset)
+
+        config["prompt_presets"] = presets
+        config["selected_prompt_preset_id"] = preset_id
+        mw.addonManager.writeConfig(ADDON_PACKAGE, config)
+        self._emit(
+            "promptPresets",
+            {
+                "promptPresets": presets,
+                "selectedPromptPresetId": preset_id,
+                "message": "Prompt preset saved.",
+            },
+        )
+
+    def _delete_prompt_preset(self, preset_id: str) -> None:
+        if preset_id == "default":
+            self._emit("error", {"message": "The default preset cannot be deleted."})
+            return
+        config = load_config()
+        presets = [
+            preset
+            for preset in normalize_prompt_presets(config)
+            if preset.get("id") != preset_id
+        ]
+        config["prompt_presets"] = presets
+        config["selected_prompt_preset_id"] = "default"
+        mw.addonManager.writeConfig(ADDON_PACKAGE, config)
+        self._emit(
+            "promptPresets",
+            {
+                "promptPresets": presets,
+                "selectedPromptPresetId": "default",
+                "message": "Prompt preset deleted.",
+            },
+        )
+
+    def _select_prompt_preset(self, preset_id: str) -> None:
+        config = load_config()
+        presets = normalize_prompt_presets(config)
+        valid_ids = {preset["id"] for preset in presets}
+        if preset_id not in valid_ids:
+            preset_id = "default"
+        config["selected_prompt_preset_id"] = preset_id
+        mw.addonManager.writeConfig(ADDON_PACKAGE, config)
+
+    def _generate_article(self, deck_id: str, preset_id: str) -> None:
         payload = self.deck_payloads.get(deck_id)
         if not payload:
             self._emit("error", {"message": "Select a deck with study activity first."})
@@ -188,6 +279,7 @@ class ReadingReinforcementDialog(QDialog):
             return
 
         config = load_config()
+        preset = prompt_preset_by_id(config, preset_id)
         available_fields = deck_field_names(cards)
         selected_fields = selected_fields_for_deck(deck_id, available_fields, config)
         if not selected_fields:
@@ -207,7 +299,13 @@ class ReadingReinforcementDialog(QDialog):
         self._emit("generating", {"message": "Generating article..."})
 
         def task() -> dict[str, Any]:
-            article = generate_article(config, payload["name"], cards, selected_fields)
+            article = generate_article(
+                config,
+                payload["name"],
+                cards,
+                selected_fields,
+                preset,
+            )
             if not article.strip():
                 raise RuntimeError("The AI response was empty.")
             saved = save_article(payload["name"], cards, article)
@@ -331,12 +429,15 @@ def collect_today_decks() -> dict[str, dict[str, Any]]:
             existing.review_count += candidate.review_count
 
     for deck in decks.values():
+        deck["cards"] = [
+            card for card in deck["cards"] if card.is_new or card.is_failed
+        ]
         deck["total_count"] = len(deck["cards"])
         deck["new_count"] = sum(1 for card in deck["cards"] if card.is_new)
         deck["failed_count"] = sum(1 for card in deck["cards"] if card.is_failed)
         deck.pop("_cards_by_note", None)
 
-    return decks
+    return {deck_id: deck for deck_id, deck in decks.items() if deck["cards"]}
 
 
 def deck_name(deck_id: int) -> str:
@@ -400,13 +501,63 @@ def load_config() -> dict[str, Any]:
     return config
 
 
+def normalize_prompt_presets(config: dict[str, Any]) -> list[dict[str, str]]:
+    raw_presets = config.get("prompt_presets") or []
+    presets = []
+    for raw in raw_presets:
+        if not isinstance(raw, dict):
+            continue
+        preset_id = str(raw.get("id") or "").strip()
+        if not preset_id:
+            continue
+        presets.append(
+            {
+                "id": preset_id,
+                "name": clean_text(raw.get("name")) or preset_id,
+                "language": clean_text(raw.get("language")),
+                "difficulty": clean_text(raw.get("difficulty")),
+                "instructions": clean_text(raw.get("instructions")),
+                "prompt_template": str(raw.get("prompt_template") or ""),
+            }
+        )
+
+    if not any(preset["id"] == "default" for preset in presets):
+        presets.insert(
+            0,
+            {
+                "id": "default",
+                "name": "Default",
+                "language": "",
+                "difficulty": "",
+                "instructions": "",
+                "prompt_template": "",
+            },
+        )
+    return presets
+
+
+def prompt_preset_by_id(config: dict[str, Any], preset_id: str) -> dict[str, str]:
+    presets = normalize_prompt_presets(config)
+    for preset in presets:
+        if preset["id"] == preset_id:
+            return preset
+    selected_id = str(config.get("selected_prompt_preset_id") or "")
+    for preset in presets:
+        if preset["id"] == selected_id:
+            return preset
+    return presets[0]
+
+
 def build_prompt(
     config: dict[str, Any],
     deck_name_value: str,
     cards: list[CandidateCard],
     selected_fields: list[str],
+    preset: dict[str, str],
 ) -> str:
-    language = str(config.get("language") or "English")
+    language = str(preset.get("language") or config.get("language") or "English")
+    difficulty = str(preset.get("difficulty") or "appropriate for the learner")
+    instructions = str(preset.get("instructions") or "No extra instructions.")
     card_lines = []
     for index, card in enumerate(cards[:80], start=1):
         labels = []
@@ -428,14 +579,20 @@ def build_prompt(
     default_prompt = (
         "You are helping an Anki learner reinforce vocabulary through reading.\n"
         "Write one coherent, enjoyable short article in {language} using the studied cards below.\n"
+        "Target difficulty: {difficulty}.\n"
+        "Extra instructions: {instructions}\n"
         "Prioritize failed cards naturally, then new cards. Keep the article readable and not list-like.\n"
         "After the article, include a short vocabulary review section with the most important terms.\n\n"
         "Deck: {deck_name}\n"
         "Cards:\n{cards}\n"
     )
-    template = str(config.get("prompt_template") or default_prompt)
+    template = str(
+        preset.get("prompt_template") or config.get("prompt_template") or default_prompt
+    )
     return template.format(
         language=language,
+        difficulty=difficulty,
+        instructions=instructions,
         deck_name=deck_name_value,
         cards="\n".join(card_lines),
     )
@@ -446,10 +603,11 @@ def generate_article(
     deck_name_value: str,
     cards: list[CandidateCard],
     selected_fields: list[str],
+    preset: dict[str, str],
 ) -> str:
     base_url = str(config.get("base_url") or DEFAULT_CONFIG["base_url"]).rstrip("/")
     url = f"{base_url}/chat/completions"
-    prompt = build_prompt(config, deck_name_value, cards, selected_fields)
+    prompt = build_prompt(config, deck_name_value, cards, selected_fields, preset)
     request_payload = {
         "model": config.get("model") or DEFAULT_CONFIG["model"],
         "messages": [
@@ -596,35 +754,31 @@ def setup_menu() -> None:
     mw.form.menuTools.addAction(action)
 
 
+def setup_home_entry() -> None:
+    if not any(link[1] == "dairr-open" for link in deckbrowser.DeckBrowser.drawLinks):
+        deckbrowser.DeckBrowser.drawLinks.append(
+            ["", "dairr-open", "AI Reading Reinforcement"]
+        )
+
+    original_link_handler = deckbrowser.DeckBrowser._linkHandler
+    if getattr(original_link_handler, "_dairr_patched", False):
+        return
+
+    def patched_link_handler(self: Any, url: str) -> Any:
+        if url == "dairr-open":
+            open_dialog()
+            return False
+        return original_link_handler(self, url)
+
+    patched_link_handler._dairr_patched = True
+    deckbrowser.DeckBrowser._linkHandler = patched_link_handler
+
+
 def register_web_exports() -> None:
     try:
         mw.addonManager.setWebExports(__name__, r"web/.*\.(css|js)")
     except Exception:
         pass
-
-
-def add_deck_browser_button(deck_browser: Any, content: Any) -> None:
-    button_html = """
-<div style="margin: 16px 0 8px;">
-  <button onclick="pycmd('dairr-open')" style="
-    background: #2f6f73;
-    border: 0;
-    border-radius: 8px;
-    color: #fff;
-    cursor: pointer;
-    font-weight: 700;
-    padding: 9px 14px;
-  ">AI Reading Reinforcement</button>
-</div>
-"""
-    for attr in ("stats", "bottom", "buttons"):
-        try:
-            current = getattr(content, attr)
-        except Exception:
-            continue
-        if isinstance(current, str):
-            setattr(content, attr, current + button_html)
-            return
 
 
 def handle_webview_message(handled: Any, message: str, context: Any) -> Any:
@@ -633,14 +787,9 @@ def handle_webview_message(handled: Any, message: str, context: Any) -> Any:
         return (True, None)
     return handled
 
-
-def setup_home_entry() -> None:
+def setup_global_webview_handler() -> None:
     if gui_hooks is None:
         return
-    try:
-        gui_hooks.deck_browser_will_render_content.append(add_deck_browser_button)
-    except Exception:
-        pass
     try:
         gui_hooks.webview_did_receive_js_message.append(handle_webview_message)
     except Exception:
@@ -651,5 +800,6 @@ try:
     register_web_exports()
     setup_menu()
     setup_home_entry()
+    setup_global_webview_handler()
 except Exception as exc:
     showWarning(f"Could not load AI Reading Reinforcement: {exc}")

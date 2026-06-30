@@ -2,8 +2,11 @@
   const state = {
     selectedDeckId: null,
     decks: [],
+    collapsedDeckGroups: new Set(),
     fields: [],
     selectedFields: [],
+    promptPresets: [],
+    selectedPromptPresetId: "default",
   };
 
   const el = {
@@ -12,9 +15,19 @@
     cardCount: document.getElementById("cardCount"),
     dayWindow: document.getElementById("dayWindow"),
     generateButton: document.getElementById("generateButton"),
+    selectAllFieldsButton: document.getElementById("selectAllFieldsButton"),
+    invertFieldsButton: document.getElementById("invertFieldsButton"),
     saveFieldsButton: document.getElementById("saveFieldsButton"),
     refreshButton: document.getElementById("refreshButton"),
     fieldList: document.getElementById("fieldList"),
+    presetSelect: document.getElementById("presetSelect"),
+    presetName: document.getElementById("presetName"),
+    presetLanguage: document.getElementById("presetLanguage"),
+    presetDifficulty: document.getElementById("presetDifficulty"),
+    presetInstructions: document.getElementById("presetInstructions"),
+    newPresetButton: document.getElementById("newPresetButton"),
+    savePresetButton: document.getElementById("savePresetButton"),
+    deletePresetButton: document.getElementById("deletePresetButton"),
     status: document.getElementById("status"),
     articleOutput: document.getElementById("articleOutput"),
     savedPaths: document.getElementById("savedPaths"),
@@ -49,23 +62,46 @@
       return;
     }
 
-    el.deckList.innerHTML = state.decks
-      .map((deck) => {
-        const selected = deck.id === state.selectedDeckId ? " selected" : "";
+    const rows = buildDeckRows();
+    el.deckList.innerHTML = rows
+      .map((row) => {
+        const indent = `style="padding-left: ${12 + row.depth * 18}px"`;
+        if (row.kind === "group") {
+          const collapsed = state.collapsedDeckGroups.has(row.path);
+          return `
+            <div class="deck-item group" data-group-path="${escapeHtml(row.path)}" ${indent}>
+              <div class="deck-name"><span class="deck-caret">${collapsed ? "▸" : "▾"}</span>${escapeHtml(row.label)}</div>
+              <div class="deck-stats"><span>${row.count} studied child decks</span></div>
+            </div>
+          `;
+        }
+        const selected = row.deck.id === state.selectedDeckId ? " selected" : "";
         return `
-          <div class="deck-item${selected}" data-deck-id="${escapeHtml(deck.id)}">
-            <div class="deck-name">${escapeHtml(deck.name)}</div>
+          <div class="deck-item${selected}" data-deck-id="${escapeHtml(row.deck.id)}" ${indent}>
+            <div class="deck-name">${escapeHtml(row.label)}</div>
             <div class="deck-stats">
-              <span>${deck.totalCount} cards</span>
-              <span>${deck.newCount} new</span>
-              <span>${deck.failedCount} failed</span>
+              <span>${row.deck.totalCount} cards</span>
+              <span>${row.deck.newCount} new</span>
+              <span>${row.deck.failedCount} failed</span>
             </div>
           </div>
         `;
       })
       .join("");
 
-    document.querySelectorAll(".deck-item").forEach((item) => {
+    document.querySelectorAll(".deck-item.group").forEach((item) => {
+      item.addEventListener("click", () => {
+        const path = item.dataset.groupPath;
+        if (state.collapsedDeckGroups.has(path)) {
+          state.collapsedDeckGroups.delete(path);
+        } else {
+          state.collapsedDeckGroups.add(path);
+        }
+        renderDecks();
+      });
+    });
+
+    document.querySelectorAll(".deck-item[data-deck-id]").forEach((item) => {
       item.addEventListener("click", () => {
         state.selectedDeckId = item.dataset.deckId;
         el.generateButton.disabled = false;
@@ -80,6 +116,50 @@
         send("selectDeck", { deckId: state.selectedDeckId });
       });
     });
+  }
+
+  function buildDeckRows() {
+    const rows = [];
+    const groupCounts = new Map();
+    const sortedDecks = [...state.decks].sort((a, b) => a.name.localeCompare(b.name));
+    sortedDecks.forEach((deck) => {
+      const parts = deck.name.split("::");
+      for (let i = 1; i < parts.length; i += 1) {
+        const path = parts.slice(0, i).join("::");
+        groupCounts.set(path, (groupCounts.get(path) || 0) + 1);
+      }
+    });
+
+    const emittedGroups = new Set();
+    sortedDecks.forEach((deck) => {
+      const parts = deck.name.split("::");
+      let hidden = false;
+      for (let i = 1; i < parts.length; i += 1) {
+        const path = parts.slice(0, i).join("::");
+        if (!emittedGroups.has(path)) {
+          rows.push({
+            kind: "group",
+            path,
+            label: parts[i - 1],
+            depth: i - 1,
+            count: groupCounts.get(path) || 0,
+          });
+          emittedGroups.add(path);
+        }
+        if (state.collapsedDeckGroups.has(path)) {
+          hidden = true;
+        }
+      }
+      if (!hidden) {
+        rows.push({
+          kind: "deck",
+          deck,
+          label: parts[parts.length - 1],
+          depth: parts.length - 1,
+        });
+      }
+    });
+    return rows;
   }
 
   function renderCards(cards) {
@@ -118,10 +198,12 @@
   function renderFields() {
     if (!state.selectedDeckId) {
       el.fieldList.innerHTML = '<div class="empty">Select a deck</div>';
+      setFieldButtons(false);
       return;
     }
     if (!state.fields.length) {
       el.fieldList.innerHTML = '<div class="empty">No fields found</div>';
+      setFieldButtons(false);
       return;
     }
 
@@ -145,8 +227,39 @@
         el.generateButton.disabled = state.selectedFields.length === 0;
       });
     });
+    setFieldButtons(true);
     el.saveFieldsButton.disabled = state.selectedFields.length === 0;
     el.generateButton.disabled = state.selectedFields.length === 0;
+  }
+
+  function setFieldButtons(enabled) {
+    el.selectAllFieldsButton.disabled = !enabled;
+    el.invertFieldsButton.disabled = !enabled;
+    el.saveFieldsButton.disabled = !enabled;
+  }
+
+  function renderPresets() {
+    if (!state.promptPresets.length) {
+      state.promptPresets = [{ id: "default", name: "Default", language: "", difficulty: "", instructions: "" }];
+    }
+    el.presetSelect.innerHTML = state.promptPresets
+      .map((preset) => {
+        const selected = preset.id === state.selectedPromptPresetId ? " selected" : "";
+        return `<option value="${escapeHtml(preset.id)}"${selected}>${escapeHtml(preset.name)}</option>`;
+      })
+      .join("");
+    const preset = currentPreset();
+    el.presetName.value = preset.name || "";
+    el.presetLanguage.value = preset.language || "";
+    el.presetDifficulty.value = preset.difficulty || "";
+    el.presetInstructions.value = preset.instructions || "";
+    el.deletePresetButton.disabled = preset.id === "default";
+  }
+
+  function currentPreset() {
+    return state.promptPresets.find((preset) => preset.id === state.selectedPromptPresetId)
+      || state.promptPresets[0]
+      || { id: "default", name: "Default", language: "", difficulty: "", instructions: "" };
   }
 
   function setStatus(message, isError = false) {
@@ -174,9 +287,12 @@
       const { event, payload } = message;
       if (event === "state") {
         state.decks = payload.decks || [];
+        state.promptPresets = payload.promptPresets || [];
+        state.selectedPromptPresetId = payload.selectedPromptPresetId || "default";
         el.dayWindow.textContent = `${formatTime(payload.dayStart)} - ${formatTime(payload.dayEnd)}`;
         el.generateButton.disabled = !state.selectedDeckId;
         renderDecks();
+        renderPresets();
         setStatus(state.decks.length ? "Choose a deck studied today." : "No study activity found for this Anki day.");
       }
       if (event === "deckCards") {
@@ -193,6 +309,12 @@
       if (event === "generating") {
         el.generateButton.disabled = true;
         setStatus(payload.message || "Generating...");
+      }
+      if (event === "promptPresets") {
+        state.promptPresets = payload.promptPresets || [];
+        state.selectedPromptPresetId = payload.selectedPromptPresetId || "default";
+        renderPresets();
+        setStatus(payload.message || "Prompt presets updated.");
       }
       if (event === "article") {
         renderArticle(payload);
@@ -212,7 +334,17 @@
     }
     el.articleOutput.innerHTML = "";
     el.savedPaths.innerHTML = "";
-    send("generate", { deckId: state.selectedDeckId });
+    send("generate", { deckId: state.selectedDeckId, presetId: state.selectedPromptPresetId });
+  });
+
+  el.selectAllFieldsButton.addEventListener("click", () => {
+    state.selectedFields = [...state.fields];
+    renderFields();
+  });
+
+  el.invertFieldsButton.addEventListener("click", () => {
+    state.selectedFields = state.fields.filter((field) => !state.selectedFields.includes(field));
+    renderFields();
   });
 
   el.saveFieldsButton.addEventListener("click", () => {
@@ -223,12 +355,48 @@
     });
   });
 
+  el.presetSelect.addEventListener("change", () => {
+    state.selectedPromptPresetId = el.presetSelect.value;
+    renderPresets();
+    send("selectPromptPreset", { presetId: state.selectedPromptPresetId });
+  });
+
+  el.newPresetButton.addEventListener("click", () => {
+    state.selectedPromptPresetId = `preset-${Date.now()}`;
+    state.promptPresets.push({
+      id: state.selectedPromptPresetId,
+      name: "New Preset",
+      language: "",
+      difficulty: "",
+      instructions: "",
+    });
+    renderPresets();
+  });
+
+  el.savePresetButton.addEventListener("click", () => {
+    send("savePromptPreset", {
+      preset: {
+        id: state.selectedPromptPresetId,
+        name: el.presetName.value,
+        language: el.presetLanguage.value,
+        difficulty: el.presetDifficulty.value,
+        instructions: el.presetInstructions.value,
+        prompt_template: "",
+      },
+    });
+  });
+
+  el.deletePresetButton.addEventListener("click", () => {
+    send("deletePromptPreset", { presetId: state.selectedPromptPresetId });
+  });
+
   el.refreshButton.addEventListener("click", () => {
     state.selectedDeckId = null;
     state.fields = [];
     state.selectedFields = [];
     el.generateButton.disabled = true;
     el.saveFieldsButton.disabled = true;
+    setFieldButtons(false);
     el.cardList.innerHTML = "";
     renderFields();
     el.cardCount.textContent = "Select a deck";

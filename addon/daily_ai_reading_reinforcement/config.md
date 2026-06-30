@@ -23,3 +23,9 @@
 
 `deck_field_config`
 : Saved field selections for each deck. This is managed by the add-on UI.
+
+`prompt_presets`
+: Saved prompt presets. Each preset can define language, difficulty, extra instructions, and an optional full prompt template.
+
+`selected_prompt_preset_id`
+: Last selected prompt preset. This is managed by the add-on UI.

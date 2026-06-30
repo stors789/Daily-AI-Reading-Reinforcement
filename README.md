@@ -9,6 +9,8 @@ An Anki add-on that generates a short reading passage from the cards you studied
 - Lists decks with cards studied today.
 - Lets you choose which note fields from each deck are sent to the AI.
 - Saves field selections per deck in the Anki add-on config.
+- Offers all/invert controls for field selection.
+- Lets you save prompt presets for different languages, difficulties, and extra instructions.
 - Extracts new cards and failed review cards from the selected deck.
 - Sends those terms to an OpenAI-compatible API.
 - Displays the generated article in a local styled page.
@@ -52,7 +54,18 @@ The add-on uses an OpenAI-compatible chat completions API:
   "max_tokens": 1400,
   "language": "English",
   "prompt_template": "",
-  "deck_field_config": {}
+  "deck_field_config": {},
+  "prompt_presets": [
+    {
+      "id": "default",
+      "name": "Default",
+      "language": "",
+      "difficulty": "",
+      "instructions": "",
+      "prompt_template": ""
+    }
+  ],
+  "selected_prompt_preset_id": "default"
 }
 ```
 

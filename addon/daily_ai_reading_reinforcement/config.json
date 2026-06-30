@@ -6,5 +6,16 @@
   "max_tokens": 1400,
   "language": "English",
   "prompt_template": "",
-  "deck_field_config": {}
+  "deck_field_config": {},
+  "prompt_presets": [
+    {
+      "id": "default",
+      "name": "Default",
+      "language": "",
+      "difficulty": "",
+      "instructions": "",
+      "prompt_template": ""
+    }
+  ],
+  "selected_prompt_preset_id": "default"
 }

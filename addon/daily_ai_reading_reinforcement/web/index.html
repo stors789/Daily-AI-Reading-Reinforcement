@@ -19,7 +19,11 @@
     <section class="panel field-panel">
       <div class="panel-heading">
         <h2>AI Fields</h2>
-        <button class="secondary-button" id="saveFieldsButton" disabled>Save</button>
+        <div class="button-row">
+          <button class="secondary-button" id="selectAllFieldsButton" disabled>All</button>
+          <button class="secondary-button" id="invertFieldsButton" disabled>Invert</button>
+          <button class="secondary-button" id="saveFieldsButton" disabled>Save</button>
+        </div>
       </div>
       <div class="field-list" id="fieldList">
         <div class="empty">Select a deck</div>
@@ -38,6 +42,20 @@
       <div class="panel-heading">
         <h2>Article</h2>
         <button class="primary-button" id="generateButton" disabled>Generate</button>
+      </div>
+      <div class="preset-editor">
+        <div class="preset-row">
+          <select id="presetSelect"></select>
+          <button class="secondary-button" id="newPresetButton">New</button>
+          <button class="secondary-button" id="savePresetButton">Save</button>
+          <button class="secondary-button" id="deletePresetButton">Delete</button>
+        </div>
+        <div class="preset-grid">
+          <input id="presetName" placeholder="Preset name">
+          <input id="presetLanguage" placeholder="Language">
+          <input id="presetDifficulty" placeholder="Difficulty">
+        </div>
+        <textarea id="presetInstructions" rows="3" placeholder="Extra prompt instructions"></textarea>
       </div>
       <div class="status" id="status">Choose a deck studied today.</div>
       <article class="article-output" id="articleOutput"></article>
