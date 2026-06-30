@@ -1,17 +1,24 @@
 <main class="app-shell">
   <header class="topbar">
     <div>
-      <p class="eyebrow">Daily AI Reading</p>
-      <h1>Reading Reinforcement</h1>
+      <p class="eyebrow" id="eyebrowText">Daily AI Reading</p>
+      <h1 id="titleText">Reading Reinforcement</h1>
     </div>
-    <div class="day-window" id="dayWindow">Loading Anki day...</div>
+    <div class="top-actions">
+      <select id="uiLanguageSelect" class="language-select">
+        <option value="zh">中文</option>
+        <option value="en">English</option>
+        <option value="ja">日本語</option>
+      </select>
+      <div class="day-window" id="dayWindow">Loading Anki day...</div>
+    </div>
   </header>
 
   <section class="workspace">
     <div class="left-stack">
       <aside class="panel deck-panel">
         <div class="panel-heading">
-          <h2>Studied Decks</h2>
+          <h2 id="decksHeading">Studied Decks</h2>
           <button class="icon-button" id="refreshButton" title="Refresh">↻</button>
         </div>
         <div class="deck-list" id="deckList"></div>
@@ -19,7 +26,7 @@
 
       <section class="panel field-panel">
         <div class="panel-heading">
-          <h2>AI Fields</h2>
+          <h2 id="fieldsHeading">AI Fields</h2>
           <div class="button-row">
             <button class="secondary-button" id="selectAllFieldsButton" disabled>All</button>
             <button class="secondary-button" id="invertFieldsButton" disabled>Invert</button>
@@ -27,14 +34,14 @@
           </div>
         </div>
         <div class="field-list" id="fieldList">
-          <div class="empty">Select a deck</div>
+          <div class="empty" id="fieldEmptyText">Select a deck</div>
         </div>
       </section>
     </div>
 
     <section class="panel card-panel">
       <div class="panel-heading">
-        <h2>Cards</h2>
+        <h2 id="cardsHeading">Cards</h2>
         <span class="muted" id="cardCount">Select a deck</span>
       </div>
       <div class="card-list" id="cardList"></div>
@@ -42,7 +49,7 @@
 
     <section class="panel article-panel">
       <div class="panel-heading">
-        <h2>Article</h2>
+        <h2 id="articleHeading">Article</h2>
         <button class="primary-button" id="generateButton" disabled>Generate</button>
       </div>
       <div class="preset-editor">

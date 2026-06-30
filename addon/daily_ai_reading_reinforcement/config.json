@@ -8,6 +8,7 @@
   "prompt_template": "",
   "deck_field_config": {},
   "collapsed_deck_groups": [],
+  "ui_language": "zh",
   "prompt_presets": [
     {
       "id": "default",

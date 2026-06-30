@@ -7,13 +7,21 @@
     selectedFields: [],
     promptPresets: [],
     selectedPromptPresetId: "default",
+    uiLanguage: "zh",
   };
 
   const el = {
+    eyebrowText: document.getElementById("eyebrowText"),
+    titleText: document.getElementById("titleText"),
+    uiLanguageSelect: document.getElementById("uiLanguageSelect"),
     deckList: document.getElementById("deckList"),
     cardList: document.getElementById("cardList"),
     cardCount: document.getElementById("cardCount"),
     dayWindow: document.getElementById("dayWindow"),
+    decksHeading: document.getElementById("decksHeading"),
+    fieldsHeading: document.getElementById("fieldsHeading"),
+    cardsHeading: document.getElementById("cardsHeading"),
+    articleHeading: document.getElementById("articleHeading"),
     generateButton: document.getElementById("generateButton"),
     selectAllFieldsButton: document.getElementById("selectAllFieldsButton"),
     invertFieldsButton: document.getElementById("invertFieldsButton"),
@@ -32,6 +40,151 @@
     articleOutput: document.getElementById("articleOutput"),
     savedPaths: document.getElementById("savedPaths"),
   };
+
+  const I18N = {
+    zh: {
+      eyebrow: "每日 AI 阅读",
+      title: "阅读巩固",
+      decks: "今日卡组",
+      fields: "AI 字段",
+      cards: "卡片",
+      article: "文章",
+      refresh: "刷新",
+      all: "全选",
+      invert: "反选",
+      save: "保存",
+      generate: "生成",
+      new: "新建",
+      delete: "删除",
+      loadingDay: "正在读取 Anki 日期...",
+      selectDeck: "选择一个今天学过的卡组。",
+      noStudy: "这个 Anki 日没有找到学习记录。",
+      noDecks: "这个 Anki 日没有学习过的卡组。",
+      loadingCards: "正在读取卡片...",
+      ready: "可以生成了。",
+      noCards: "这个卡组今天没有候选卡片。",
+      chooseField: "请至少选择一个 AI 输入字段。",
+      fieldSaved: "字段选择已保存。",
+      presetSaved: "提示词预设已保存。",
+      presetUpdated: "提示词预设已更新。",
+      savedArticle: "文章已保存：",
+      selectDeckShort: "选择卡组",
+      candidateCards: "张候选卡",
+      cardsUnit: "张卡",
+      newCount: "新学",
+      failedCount: "失败",
+      reviews: "次复习",
+      childDecks: "个子卡组",
+      presetName: "预设名称",
+      language: "写作语言",
+      difficulty: "难度",
+      instructions: "额外提示词要求",
+    },
+    en: {
+      eyebrow: "Daily AI Reading",
+      title: "Reading Reinforcement",
+      decks: "Studied Decks",
+      fields: "AI Fields",
+      cards: "Cards",
+      article: "Article",
+      refresh: "Refresh",
+      all: "All",
+      invert: "Invert",
+      save: "Save",
+      generate: "Generate",
+      new: "New",
+      delete: "Delete",
+      loadingDay: "Loading Anki day...",
+      selectDeck: "Choose a deck studied today.",
+      noStudy: "No study activity found for this Anki day.",
+      noDecks: "No decks studied in this Anki day.",
+      loadingCards: "Loading cards...",
+      ready: "Ready to generate.",
+      noCards: "No candidate cards in this deck today.",
+      chooseField: "Choose at least one field for AI input.",
+      fieldSaved: "Field selection saved.",
+      presetSaved: "Prompt preset saved.",
+      presetUpdated: "Prompt presets updated.",
+      savedArticle: "Saved article for ",
+      selectDeckShort: "Select a deck",
+      candidateCards: "candidate cards",
+      cardsUnit: "cards",
+      newCount: "new",
+      failedCount: "failed",
+      reviews: "reviews",
+      childDecks: "child decks",
+      presetName: "Preset name",
+      language: "Language",
+      difficulty: "Difficulty",
+      instructions: "Extra prompt instructions",
+    },
+    ja: {
+      eyebrow: "毎日の AI 読解",
+      title: "読解で復習",
+      decks: "今日のデッキ",
+      fields: "AI フィールド",
+      cards: "カード",
+      article: "文章",
+      refresh: "更新",
+      all: "全選択",
+      invert: "反転",
+      save: "保存",
+      generate: "生成",
+      new: "新規",
+      delete: "削除",
+      loadingDay: "Anki の日付を読み込み中...",
+      selectDeck: "今日学習したデッキを選んでください。",
+      noStudy: "この Anki 日には学習記録がありません。",
+      noDecks: "この Anki 日に学習したデッキはありません。",
+      loadingCards: "カードを読み込み中...",
+      ready: "生成できます。",
+      noCards: "このデッキには今日の候補カードがありません。",
+      chooseField: "AI に渡すフィールドを 1 つ以上選んでください。",
+      fieldSaved: "フィールド設定を保存しました。",
+      presetSaved: "プロンプトプリセットを保存しました。",
+      presetUpdated: "プロンプトプリセットを更新しました。",
+      savedArticle: "文章を保存しました：",
+      selectDeckShort: "デッキを選択",
+      candidateCards: "候補カード",
+      cardsUnit: "カード",
+      newCount: "新規",
+      failedCount: "失敗",
+      reviews: "回復習",
+      childDecks: "子デッキ",
+      presetName: "プリセット名",
+      language: "執筆言語",
+      difficulty: "難度",
+      instructions: "追加プロンプト指示",
+    },
+  };
+
+  function tr(key) {
+    return (I18N[state.uiLanguage] && I18N[state.uiLanguage][key])
+      || I18N.en[key]
+      || key;
+  }
+
+  function applyI18n() {
+    el.eyebrowText.textContent = tr("eyebrow");
+    el.titleText.textContent = tr("title");
+    el.decksHeading.textContent = tr("decks");
+    el.fieldsHeading.textContent = tr("fields");
+    el.cardsHeading.textContent = tr("cards");
+    el.articleHeading.textContent = tr("article");
+    el.refreshButton.title = tr("refresh");
+    el.selectAllFieldsButton.textContent = tr("all");
+    el.invertFieldsButton.textContent = tr("invert");
+    el.saveFieldsButton.textContent = tr("save");
+    el.generateButton.textContent = tr("generate");
+    el.newPresetButton.textContent = tr("new");
+    el.savePresetButton.textContent = tr("save");
+    el.deletePresetButton.textContent = tr("delete");
+    el.presetName.placeholder = tr("presetName");
+    el.presetLanguage.placeholder = tr("language");
+    el.presetDifficulty.placeholder = tr("difficulty");
+    el.presetInstructions.placeholder = tr("instructions");
+    el.uiLanguageSelect.value = state.uiLanguage;
+  }
 
   const bridgeQueue = [];
   let bridgeWaitStarted = false;
@@ -91,7 +244,7 @@
 
   function renderDecks() {
     if (!state.decks.length) {
-      el.deckList.innerHTML = '<div class="empty">No decks studied in this Anki day.</div>';
+      el.deckList.innerHTML = `<div class="empty">${tr("noDecks")}</div>`;
       return;
     }
 
@@ -105,14 +258,14 @@
         const caret = row.hasChildren
           ? `<button class="deck-caret" data-collapse-path="${escapeHtml(row.deck.name)}" title="Expand or collapse">${collapsed ? "▸" : "▾"}</button>`
           : '<span class="deck-caret-spacer"></span>';
-        const childStats = row.hasChildren ? `<span>${row.childCount} child decks</span>` : "";
+        const childStats = row.hasChildren ? `<span>${row.childCount} ${tr("childDecks")}</span>` : "";
         return `
           <div class="deck-item${selected}${groupClass}" data-deck-id="${escapeHtml(row.deck.id)}" ${indent}>
             <div class="deck-name">${caret}<span>${escapeHtml(row.label)}</span></div>
             <div class="deck-stats">
-              <span>${row.deck.totalCount} cards</span>
-              <span>${row.deck.newCount} new</span>
-              <span>${row.deck.failedCount} failed</span>
+              <span>${row.deck.totalCount} ${tr("cardsUnit")}</span>
+              <span>${row.deck.newCount} ${tr("newCount")}</span>
+              <span>${row.deck.failedCount} ${tr("failedCount")}</span>
               ${childStats}
             </div>
           </div>
@@ -192,9 +345,9 @@
   }
 
   function renderCards(cards) {
-    el.cardCount.textContent = `${cards.length} candidate cards`;
+    el.cardCount.textContent = `${cards.length} ${tr("candidateCards")}`;
     if (!cards.length) {
-      el.cardList.innerHTML = '<div class="empty">No candidate cards in this deck today.</div>';
+      el.cardList.innerHTML = `<div class="empty">${tr("noCards")}</div>`;
       return;
     }
 
@@ -203,7 +356,7 @@
         const tags = [
           card.is_new ? '<span class="tag">new</span>' : "",
           card.is_failed ? '<span class="tag failed">failed</span>' : "",
-          `<span>${card.review_count} reviews</span>`,
+          `<span>${card.review_count} ${tr("reviews")}</span>`,
         ]
           .filter(Boolean)
           .join("");
@@ -221,12 +374,12 @@
         `;
       })
       .join("");
-    setStatus("Ready to generate.");
+    setStatus(tr("ready"));
   }
 
   function renderFields() {
     if (!state.selectedDeckId) {
-      el.fieldList.innerHTML = '<div class="empty">Select a deck</div>';
+      el.fieldList.innerHTML = `<div class="empty">${tr("selectDeckShort")}</div>`;
       setFieldButtons(false);
       return;
     }
@@ -307,7 +460,7 @@
       <div>Markdown: ${escapeHtml(payload.markdownPath)}</div>
       <div>HTML: ${escapeHtml(payload.htmlPath)}</div>
     `;
-    setStatus(`Saved article for ${payload.deckName}.`);
+    setStatus(`${tr("savedArticle")}${payload.deckName}.`);
     el.generateButton.disabled = false;
   }
 
@@ -319,11 +472,13 @@
         state.collapsedDeckGroups = new Set(payload.collapsedDeckGroups || []);
         state.promptPresets = payload.promptPresets || [];
         state.selectedPromptPresetId = payload.selectedPromptPresetId || "default";
+        state.uiLanguage = payload.uiLanguage || state.uiLanguage;
         el.dayWindow.textContent = `${formatTime(payload.dayStart)} - ${formatTime(payload.dayEnd)}`;
         el.generateButton.disabled = !state.selectedDeckId;
+        applyI18n();
         renderDecks();
         renderPresets();
-        setStatus(state.decks.length ? "Choose a deck studied today." : "No study activity found for this Anki day.");
+        setStatus(state.decks.length ? tr("selectDeck") : tr("noStudy"));
       }
       if (event === "deckCards") {
         state.fields = payload.fields || [];
@@ -334,7 +489,7 @@
       if (event === "fieldConfigSaved") {
         state.selectedFields = payload.selectedFields || state.selectedFields;
         renderFields();
-        setStatus("Field selection saved.");
+        setStatus(tr("fieldSaved"));
       }
       if (event === "generating") {
         el.generateButton.disabled = true;
@@ -344,7 +499,7 @@
         state.promptPresets = payload.promptPresets || [];
         state.selectedPromptPresetId = payload.selectedPromptPresetId || "default";
         renderPresets();
-        setStatus(payload.message || "Prompt presets updated.");
+        setStatus(tr("presetUpdated"));
       }
       if (event === "article") {
         renderArticle(payload);
@@ -359,7 +514,7 @@
   el.generateButton.addEventListener("click", () => {
     if (!state.selectedDeckId) return;
     if (!state.selectedFields.length) {
-      setStatus("Choose at least one field for AI input.", true);
+      setStatus(tr("chooseField"), true);
       return;
     }
     el.articleOutput.innerHTML = "";
@@ -389,6 +544,15 @@
     state.selectedPromptPresetId = el.presetSelect.value;
     renderPresets();
     send("selectPromptPreset", { presetId: state.selectedPromptPresetId });
+  });
+
+  el.uiLanguageSelect.addEventListener("change", () => {
+    state.uiLanguage = el.uiLanguageSelect.value;
+    applyI18n();
+    renderDecks();
+    renderFields();
+    send("saveUiLanguage", { uiLanguage: state.uiLanguage });
+    setStatus(tr("selectDeck"));
   });
 
   el.newPresetButton.addEventListener("click", () => {
@@ -429,7 +593,7 @@
     setFieldButtons(false);
     el.cardList.innerHTML = "";
     renderFields();
-    el.cardCount.textContent = "Select a deck";
+    el.cardCount.textContent = tr("selectDeckShort");
     send("load");
   });
 

@@ -40,6 +40,24 @@ button {
   max-width: 1600px;
 }
 
+.top-actions {
+  align-items: end;
+  display: flex;
+  flex-wrap: wrap;
+  gap: 12px;
+  justify-content: flex-end;
+}
+
+.language-select {
+  background: var(--surface-strong);
+  border: 1px solid var(--line);
+  border-radius: 8px;
+  color: var(--ink);
+  font: inherit;
+  min-height: 36px;
+  padding: 6px 10px;
+}
+
 .eyebrow {
   color: var(--accent);
   font-size: 12px;

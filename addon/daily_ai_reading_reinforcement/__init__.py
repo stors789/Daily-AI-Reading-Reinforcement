@@ -38,6 +38,7 @@ DEFAULT_CONFIG = {
     "prompt_template": "",
     "deck_field_config": {},
     "collapsed_deck_groups": [],
+    "ui_language": "zh",
     "prompt_presets": [
         {
             "id": "default",
@@ -126,6 +127,8 @@ window.addEventListener("error", function (event) {
                 self._delete_prompt_preset(str(payload.get("presetId", "")))
             elif action == "selectPromptPreset":
                 self._select_prompt_preset(str(payload.get("presetId", "")))
+            elif action == "saveUiLanguage":
+                self._save_ui_language(str(payload.get("uiLanguage", "")))
             elif action == "saveCollapsedDeckGroups":
                 self._save_collapsed_deck_groups(
                     list(payload.get("collapsedDeckGroups") or [])
@@ -170,6 +173,7 @@ window.addEventListener("error", function (event) {
                 "promptPresets": normalize_prompt_presets(config),
                 "selectedPromptPresetId": config.get("selected_prompt_preset_id")
                 or "default",
+                "uiLanguage": config.get("ui_language") or "zh",
                 "collapsedDeckGroups": list(config.get("collapsed_deck_groups") or []),
             },
         )
@@ -279,6 +283,13 @@ window.addEventListener("error", function (event) {
         if preset_id not in valid_ids:
             preset_id = "default"
         config["selected_prompt_preset_id"] = preset_id
+        mw.addonManager.writeConfig(ADDON_PACKAGE, config)
+
+    def _save_ui_language(self, ui_language: str) -> None:
+        if ui_language not in {"zh", "en", "ja"}:
+            ui_language = "zh"
+        config = load_config()
+        config["ui_language"] = ui_language
         mw.addonManager.writeConfig(ADDON_PACKAGE, config)
 
     def _save_collapsed_deck_groups(self, collapsed_groups: list[str]) -> None:
@@ -617,7 +628,12 @@ def build_prompt(
     selected_fields: list[str],
     preset: dict[str, str],
 ) -> str:
-    language = str(preset.get("language") or config.get("language") or "English")
+    language = str(
+        preset.get("language")
+        or writing_language_for_ui(str(config.get("ui_language") or "zh"))
+        or config.get("language")
+        or "English"
+    )
     difficulty = str(preset.get("difficulty") or "appropriate for the learner")
     instructions = str(preset.get("instructions") or "No extra instructions.")
     card_lines = []
@@ -658,6 +674,14 @@ def build_prompt(
         deck_name=deck_name_value,
         cards="\n".join(card_lines),
     )
+
+
+def writing_language_for_ui(ui_language: str) -> str:
+    return {
+        "zh": "中文",
+        "en": "English",
+        "ja": "日本語",
+    }.get(ui_language, "中文")
 
 
 def generate_article(
