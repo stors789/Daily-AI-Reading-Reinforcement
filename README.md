@@ -7,6 +7,7 @@ An Anki add-on that generates a short reading passage from the cards you studied
 - Adds an `AI Reading Reinforcement` entry inside Anki.
 - Uses Anki's own study-day cutoff, so "today" follows Anki's new-day setting.
 - Lists decks with cards studied today.
+- Shows parent decks as aggregate decks, so a parent can generate from all studied child decks.
 - Lets you choose which note fields from each deck are sent to the AI.
 - Saves field selections per deck in the Anki add-on config.
 - Offers all/invert controls for field selection.

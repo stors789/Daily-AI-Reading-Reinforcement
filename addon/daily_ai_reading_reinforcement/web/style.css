@@ -141,7 +141,7 @@ h2 {
   border-color: rgba(47, 111, 115, 0.42);
 }
 
-.deck-item.group {
+.deck-item.aggregate {
   background: #f8f4ed;
 }
 
@@ -150,9 +150,20 @@ h2 {
 }
 
 .deck-caret {
+  background: transparent;
+  border: 0;
   color: var(--accent);
-  display: inline-block;
+  cursor: pointer;
+  display: inline-flex;
   font-weight: 800;
+  justify-content: center;
+  min-height: 24px;
+  padding: 0;
+  width: 18px;
+}
+
+.deck-caret-spacer {
+  display: inline-block;
   width: 18px;
 }
 
@@ -160,6 +171,12 @@ h2 {
 .card-term {
   font-weight: 700;
   overflow-wrap: anywhere;
+}
+
+.deck-name {
+  align-items: flex-start;
+  display: flex;
+  gap: 4px;
 }
 
 .deck-stats,

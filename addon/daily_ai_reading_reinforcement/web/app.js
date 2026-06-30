@@ -66,32 +66,31 @@
     el.deckList.innerHTML = rows
       .map((row) => {
         const indent = `style="padding-left: ${12 + row.depth * 18}px"`;
-        if (row.kind === "group") {
-          const collapsed = state.collapsedDeckGroups.has(row.path);
-          return `
-            <div class="deck-item group" data-group-path="${escapeHtml(row.path)}" ${indent}>
-              <div class="deck-name"><span class="deck-caret">${collapsed ? "▸" : "▾"}</span>${escapeHtml(row.label)}</div>
-              <div class="deck-stats"><span>${row.count} studied child decks</span></div>
-            </div>
-          `;
-        }
         const selected = row.deck.id === state.selectedDeckId ? " selected" : "";
+        const groupClass = row.deck.isGroup ? " aggregate" : "";
+        const collapsed = state.collapsedDeckGroups.has(row.deck.name);
+        const caret = row.hasChildren
+          ? `<button class="deck-caret" data-collapse-path="${escapeHtml(row.deck.name)}" title="Expand or collapse">${collapsed ? "▸" : "▾"}</button>`
+          : '<span class="deck-caret-spacer"></span>';
+        const childStats = row.hasChildren ? `<span>${row.childCount} child decks</span>` : "";
         return `
-          <div class="deck-item${selected}" data-deck-id="${escapeHtml(row.deck.id)}" ${indent}>
-            <div class="deck-name">${escapeHtml(row.label)}</div>
+          <div class="deck-item${selected}${groupClass}" data-deck-id="${escapeHtml(row.deck.id)}" ${indent}>
+            <div class="deck-name">${caret}<span>${escapeHtml(row.label)}</span></div>
             <div class="deck-stats">
               <span>${row.deck.totalCount} cards</span>
               <span>${row.deck.newCount} new</span>
               <span>${row.deck.failedCount} failed</span>
+              ${childStats}
             </div>
           </div>
         `;
       })
       .join("");
 
-    document.querySelectorAll(".deck-item.group").forEach((item) => {
-      item.addEventListener("click", () => {
-        const path = item.dataset.groupPath;
+    document.querySelectorAll(".deck-caret").forEach((item) => {
+      item.addEventListener("click", (event) => {
+        event.stopPropagation();
+        const path = item.dataset.collapsePath;
         if (state.collapsedDeckGroups.has(path)) {
           state.collapsedDeckGroups.delete(path);
         } else {
@@ -121,41 +120,35 @@
   function buildDeckRows() {
     const rows = [];
     const groupCounts = new Map();
+    const groupNames = new Set();
     const sortedDecks = [...state.decks].sort((a, b) => a.name.localeCompare(b.name));
     sortedDecks.forEach((deck) => {
       const parts = deck.name.split("::");
       for (let i = 1; i < parts.length; i += 1) {
         const path = parts.slice(0, i).join("::");
+        groupNames.add(path);
         groupCounts.set(path, (groupCounts.get(path) || 0) + 1);
       }
     });
 
-    const emittedGroups = new Set();
     sortedDecks.forEach((deck) => {
       const parts = deck.name.split("::");
       let hidden = false;
       for (let i = 1; i < parts.length; i += 1) {
         const path = parts.slice(0, i).join("::");
-        if (!emittedGroups.has(path)) {
-          rows.push({
-            kind: "group",
-            path,
-            label: parts[i - 1],
-            depth: i - 1,
-            count: groupCounts.get(path) || 0,
-          });
-          emittedGroups.add(path);
-        }
         if (state.collapsedDeckGroups.has(path)) {
           hidden = true;
         }
       }
       if (!hidden) {
+        const hasChildren = groupNames.has(deck.name);
         rows.push({
           kind: "deck",
           deck,
           label: parts[parts.length - 1],
           depth: parts.length - 1,
+          hasChildren,
+          childCount: groupCounts.get(deck.name) || 0,
         });
       }
     });

@@ -6,7 +6,7 @@ import re
 import time
 import urllib.error
 import urllib.request
-from dataclasses import dataclass
+from dataclasses import dataclass, replace
 from pathlib import Path
 from typing import Any
 from uuid import uuid4
@@ -142,6 +142,7 @@ class ReadingReinforcementDialog(QDialog):
                 "newCount": payload["new_count"],
                 "failedCount": payload["failed_count"],
                 "totalCount": payload["total_count"],
+                "isGroup": bool(payload.get("is_group")),
             }
             for deck_id, payload in sorted(
                 self.deck_payloads.items(), key=lambda item: item[1]["name"].lower()
@@ -432,12 +433,53 @@ def collect_today_decks() -> dict[str, dict[str, Any]]:
         deck["cards"] = [
             card for card in deck["cards"] if card.is_new or card.is_failed
         ]
-        deck["total_count"] = len(deck["cards"])
-        deck["new_count"] = sum(1 for card in deck["cards"] if card.is_new)
-        deck["failed_count"] = sum(1 for card in deck["cards"] if card.is_failed)
-        deck.pop("_cards_by_note", None)
+        refresh_deck_counts(deck)
 
-    return {deck_id: deck for deck_id, deck in decks.items() if deck["cards"]}
+    decks = {deck_id: deck for deck_id, deck in decks.items() if deck["cards"]}
+    decks.update(aggregate_parent_decks(decks))
+    for deck in decks.values():
+        deck.pop("_cards_by_note", None)
+    return decks
+
+
+def refresh_deck_counts(deck: dict[str, Any]) -> None:
+    deck["total_count"] = len(deck["cards"])
+    deck["new_count"] = sum(1 for card in deck["cards"] if card.is_new)
+    deck["failed_count"] = sum(1 for card in deck["cards"] if card.is_failed)
+
+
+def aggregate_parent_decks(decks: dict[str, dict[str, Any]]) -> dict[str, dict[str, Any]]:
+    aggregates: dict[str, dict[str, Any]] = {}
+    for deck in decks.values():
+        parts = str(deck["name"]).split("::")
+        for index in range(1, len(parts)):
+            parent_name = "::".join(parts[:index])
+            aggregate_id = f"group:{parent_name}"
+            if aggregate_id not in aggregates:
+                aggregates[aggregate_id] = {
+                    "name": parent_name,
+                    "new_count": 0,
+                    "failed_count": 0,
+                    "total_count": 0,
+                    "cards": [],
+                    "_cards_by_note": {},
+                    "is_group": True,
+                }
+            cards_by_note = aggregates[aggregate_id]["_cards_by_note"]
+            for card in deck["cards"]:
+                existing = cards_by_note.get(card.nid)
+                if existing is None:
+                    copied_card = replace(card)
+                    cards_by_note[card.nid] = copied_card
+                    aggregates[aggregate_id]["cards"].append(copied_card)
+                else:
+                    existing.is_new = existing.is_new or card.is_new
+                    existing.is_failed = existing.is_failed or card.is_failed
+                    existing.review_count += card.review_count
+
+    for aggregate in aggregates.values():
+        refresh_deck_counts(aggregate)
+    return aggregates
 
 
 def deck_name(deck_id: int) -> str:
