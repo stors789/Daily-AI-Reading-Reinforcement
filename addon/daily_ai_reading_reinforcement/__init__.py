@@ -11,6 +11,10 @@ from pathlib import Path
 from typing import Any
 
 from aqt import mw
+try:
+    from aqt import gui_hooks
+except ImportError:
+    gui_hooks = None
 from aqt.qt import QAction, QDialog, QUrl, QVBoxLayout
 from aqt.utils import showWarning
 from aqt.webview import AnkiWebView
@@ -75,10 +79,11 @@ class ReadingReinforcementDialog(QDialog):
 
     def _load_page(self) -> None:
         body = (WEB_DIR / "index.html").read_text(encoding="utf-8")
-        css = [str(WEB_DIR / "style.css")]
-        js = [str(WEB_DIR / "app.js")]
+        css = (WEB_DIR / "style.css").read_text(encoding="utf-8")
+        js = (WEB_DIR / "app.js").read_text(encoding="utf-8")
+        page = f"<style>{css}</style>\n{body}\n<script>{js}</script>"
         base_url = QUrl.fromLocalFile(str(WEB_DIR) + "/")
-        self.web.stdHtml(body, css=css, js=js, context=self, baseUrl=base_url)
+        self.web.stdHtml(page, context=self, baseUrl=base_url)
 
     def _on_bridge_command(self, message: str) -> None:
         try:
@@ -160,23 +165,32 @@ class ReadingReinforcementDialog(QDialog):
             return
 
         self._emit("generating", {"message": "Generating article..."})
-        try:
+
+        def task() -> dict[str, Any]:
             article = generate_article(config, payload["name"], cards)
             if not article.strip():
                 raise RuntimeError("The AI response was empty.")
             saved = save_article(payload["name"], cards, article)
+            return {
+                "deckId": deck_id,
+                "deckName": payload["name"],
+                "article": article,
+                "markdownPath": str(saved["markdown"]),
+                "htmlPath": str(saved["html"]),
+            }
+
+        def on_done(future: Any) -> None:
+            try:
+                result = future.result()
+            except Exception as exc:
+                self._emit("error", {"message": str(exc)})
+                return
             self._emit(
                 "article",
-                {
-                    "deckId": deck_id,
-                    "deckName": payload["name"],
-                    "article": article,
-                    "markdownPath": str(saved["markdown"]),
-                    "htmlPath": str(saved["html"]),
-                },
+                result,
             )
-        except Exception as exc:
-            self._emit("error", {"message": str(exc)})
+
+        mw.taskman.run_in_background(task, on_done)
 
     def _emit(self, event: str, payload: dict[str, Any]) -> None:
         data = json.dumps({"event": event, "payload": payload}, ensure_ascii=False)
@@ -394,9 +408,10 @@ def save_article(
     deck_name_value: str, cards: list[CandidateCard], article: str
 ) -> dict[str, Path]:
     ARTICLES_DIR.mkdir(parents=True, exist_ok=True)
-    stamp = time.strftime("%Y-%m-%d-%H%M%S")
+    date_part = time.strftime("%Y-%m-%d")
+    time_part = time.strftime("%H%M%S")
     slug = slugify(deck_name_value)
-    basename = f"{stamp}-{slug}"
+    basename = f"{date_part}-{slug}-{time_part}"
     markdown_path = ARTICLES_DIR / f"{basename}.md"
     html_path = ARTICLES_DIR / f"{basename}.html"
 
@@ -487,7 +502,8 @@ def slugify(value: str) -> str:
 
 def open_dialog() -> None:
     dialog = ReadingReinforcementDialog()
-    dialog.exec()
+    exec_method = getattr(dialog, "exec", None) or getattr(dialog, "exec_", None)
+    exec_method()
 
 
 def setup_menu() -> None:
@@ -496,7 +512,52 @@ def setup_menu() -> None:
     mw.form.menuTools.addAction(action)
 
 
+def add_deck_browser_button(deck_browser: Any, content: Any) -> None:
+    button_html = """
+<div style="margin: 16px 0 8px;">
+  <button onclick="pycmd('dairr-open')" style="
+    background: #2f6f73;
+    border: 0;
+    border-radius: 8px;
+    color: #fff;
+    cursor: pointer;
+    font-weight: 700;
+    padding: 9px 14px;
+  ">AI Reading Reinforcement</button>
+</div>
+"""
+    for attr in ("stats", "bottom", "buttons"):
+        try:
+            current = getattr(content, attr)
+        except Exception:
+            continue
+        if isinstance(current, str):
+            setattr(content, attr, current + button_html)
+            return
+
+
+def handle_webview_message(handled: Any, message: str, context: Any) -> Any:
+    if message == "dairr-open":
+        open_dialog()
+        return (True, None)
+    return handled
+
+
+def setup_home_entry() -> None:
+    if gui_hooks is None:
+        return
+    try:
+        gui_hooks.deck_browser_will_render_content.append(add_deck_browser_button)
+    except Exception:
+        pass
+    try:
+        gui_hooks.webview_did_receive_js_message.append(handle_webview_message)
+    except Exception:
+        pass
+
+
 try:
     setup_menu()
+    setup_home_entry()
 except Exception as exc:
     showWarning(f"Could not load AI Reading Reinforcement: {exc}")
