@@ -1,5 +1,10 @@
 __pycache__/
 *.py[cod]
 .DS_Store
+.uv-cache/
+.vendor-aqt/
 dist/
 addon/daily_ai_reading_reinforcement/user_files/
+!addon/daily_ai_reading_reinforcement/user_files/
+!addon/daily_ai_reading_reinforcement/user_files/README.txt
+addon/daily_ai_reading_reinforcement/user_files/articles/

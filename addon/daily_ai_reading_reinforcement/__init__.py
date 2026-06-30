@@ -15,7 +15,7 @@ try:
     from aqt import gui_hooks
 except ImportError:
     gui_hooks = None
-from aqt.qt import QAction, QDialog, QUrl, QVBoxLayout
+from aqt.qt import QAction, QDialog, QVBoxLayout
 from aqt.utils import showWarning
 from aqt.webview import AnkiWebView
 
@@ -82,8 +82,7 @@ class ReadingReinforcementDialog(QDialog):
         css = (WEB_DIR / "style.css").read_text(encoding="utf-8")
         js = (WEB_DIR / "app.js").read_text(encoding="utf-8")
         page = f"<style>{css}</style>\n{body}\n<script>{js}</script>"
-        base_url = QUrl.fromLocalFile(str(WEB_DIR) + "/")
-        self.web.stdHtml(page, context=self, baseUrl=base_url)
+        self.web.stdHtml(page, context=self)
 
     def _on_bridge_command(self, message: str) -> None:
         try:
@@ -523,6 +522,13 @@ def setup_menu() -> None:
     mw.form.menuTools.addAction(action)
 
 
+def register_web_exports() -> None:
+    try:
+        mw.addonManager.setWebExports(__name__, r"web/.*\.(css|js)")
+    except Exception:
+        pass
+
+
 def add_deck_browser_button(deck_browser: Any, content: Any) -> None:
     button_html = """
 <div style="margin: 16px 0 8px;">
@@ -568,6 +574,7 @@ def setup_home_entry() -> None:
 
 
 try:
+    register_web_exports()
     setup_menu()
     setup_home_entry()
 except Exception as exc:
