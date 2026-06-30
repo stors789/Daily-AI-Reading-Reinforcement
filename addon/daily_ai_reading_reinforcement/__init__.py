@@ -45,6 +45,7 @@ DEFAULT_CONFIG = {
             "name": "Default",
             "language": "",
             "difficulty": "",
+            "max_words": "",
             "instructions": "",
             "prompt_template": "",
         }
@@ -229,6 +230,7 @@ window.addEventListener("error", function (event) {
             "name": clean_text(preset.get("name")) or "Untitled",
             "language": clean_text(preset.get("language")),
             "difficulty": clean_text(preset.get("difficulty")),
+            "max_words": clean_max_words(preset.get("max_words")),
             "instructions": clean_text(preset.get("instructions")),
             "prompt_template": str(preset.get("prompt_template") or ""),
         }
@@ -567,6 +569,17 @@ def clean_text(value: Any) -> str:
     return text.strip()
 
 
+def clean_max_words(value: Any) -> str:
+    text = clean_text(value)
+    if not text:
+        return ""
+    match = re.search(r"\d+", text)
+    if not match:
+        return ""
+    number = max(50, min(5000, int(match.group(0))))
+    return str(number)
+
+
 def load_config() -> dict[str, Any]:
     config = DEFAULT_CONFIG.copy()
     loaded = mw.addonManager.getConfig(ADDON_PACKAGE) or {}
@@ -589,6 +602,7 @@ def normalize_prompt_presets(config: dict[str, Any]) -> list[dict[str, str]]:
                 "name": clean_text(raw.get("name")) or preset_id,
                 "language": clean_text(raw.get("language")),
                 "difficulty": clean_text(raw.get("difficulty")),
+                "max_words": clean_max_words(raw.get("max_words")),
                 "instructions": clean_text(raw.get("instructions")),
                 "prompt_template": str(raw.get("prompt_template") or ""),
             }
@@ -602,6 +616,7 @@ def normalize_prompt_presets(config: dict[str, Any]) -> list[dict[str, str]]:
                 "name": "Default",
                 "language": "",
                 "difficulty": "",
+                "max_words": "",
                 "instructions": "",
                 "prompt_template": "",
             },
@@ -635,6 +650,12 @@ def build_prompt(
         or "English"
     )
     difficulty = str(preset.get("difficulty") or "appropriate for the learner")
+    max_words = str(preset.get("max_words") or "")
+    length_instruction = (
+        f"Do not exceed about {max_words} words or characters."
+        if max_words
+        else "No fixed length limit."
+    )
     instructions = str(preset.get("instructions") or "No extra instructions.")
     card_lines = []
     for index, card in enumerate(cards[:80], start=1):
@@ -658,6 +679,7 @@ def build_prompt(
         "You are helping an Anki learner reinforce vocabulary through reading.\n"
         "Write one coherent, enjoyable short article in {language} using the studied cards below.\n"
         "Target difficulty: {difficulty}.\n"
+        "Length: {length_instruction}\n"
         "Extra instructions: {instructions}\n"
         "Prioritize failed cards naturally, then new cards. Keep the article readable and not list-like.\n"
         "After the article, include a short vocabulary review section with the most important terms.\n\n"
@@ -670,6 +692,8 @@ def build_prompt(
     return template.format(
         language=language,
         difficulty=difficulty,
+        max_words=max_words,
+        length_instruction=length_instruction,
         instructions=instructions,
         deck_name=deck_name_value,
         cards="\n".join(card_lines),
@@ -682,6 +706,15 @@ def writing_language_for_ui(ui_language: str) -> str:
         "en": "English",
         "ja": "日本語",
     }.get(ui_language, "中文")
+
+
+def max_tokens_for_request(config: dict[str, Any], preset: dict[str, str]) -> int:
+    configured = int(config.get("max_tokens") or DEFAULT_CONFIG["max_tokens"])
+    max_words = clean_max_words(preset.get("max_words"))
+    if not max_words:
+        return configured
+    suggested = max(300, int(max_words) * 3)
+    return min(configured, suggested)
 
 
 def generate_article(
@@ -704,7 +737,7 @@ def generate_article(
             {"role": "user", "content": prompt},
         ],
         "temperature": float(config.get("temperature") or DEFAULT_CONFIG["temperature"]),
-        "max_tokens": int(config.get("max_tokens") or DEFAULT_CONFIG["max_tokens"]),
+        "max_tokens": max_tokens_for_request(config, preset),
     }
     data = json.dumps(request_payload).encode("utf-8")
     request = urllib.request.Request(

@@ -32,6 +32,7 @@
     presetName: document.getElementById("presetName"),
     presetLanguage: document.getElementById("presetLanguage"),
     presetDifficulty: document.getElementById("presetDifficulty"),
+    presetMaxWords: document.getElementById("presetMaxWords"),
     presetInstructions: document.getElementById("presetInstructions"),
     newPresetButton: document.getElementById("newPresetButton"),
     savePresetButton: document.getElementById("savePresetButton"),
@@ -78,6 +79,7 @@
       presetName: "预设名称",
       language: "写作语言",
       difficulty: "难度",
+      maxWords: "最大字数",
       instructions: "额外提示词要求",
     },
     en: {
@@ -116,6 +118,7 @@
       presetName: "Preset name",
       language: "Language",
       difficulty: "Difficulty",
+      maxWords: "Max words",
       instructions: "Extra prompt instructions",
     },
     ja: {
@@ -154,6 +157,7 @@
       presetName: "プリセット名",
       language: "執筆言語",
       difficulty: "難度",
+      maxWords: "最大文字数",
       instructions: "追加プロンプト指示",
     },
   };
@@ -182,6 +186,7 @@
     el.presetName.placeholder = tr("presetName");
     el.presetLanguage.placeholder = tr("language");
     el.presetDifficulty.placeholder = tr("difficulty");
+    el.presetMaxWords.placeholder = tr("maxWords");
     el.presetInstructions.placeholder = tr("instructions");
     el.uiLanguageSelect.value = state.uiLanguage;
   }
@@ -422,7 +427,7 @@
 
   function renderPresets() {
     if (!state.promptPresets.length) {
-      state.promptPresets = [{ id: "default", name: "Default", language: "", difficulty: "", instructions: "" }];
+      state.promptPresets = [{ id: "default", name: "Default", language: "", difficulty: "", max_words: "", instructions: "" }];
     }
     el.presetSelect.innerHTML = state.promptPresets
       .map((preset) => {
@@ -434,6 +439,7 @@
     el.presetName.value = preset.name || "";
     el.presetLanguage.value = preset.language || "";
     el.presetDifficulty.value = preset.difficulty || "";
+    el.presetMaxWords.value = preset.max_words || "";
     el.presetInstructions.value = preset.instructions || "";
     el.deletePresetButton.disabled = preset.id === "default";
   }
@@ -441,7 +447,7 @@
   function currentPreset() {
     return state.promptPresets.find((preset) => preset.id === state.selectedPromptPresetId)
       || state.promptPresets[0]
-      || { id: "default", name: "Default", language: "", difficulty: "", instructions: "" };
+      || { id: "default", name: "Default", language: "", difficulty: "", max_words: "", instructions: "" };
   }
 
   function setStatus(message, isError = false) {
@@ -562,6 +568,7 @@
       name: "New Preset",
       language: "",
       difficulty: "",
+      max_words: "",
       instructions: "",
     });
     renderPresets();
@@ -574,6 +581,7 @@
         name: el.presetName.value,
         language: el.presetLanguage.value,
         difficulty: el.presetDifficulty.value,
+        max_words: el.presetMaxWords.value,
         instructions: el.presetInstructions.value,
         prompt_template: "",
       },

@@ -15,6 +15,7 @@
       "name": "Default",
       "language": "",
       "difficulty": "",
+      "max_words": "",
       "instructions": "",
       "prompt_template": ""
     }

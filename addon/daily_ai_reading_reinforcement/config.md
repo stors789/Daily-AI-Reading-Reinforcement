@@ -31,7 +31,7 @@
 : UI language. Supported values are `zh`, `en`, and `ja`.
 
 `prompt_presets`
-: Saved prompt presets. Each preset can define language, difficulty, extra instructions, and an optional full prompt template.
+: Saved prompt presets. Each preset can define language, difficulty, max words, extra instructions, and an optional full prompt template.
 
 `selected_prompt_preset_id`
 : Last selected prompt preset. This is managed by the add-on UI.

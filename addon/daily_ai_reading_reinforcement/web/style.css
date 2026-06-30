@@ -296,7 +296,7 @@ h2 {
 }
 
 .preset-grid {
-  grid-template-columns: 1fr 1fr 1fr;
+  grid-template-columns: repeat(4, minmax(0, 1fr));
 }
 
 .preset-editor input,
