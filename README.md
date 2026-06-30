@@ -17,6 +17,10 @@ An Anki add-on that generates a short reading passage from the cards you studied
 - Displays the generated article in a local styled page.
 - Saves Markdown and HTML copies under the add-on's `user_files/articles` directory.
 
+## Roadmap
+
+See [TODO.md](TODO.md) for planned settings, provider, article-card, and layout work.
+
 ## Layout
 
 ```text
