@@ -277,13 +277,24 @@ def collect_today_decks() -> dict[str, dict[str, Any]]:
                 "failed_count": 0,
                 "total_count": 0,
                 "cards": [],
+                "_cards_by_note": {},
             }
-        decks[deck_key]["cards"].append(candidate)
-        decks[deck_key]["total_count"] += 1
-        if candidate.is_new:
-            decks[deck_key]["new_count"] += 1
-        if candidate.is_failed:
-            decks[deck_key]["failed_count"] += 1
+
+        cards_by_note = decks[deck_key]["_cards_by_note"]
+        existing = cards_by_note.get(candidate.nid)
+        if existing is None:
+            cards_by_note[candidate.nid] = candidate
+            decks[deck_key]["cards"].append(candidate)
+        else:
+            existing.is_new = existing.is_new or candidate.is_new
+            existing.is_failed = existing.is_failed or candidate.is_failed
+            existing.review_count += candidate.review_count
+
+    for deck in decks.values():
+        deck["total_count"] = len(deck["cards"])
+        deck["new_count"] = sum(1 for card in deck["cards"] if card.is_new)
+        deck["failed_count"] = sum(1 for card in deck["cards"] if card.is_failed)
+        deck.pop("_cards_by_note", None)
 
     return decks
 
