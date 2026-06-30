@@ -2,6 +2,8 @@
   const state = {
     selectedDeckId: null,
     decks: [],
+    fields: [],
+    selectedFields: [],
   };
 
   const el = {
@@ -10,7 +12,9 @@
     cardCount: document.getElementById("cardCount"),
     dayWindow: document.getElementById("dayWindow"),
     generateButton: document.getElementById("generateButton"),
+    saveFieldsButton: document.getElementById("saveFieldsButton"),
     refreshButton: document.getElementById("refreshButton"),
+    fieldList: document.getElementById("fieldList"),
     status: document.getElementById("status"),
     articleOutput: document.getElementById("articleOutput"),
     savedPaths: document.getElementById("savedPaths"),
@@ -65,6 +69,10 @@
       item.addEventListener("click", () => {
         state.selectedDeckId = item.dataset.deckId;
         el.generateButton.disabled = false;
+        el.saveFieldsButton.disabled = true;
+        state.fields = [];
+        state.selectedFields = [];
+        renderFields();
         el.articleOutput.innerHTML = "";
         el.savedPaths.innerHTML = "";
         setStatus("Loading cards...");
@@ -107,6 +115,40 @@
     setStatus("Ready to generate.");
   }
 
+  function renderFields() {
+    if (!state.selectedDeckId) {
+      el.fieldList.innerHTML = '<div class="empty">Select a deck</div>';
+      return;
+    }
+    if (!state.fields.length) {
+      el.fieldList.innerHTML = '<div class="empty">No fields found</div>';
+      return;
+    }
+
+    el.fieldList.innerHTML = state.fields
+      .map((field) => {
+        const checked = state.selectedFields.includes(field) ? " checked" : "";
+        return `
+          <label class="field-item">
+            <input type="checkbox" value="${escapeHtml(field)}"${checked}>
+            <span>${escapeHtml(field)}</span>
+          </label>
+        `;
+      })
+      .join("");
+
+    el.fieldList.querySelectorAll("input").forEach((input) => {
+      input.addEventListener("change", () => {
+        state.selectedFields = Array.from(el.fieldList.querySelectorAll("input:checked"))
+          .map((item) => item.value);
+        el.saveFieldsButton.disabled = state.selectedFields.length === 0;
+        el.generateButton.disabled = state.selectedFields.length === 0;
+      });
+    });
+    el.saveFieldsButton.disabled = state.selectedFields.length === 0;
+    el.generateButton.disabled = state.selectedFields.length === 0;
+  }
+
   function setStatus(message, isError = false) {
     el.status.textContent = message;
     el.status.classList.toggle("error", isError);
@@ -138,7 +180,15 @@
         setStatus(state.decks.length ? "Choose a deck studied today." : "No study activity found for this Anki day.");
       }
       if (event === "deckCards") {
+        state.fields = payload.fields || [];
+        state.selectedFields = payload.selectedFields || [];
+        renderFields();
         renderCards(payload.cards || []);
+      }
+      if (event === "fieldConfigSaved") {
+        state.selectedFields = payload.selectedFields || state.selectedFields;
+        renderFields();
+        setStatus("Field selection saved.");
       }
       if (event === "generating") {
         el.generateButton.disabled = true;
@@ -156,15 +206,31 @@
 
   el.generateButton.addEventListener("click", () => {
     if (!state.selectedDeckId) return;
+    if (!state.selectedFields.length) {
+      setStatus("Choose at least one field for AI input.", true);
+      return;
+    }
     el.articleOutput.innerHTML = "";
     el.savedPaths.innerHTML = "";
     send("generate", { deckId: state.selectedDeckId });
   });
 
+  el.saveFieldsButton.addEventListener("click", () => {
+    if (!state.selectedDeckId) return;
+    send("saveFieldConfig", {
+      deckId: state.selectedDeckId,
+      fields: state.selectedFields,
+    });
+  });
+
   el.refreshButton.addEventListener("click", () => {
     state.selectedDeckId = null;
+    state.fields = [];
+    state.selectedFields = [];
     el.generateButton.disabled = true;
+    el.saveFieldsButton.disabled = true;
     el.cardList.innerHTML = "";
+    renderFields();
     el.cardCount.textContent = "Select a deck";
     send("load");
   });

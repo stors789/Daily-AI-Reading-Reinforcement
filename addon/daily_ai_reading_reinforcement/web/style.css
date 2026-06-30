@@ -72,7 +72,7 @@ h2 {
 .workspace {
   display: grid;
   gap: 16px;
-  grid-template-columns: minmax(220px, 280px) minmax(300px, 420px) minmax(420px, 1fr);
+  grid-template-columns: minmax(210px, 260px) minmax(190px, 240px) minmax(280px, 380px) minmax(420px, 1fr);
   margin: 0 auto;
   max-width: 1440px;
 }
@@ -96,7 +96,8 @@ h2 {
 }
 
 .deck-list,
-.card-list {
+.card-list,
+.field-list {
   max-height: 640px;
   overflow: auto;
   padding: 12px;
@@ -110,6 +111,23 @@ h2 {
   cursor: pointer;
   margin-bottom: 10px;
   padding: 12px;
+}
+
+.field-item {
+  align-items: center;
+  background: var(--surface-strong);
+  border: 1px solid var(--line);
+  border-radius: 8px;
+  cursor: pointer;
+  display: flex;
+  gap: 10px;
+  margin-bottom: 10px;
+  min-height: 44px;
+  padding: 10px 12px;
+}
+
+.field-item input {
+  accent-color: var(--accent);
 }
 
 .deck-item:hover,
@@ -147,7 +165,8 @@ h2 {
 }
 
 .icon-button,
-.primary-button {
+.primary-button,
+.secondary-button {
   align-items: center;
   border: 0;
   border-radius: 8px;
@@ -171,7 +190,15 @@ h2 {
   padding: 0 16px;
 }
 
-.primary-button:disabled {
+.secondary-button {
+  background: #ece4d9;
+  color: var(--ink);
+  font-weight: 700;
+  padding: 0 14px;
+}
+
+.primary-button:disabled,
+.secondary-button:disabled {
   cursor: not-allowed;
   opacity: 0.45;
 }

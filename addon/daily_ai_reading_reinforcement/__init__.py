@@ -34,6 +34,7 @@ DEFAULT_CONFIG = {
     "max_tokens": 1400,
     "language": "English",
     "prompt_template": "",
+    "deck_field_config": {},
 }
 
 
@@ -93,6 +94,11 @@ class ReadingReinforcementDialog(QDialog):
                 self._send_state()
             elif action == "selectDeck":
                 self._send_deck_cards(str(payload.get("deckId", "")))
+            elif action == "saveFieldConfig":
+                self._save_field_config(
+                    str(payload.get("deckId", "")),
+                    list(payload.get("fields") or []),
+                )
             elif action == "generate":
                 self._generate_article(str(payload.get("deckId", "")))
             else:
@@ -131,14 +137,43 @@ class ReadingReinforcementDialog(QDialog):
     def _send_deck_cards(self, deck_id: str) -> None:
         payload = self.deck_payloads.get(deck_id)
         if not payload:
-            self._emit("deckCards", {"deckId": deck_id, "cards": []})
+            self._emit(
+                "deckCards",
+                {"deckId": deck_id, "cards": [], "fields": [], "selectedFields": []},
+            )
             return
+        fields = deck_field_names(payload["cards"])
+        selected_fields = selected_fields_for_deck(deck_id, fields)
         self._emit(
             "deckCards",
             {
                 "deckId": deck_id,
                 "cards": [card.to_payload() for card in payload["cards"]],
+                "fields": fields,
+                "selectedFields": selected_fields,
             },
+        )
+
+    def _save_field_config(self, deck_id: str, fields: list[str]) -> None:
+        payload = self.deck_payloads.get(deck_id)
+        if not payload:
+            self._emit("error", {"message": "Select a deck before saving fields."})
+            return
+
+        available_fields = deck_field_names(payload["cards"])
+        selected_fields = [field for field in fields if field in available_fields]
+        if not selected_fields:
+            self._emit("error", {"message": "Choose at least one field for AI input."})
+            return
+
+        config = load_config()
+        deck_field_config = dict(config.get("deck_field_config") or {})
+        deck_field_config[deck_id] = selected_fields
+        config["deck_field_config"] = deck_field_config
+        mw.addonManager.writeConfig(ADDON_PACKAGE, config)
+        self._emit(
+            "fieldConfigSaved",
+            {"deckId": deck_id, "selectedFields": selected_fields},
         )
 
     def _generate_article(self, deck_id: str) -> None:
@@ -153,6 +188,12 @@ class ReadingReinforcementDialog(QDialog):
             return
 
         config = load_config()
+        available_fields = deck_field_names(cards)
+        selected_fields = selected_fields_for_deck(deck_id, available_fields, config)
+        if not selected_fields:
+            self._emit("error", {"message": "Choose at least one field for AI input."})
+            return
+
         api_key = str(config.get("api_key", "")).strip()
         if not api_key:
             self._emit(
@@ -166,7 +207,7 @@ class ReadingReinforcementDialog(QDialog):
         self._emit("generating", {"message": "Generating article..."})
 
         def task() -> dict[str, Any]:
-            article = generate_article(config, payload["name"], cards)
+            article = generate_article(config, payload["name"], cards, selected_fields)
             if not article.strip():
                 raise RuntimeError("The AI response was empty.")
             saved = save_article(payload["name"], cards, article)
@@ -314,6 +355,29 @@ def note_fields(note: Any) -> dict[str, str]:
         return dict(zip(names, note.fields))
 
 
+def deck_field_names(cards: list[CandidateCard]) -> list[str]:
+    seen = set()
+    names = []
+    for card in cards:
+        for name, value in card.fields.items():
+            if name in seen or not value:
+                continue
+            seen.add(name)
+            names.append(name)
+    return names
+
+
+def selected_fields_for_deck(
+    deck_id: str, available_fields: list[str], config: dict[str, Any] | None = None
+) -> list[str]:
+    if config is None:
+        config = load_config()
+    deck_field_config = config.get("deck_field_config") or {}
+    saved_fields = deck_field_config.get(deck_id) or []
+    valid_saved_fields = [field for field in saved_fields if field in available_fields]
+    return valid_saved_fields or available_fields
+
+
 def first_meaningful_field(fields: dict[str, str]) -> str:
     for value in fields.values():
         cleaned = clean_text(value)
@@ -336,7 +400,12 @@ def load_config() -> dict[str, Any]:
     return config
 
 
-def build_prompt(config: dict[str, Any], deck_name_value: str, cards: list[CandidateCard]) -> str:
+def build_prompt(
+    config: dict[str, Any],
+    deck_name_value: str,
+    cards: list[CandidateCard],
+    selected_fields: list[str],
+) -> str:
     language = str(config.get("language") or "English")
     card_lines = []
     for index, card in enumerate(cards[:80], start=1):
@@ -347,14 +416,14 @@ def build_prompt(config: dict[str, Any], deck_name_value: str, cards: list[Candi
             labels.append("failed")
         label = ", ".join(labels) if labels else "studied"
         field_context = "; ".join(
-            f"{name}: {value}"
-            for name, value in list(card.fields.items())[:4]
-            if value and value != card.term
+            f"{name}: {card.fields.get(name)}"
+            for name in selected_fields
+            if card.fields.get(name)
         )
         if field_context:
-            card_lines.append(f"{index}. {card.term} ({label}) - {field_context}")
+            card_lines.append(f"{index}. ({label}) {field_context}")
         else:
-            card_lines.append(f"{index}. {card.term} ({label})")
+            card_lines.append(f"{index}. ({label})")
 
     default_prompt = (
         "You are helping an Anki learner reinforce vocabulary through reading.\n"
@@ -372,10 +441,15 @@ def build_prompt(config: dict[str, Any], deck_name_value: str, cards: list[Candi
     )
 
 
-def generate_article(config: dict[str, Any], deck_name_value: str, cards: list[CandidateCard]) -> str:
+def generate_article(
+    config: dict[str, Any],
+    deck_name_value: str,
+    cards: list[CandidateCard],
+    selected_fields: list[str],
+) -> str:
     base_url = str(config.get("base_url") or DEFAULT_CONFIG["base_url"]).rstrip("/")
     url = f"{base_url}/chat/completions"
-    prompt = build_prompt(config, deck_name_value, cards)
+    prompt = build_prompt(config, deck_name_value, cards, selected_fields)
     request_payload = {
         "model": config.get("model") or DEFAULT_CONFIG["model"],
         "messages": [

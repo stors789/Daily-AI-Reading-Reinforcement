@@ -20,3 +20,6 @@
 
 `prompt_template`
 : Optional custom prompt. You can use `{language}`, `{deck_name}`, and `{cards}` placeholders.
+
+`deck_field_config`
+: Saved field selections for each deck. This is managed by the add-on UI.
