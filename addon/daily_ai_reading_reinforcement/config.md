@@ -24,6 +24,9 @@
 `deck_field_config`
 : Saved field selections for each deck. This is managed by the add-on UI.
 
+`collapsed_deck_groups`
+: Saved collapsed parent deck paths. This is managed by the add-on UI.
+
 `prompt_presets`
 : Saved prompt presets. Each preset can define language, difficulty, extra instructions, and an optional full prompt template.
 

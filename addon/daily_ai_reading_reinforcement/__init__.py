@@ -37,6 +37,7 @@ DEFAULT_CONFIG = {
     "language": "English",
     "prompt_template": "",
     "deck_field_config": {},
+    "collapsed_deck_groups": [],
     "prompt_presets": [
         {
             "id": "default",
@@ -125,6 +126,10 @@ window.addEventListener("error", function (event) {
                 self._delete_prompt_preset(str(payload.get("presetId", "")))
             elif action == "selectPromptPreset":
                 self._select_prompt_preset(str(payload.get("presetId", "")))
+            elif action == "saveCollapsedDeckGroups":
+                self._save_collapsed_deck_groups(
+                    list(payload.get("collapsedDeckGroups") or [])
+                )
             elif action == "generate":
                 self._generate_article(
                     str(payload.get("deckId", "")),
@@ -165,6 +170,7 @@ window.addEventListener("error", function (event) {
                 "promptPresets": normalize_prompt_presets(config),
                 "selectedPromptPresetId": config.get("selected_prompt_preset_id")
                 or "default",
+                "collapsedDeckGroups": list(config.get("collapsed_deck_groups") or []),
             },
         )
 
@@ -273,6 +279,13 @@ window.addEventListener("error", function (event) {
         if preset_id not in valid_ids:
             preset_id = "default"
         config["selected_prompt_preset_id"] = preset_id
+        mw.addonManager.writeConfig(ADDON_PACKAGE, config)
+
+    def _save_collapsed_deck_groups(self, collapsed_groups: list[str]) -> None:
+        config = load_config()
+        config["collapsed_deck_groups"] = [
+            clean_text(group) for group in collapsed_groups if clean_text(group)
+        ]
         mw.addonManager.writeConfig(ADDON_PACKAGE, config)
 
     def _generate_article(self, deck_id: str, preset_id: str) -> None:

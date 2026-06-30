@@ -129,6 +129,9 @@
         } else {
           state.collapsedDeckGroups.add(path);
         }
+        send("saveCollapsedDeckGroups", {
+          collapsedDeckGroups: Array.from(state.collapsedDeckGroups),
+        });
         renderDecks();
       });
     });
@@ -313,6 +316,7 @@
       const { event, payload } = message;
       if (event === "state") {
         state.decks = payload.decks || [];
+        state.collapsedDeckGroups = new Set(payload.collapsedDeckGroups || []);
         state.promptPresets = payload.promptPresets || [];
         state.selectedPromptPresetId = payload.selectedPromptPresetId || "default";
         el.dayWindow.textContent = `${formatTime(payload.dayStart)} - ${formatTime(payload.dayEnd)}`;
