@@ -33,8 +33,41 @@
     savedPaths: document.getElementById("savedPaths"),
   };
 
+  const bridgeQueue = [];
+  let bridgeWaitStarted = false;
+
+  function bridgeReady() {
+    return typeof window.pycmd === "function";
+  }
+
+  function flushBridgeQueue() {
+    if (!bridgeReady()) {
+      return;
+    }
+    while (bridgeQueue.length) {
+      window.pycmd(JSON.stringify(bridgeQueue.shift()));
+    }
+  }
+
+  function waitForBridge() {
+    if (bridgeWaitStarted) {
+      return;
+    }
+    bridgeWaitStarted = true;
+    const tick = () => {
+      if (bridgeReady()) {
+        flushBridgeQueue();
+        return;
+      }
+      window.setTimeout(tick, 50);
+    };
+    tick();
+  }
+
   function send(action, payload = {}) {
-    pycmd(JSON.stringify({ action, payload }));
+    bridgeQueue.push({ action, payload });
+    flushBridgeQueue();
+    waitForBridge();
   }
 
   function escapeHtml(value) {
