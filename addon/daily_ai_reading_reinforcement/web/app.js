@@ -10,6 +10,8 @@
     selectedPromptPresetId: "default",
     uiLanguage: "zh",
     providerProfiles: [],
+    modelOptions: [],
+    autoSelectedDeck: false,
     apiSettings: {
       providerId: "openai",
       baseUrl: "https://api.openai.com/v1",
@@ -58,6 +60,8 @@
     savePresetButton: document.getElementById("savePresetButton"),
     deletePresetButton: document.getElementById("deletePresetButton"),
     providerSelect: document.getElementById("providerSelect"),
+    fetchModelsButton: document.getElementById("fetchModelsButton"),
+    modelSelect: document.getElementById("modelSelect"),
     providerLabel: document.getElementById("providerLabel"),
     baseUrlLabel: document.getElementById("baseUrlLabel"),
     modelLabel: document.getElementById("modelLabel"),
@@ -138,8 +142,13 @@
       apiKey: "API key",
       temperature: "温度",
       maxTokens: "最大 tokens",
+      fetchModels: "获取模型",
+      chooseModel: "选择模型",
+      fetchingModels: "正在获取模型...",
+      modelsFetched: "模型列表已更新。",
       clearApiKey: "清除已保存 key",
-      createArticleCards: "生成后创建文章卡片",
+      createArticleCards: "生成后保存为 Anki 文章卡片",
+      articleCardSkipped: "未创建文章卡片",
       saveApiSettings: "保存 API 设置",
       keySaved: "Key 已保存",
       noKey: "无 key",
@@ -208,8 +217,13 @@
       apiKey: "API key",
       temperature: "Temperature",
       maxTokens: "Max tokens",
+      fetchModels: "Fetch models",
+      chooseModel: "Choose a model",
+      fetchingModels: "Fetching models...",
+      modelsFetched: "Model list updated.",
       clearApiKey: "Clear saved key",
-      createArticleCards: "Create article cards after generation",
+      createArticleCards: "Save as Anki article card after generation",
+      articleCardSkipped: "Article card not created",
       saveApiSettings: "Save API settings",
       keySaved: "Key saved",
       noKey: "No key",
@@ -278,8 +292,13 @@
       apiKey: "API key",
       temperature: "温度",
       maxTokens: "最大 tokens",
+      fetchModels: "モデル取得",
+      chooseModel: "モデルを選択",
+      fetchingModels: "モデルを取得中...",
+      modelsFetched: "モデル一覧を更新しました。",
       clearApiKey: "保存済み key を消去",
-      createArticleCards: "生成後に文章カードを作成",
+      createArticleCards: "生成後に Anki 文章カードとして保存",
+      articleCardSkipped: "文章カードは作成していません",
       saveApiSettings: "API 設定を保存",
       keySaved: "Key 保存済み",
       noKey: "Key なし",
@@ -339,6 +358,7 @@
     el.apiKeyLabel.textContent = tr("apiKey");
     el.temperatureLabel.textContent = tr("temperature");
     el.maxTokensLabel.textContent = tr("maxTokens");
+    el.fetchModelsButton.textContent = tr("fetchModels");
     el.clearApiKeyLabel.textContent = tr("clearApiKey");
     el.createArticleCardsLabel.textContent = tr("createArticleCards");
     el.saveApiSettingsButton.textContent = tr("saveApiSettings");
@@ -346,6 +366,7 @@
     el.apiKeyStatus.textContent = state.apiSettings.hasApiKey ? tr("keySaved") : tr("noKey");
     el.uiLanguageSelect.value = state.uiLanguage;
     if (el.returnToSelectionButton) el.returnToSelectionButton.textContent = tr("returnToSelection");
+    renderModelOptions();
     el.cardCount.textContent = state.selectedDeckId
       ? el.cardCount.textContent
       : tr("selectDeckShort");
@@ -461,20 +482,25 @@
 
     document.querySelectorAll(".deck-item[data-deck-id]").forEach((item) => {
       item.addEventListener("click", () => {
-        state.selectedDeckId = item.dataset.deckId;
-        el.generateButton.disabled = false;
-        el.saveFieldsButton.disabled = true;
-        state.fields = [];
-        state.selectedFields = [];
-        renderFields();
-        el.articleOutput.innerHTML = "";
-        el.savedPaths.innerHTML = "";
-        setReadingMode(false);
-        setStatus("loadingCards");
-        renderDecks();
-        send("selectDeck", { deckId: state.selectedDeckId });
+        selectDeck(item.dataset.deckId);
       });
     });
+  }
+
+  function selectDeck(deckId) {
+    state.selectedDeckId = deckId;
+    el.generateButton.disabled = false;
+    el.saveFieldsButton.disabled = true;
+    state.fields = [];
+    state.selectedFields = [];
+    state.currentCards = [];
+    renderFields();
+    el.articleOutput.innerHTML = "";
+    el.savedPaths.innerHTML = "";
+    setReadingMode(false);
+    setStatus("loadingCards");
+    renderDecks();
+    send("selectDeck", { deckId: state.selectedDeckId });
   }
 
   function buildDeckRows() {
@@ -513,6 +539,25 @@
       }
     });
     return rows;
+  }
+
+  function chooseInitialDeck(lastSelectedDeckId) {
+    if (state.autoSelectedDeck || state.selectedDeckId || !state.decks.length) {
+      return;
+    }
+    const validIds = new Set(state.decks.map((deck) => deck.id));
+    let deck = null;
+    if (lastSelectedDeckId && validIds.has(lastSelectedDeckId)) {
+      deck = state.decks.find((item) => item.id === lastSelectedDeckId);
+    }
+    if (!deck) {
+      deck = state.decks.find((item) => !item.isGroup) || state.decks[0];
+    }
+    if (!deck) {
+      return;
+    }
+    state.autoSelectedDeck = true;
+    selectDeck(deck.id);
   }
 
   function renderCards(cards) {
@@ -636,10 +681,24 @@
     el.createArticleCardsInput.checked = Boolean(state.articleCardSettings.createArticleCards);
     el.apiKeyStatus.textContent = state.apiSettings.hasApiKey ? tr("keySaved") : tr("noKey");
     el.apiKeyInput.placeholder = state.apiSettings.hasApiKey ? tr("enterNewKey") : "";
+    renderModelOptions();
   }
 
   function currentProviderProfile() {
     return state.providerProfiles.find((profile) => profile.id === el.providerSelect.value);
+  }
+
+  function renderModelOptions() {
+    if (!el.modelSelect) return;
+    const options = state.modelOptions || [];
+    el.modelSelect.disabled = options.length === 0;
+    el.modelSelect.innerHTML = [
+      `<option value="">${tr("chooseModel")}</option>`,
+      ...options.map((model) => {
+        const selected = model === el.modelInput.value ? " selected" : "";
+        return `<option value="${escapeHtml(model)}"${selected}>${escapeHtml(model)}</option>`;
+      }),
+    ].join("");
   }
 
   function currentPreset() {
@@ -737,6 +796,9 @@
     const articleCardLine = payload.articleCard
       ? `<div>${tr("articleCardSaved")} ${escapeHtml(payload.articleCard.deckName)}</div>`
       : "";
+    const articleCardSkippedLine = !payload.articleCard && !payload.articleCardError
+      ? `<div>${tr("articleCardSkipped")}</div>`
+      : "";
     const articleCardErrorLine = payload.articleCardError
       ? `<div class="save-warning">${tr("articleCardFailed")}${escapeHtml(payload.articleCardError)}</div>`
       : "";
@@ -759,6 +821,7 @@
         <div>${tr("markdownPath")}: ${escapeHtml(payload.markdownPath)}</div>
         <div>${tr("htmlPath")}: ${escapeHtml(payload.htmlPath)}</div>
         ${articleCardLine}
+        ${articleCardSkippedLine}
         ${articleCardErrorLine}
       </details>
     `;
@@ -797,6 +860,7 @@
         renderPresets();
         renderApiSettings();
         setStatus(state.decks.length ? "selectDeck" : "noStudy");
+        chooseInitialDeck(payload.lastSelectedDeckId || "");
       }
       if (event === "deckCards") {
         state.fields = payload.fields || [];
@@ -826,6 +890,12 @@
         applyI18n();
         setStatus("apiSettingsSaved");
       }
+      if (event === "modelsFetched") {
+        state.modelOptions = payload.models || [];
+        renderModelOptions();
+        el.fetchModelsButton.disabled = false;
+        setStatus("modelsFetched");
+      }
       if (event === "articleCardSettingsSaved") {
         state.articleCardSettings = payload.articleCardSettings || state.articleCardSettings;
         renderApiSettings();
@@ -836,6 +906,7 @@
       }
       if (event === "error") {
         el.generateButton.disabled = !state.selectedDeckId;
+        el.fetchModelsButton.disabled = false;
         setStatus("error", true, payload.message ? { message: payload.message } : {});
       }
     },
@@ -926,6 +997,7 @@
       state.apiSettings.baseUrl = profile.base_url || "";
       state.apiSettings.model = profile.model || "";
     }
+    state.modelOptions = [];
     renderApiSettings();
   });
 
@@ -962,8 +1034,31 @@
     });
   });
 
+  el.fetchModelsButton.addEventListener("click", () => {
+    const baseUrl = el.baseUrlInput.value.trim();
+    if (!baseUrl) {
+      setStatus("apiMissingBaseUrl", true);
+      return;
+    }
+    setStatus("fetchingModels");
+    el.fetchModelsButton.disabled = true;
+    send("fetchModels", {
+      settings: {
+        baseUrl,
+        apiKey: el.apiKeyInput.value,
+      },
+    });
+  });
+
+  el.modelSelect.addEventListener("change", () => {
+    if (el.modelSelect.value) {
+      el.modelInput.value = el.modelSelect.value;
+    }
+  });
+
   el.refreshButton.addEventListener("click", () => {
     state.selectedDeckId = null;
+    state.autoSelectedDeck = false;
     state.fields = [];
     state.selectedFields = [];
     state.currentCards = [];

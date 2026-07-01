@@ -27,6 +27,9 @@
 `create_article_cards`
 : When true, each generated article is also saved as an Anki note under `Daily AI Reading Reinforcement::<source deck>`.
 
+`last_selected_deck_id`
+: Last selected studied deck. This is managed by the add-on UI and used to auto-select a deck on open.
+
 `collapsed_deck_groups`
 : Saved collapsed parent deck paths. This is managed by the add-on UI.
 

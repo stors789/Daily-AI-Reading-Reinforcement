@@ -112,6 +112,7 @@ DEFAULT_CONFIG = {
     "prompt_template": "",
     "deck_field_config": {},
     "create_article_cards": False,
+    "last_selected_deck_id": "",
     "collapsed_deck_groups": [],
     "ui_language": "zh",
     "prompt_presets": [
@@ -193,6 +194,8 @@ window.addEventListener("error", function (event) {
                 self._send_state()
             elif action == "selectDeck":
                 self._send_deck_cards(str(payload.get("deckId", "")))
+            elif action == "fetchModels":
+                self._fetch_models(dict(payload.get("settings") or {}))
             elif action == "saveFieldConfig":
                 self._save_field_config(
                     str(payload.get("deckId", "")),
@@ -256,6 +259,7 @@ window.addEventListener("error", function (event) {
                 or "default",
                 "uiLanguage": config.get("ui_language") or "zh",
                 "collapsedDeckGroups": list(config.get("collapsed_deck_groups") or []),
+                "lastSelectedDeckId": clean_text(config.get("last_selected_deck_id")),
                 "providerProfiles": provider_profiles_payload(),
                 "apiSettings": api_settings_payload(config),
                 "articleCardSettings": article_card_settings_payload(config),
@@ -270,6 +274,9 @@ window.addEventListener("error", function (event) {
                 {"deckId": deck_id, "cards": [], "fields": [], "selectedFields": []},
             )
             return
+        config = load_config()
+        config["last_selected_deck_id"] = deck_id
+        mw.addonManager.writeConfig(ADDON_PACKAGE, config)
         fields = deck_field_names(payload["cards"])
         selected_fields = selected_fields_for_deck(deck_id, fields)
         self._emit(
@@ -281,6 +288,33 @@ window.addEventListener("error", function (event) {
                 "selectedFields": selected_fields,
             },
         )
+
+    def _fetch_models(self, settings: dict[str, Any]) -> None:
+        config = load_config()
+        api_key = str(settings.get("apiKey") or config.get("api_key") or "").strip()
+        base_url = clean_base_url(settings.get("baseUrl") or config.get("base_url"))
+        if not api_key:
+            self._emit("error", {"message": "Enter or save an API key before fetching models."})
+            return
+        if not base_url:
+            self._emit("error", {"message": "Enter an API base URL before fetching models."})
+            return
+
+        def task() -> dict[str, Any]:
+            models = fetch_openai_compatible_models(base_url, api_key)
+            if not models:
+                raise RuntimeError("No models were returned by this provider.")
+            return {"models": models}
+
+        def on_done(future: Any) -> None:
+            try:
+                result = future.result()
+            except Exception as exc:
+                self._emit("error", {"message": str(exc)})
+                return
+            self._emit("modelsFetched", result)
+
+        mw.taskman.run_in_background(task, on_done)
 
     def _save_field_config(self, deck_id: str, fields: list[str]) -> None:
         payload = self.deck_payloads.get(deck_id)
@@ -939,6 +973,38 @@ def max_tokens_for_request(config: dict[str, Any], preset: dict[str, str]) -> in
         return configured
     suggested = max(300, int(max_words) * 3)
     return min(configured, suggested)
+
+
+def fetch_openai_compatible_models(base_url: str, api_key: str) -> list[str]:
+    url = f"{base_url.rstrip('/')}/models"
+    request = urllib.request.Request(
+        url,
+        headers={
+            "Authorization": f"Bearer {api_key}",
+            "Content-Type": "application/json",
+        },
+        method="GET",
+    )
+    try:
+        with urllib.request.urlopen(request, timeout=30) as response:
+            response_payload = json.loads(response.read().decode("utf-8"))
+    except urllib.error.HTTPError as exc:
+        body = exc.read().decode("utf-8", errors="replace")
+        raise RuntimeError(f"Model list request failed with HTTP {exc.code}: {body}") from exc
+    except urllib.error.URLError as exc:
+        raise RuntimeError(f"Model list request failed: {exc.reason}") from exc
+
+    raw_models = response_payload.get("data") if isinstance(response_payload, dict) else response_payload
+    models: list[str] = []
+    if isinstance(raw_models, list):
+        for item in raw_models:
+            if isinstance(item, dict):
+                model_id = clean_text(item.get("id"))
+            else:
+                model_id = clean_text(item)
+            if model_id:
+                models.append(model_id)
+    return sorted(set(models), key=str.lower)
 
 
 def generate_article(

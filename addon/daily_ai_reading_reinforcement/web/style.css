@@ -357,6 +357,24 @@ h2 {
   width: 100%;
 }
 
+.model-tools {
+  display: grid;
+  gap: 8px;
+  grid-template-columns: auto minmax(0, 1fr);
+}
+
+.model-tools select {
+  background: var(--surface-strong);
+  border: 1px solid var(--line);
+  border-radius: 8px;
+  color: var(--ink);
+  font: inherit;
+  min-height: 36px;
+  min-width: 0;
+  padding: 8px 10px;
+  width: 100%;
+}
+
 .inline-check {
   align-items: center;
   cursor: pointer;
@@ -407,6 +425,11 @@ h2 {
 .preset-editor textarea {
   line-height: 1.5;
   resize: vertical;
+}
+
+.article-card-toggle {
+  border-top: 1px solid var(--line);
+  padding-top: 10px;
 }
 
 .primary-button:disabled,
@@ -565,7 +588,8 @@ h2 {
   }
 
   .settings-editor,
-  .preset-grid {
+  .preset-grid,
+  .model-tools {
     grid-template-columns: 1fr;
   }
 

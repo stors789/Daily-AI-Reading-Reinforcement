@@ -63,6 +63,7 @@ The add-on uses an OpenAI-compatible chat completions API:
   "prompt_template": "",
   "deck_field_config": {},
   "create_article_cards": false,
+  "last_selected_deck_id": "",
   "collapsed_deck_groups": [],
   "ui_language": "zh",
   "prompt_presets": [

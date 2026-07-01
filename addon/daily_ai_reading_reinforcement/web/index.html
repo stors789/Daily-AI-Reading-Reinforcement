@@ -55,6 +55,12 @@
           <label class="form-field">
             <span id="modelLabel">Model</span>
             <input id="modelInput" autocomplete="off">
+            <div class="model-tools">
+              <button class="secondary-button" id="fetchModelsButton" type="button">获取模型</button>
+              <select id="modelSelect" disabled>
+                <option value="">选择模型</option>
+              </select>
+            </div>
           </label>
           <label class="form-field">
             <span id="apiKeyLabel">API key</span>
@@ -71,10 +77,6 @@
           <label class="inline-check">
             <input id="clearApiKeyInput" type="checkbox">
             <span id="clearApiKeyLabel">Clear saved key</span>
-          </label>
-          <label class="inline-check">
-            <input id="createArticleCardsInput" type="checkbox">
-            <span id="createArticleCardsLabel">Create article cards after generation</span>
           </label>
           <button class="secondary-button full-button" id="saveApiSettingsButton">Save API settings</button>
         </div>
@@ -112,6 +114,10 @@
           <input id="presetMaxWords" placeholder="Max words">
         </div>
         <textarea id="presetInstructions" rows="3" placeholder="Formatting requirements"></textarea>
+        <label class="inline-check article-card-toggle">
+          <input id="createArticleCardsInput" type="checkbox">
+          <span id="createArticleCardsLabel">Create article cards after generation</span>
+        </label>
       </div>
       <div class="status" id="status">Choose a deck studied today.</div>
       <article class="article-output" id="articleOutput"></article>
