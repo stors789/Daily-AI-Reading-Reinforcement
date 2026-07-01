@@ -12,12 +12,13 @@ An Anki add-on that generates a short reading passage from the cards you studied
 - Saves field selections per deck in the Anki add-on config.
 - Offers all/invert controls for field selection.
 - Lets you save prompt presets for different languages, difficulties, and extra instructions.
-- Extracts new cards and failed review cards from the selected deck.
+- Extracts new cards and failed review cards from the selected deck, with options to "Select All", select "Failed", or select "New" (which add to your selection instead of clearing it).
+- Supports intuitive drag-to-select functionality for cards.
 - Sends those terms to an OpenAI-compatible API.
-- Displays the generated article in a local styled page.
+- Displays the generated article in a local styled page, featuring a compact UI layout optimized for multiple languages (English, Chinese, Japanese).
 - Saves Markdown and HTML copies under the add-on's `user_files/articles` directory.
 - Lets you configure common OpenAI-compatible providers inside the add-on page.
-- Can optionally create article cards under a `Daily AI Reading Reinforcement` parent deck.
+- Can optionally create article cards under a `Daily AI Reading Reinforcement` parent deck (newly created cards are set to suspended by default).
 
 ## Status
 
