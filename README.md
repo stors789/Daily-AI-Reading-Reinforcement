@@ -18,6 +18,16 @@ By reading a coherent story or article constructed from your daily study materia
 - **Closed-Loop Learning**: You can seamlessly save the AI-generated articles back into Anki as new reading cards. By default, these reading cards are suspended, allowing you to manually review them whenever you want to test your reading comprehension.
 - **Flexible AI Integration**: Works with any OpenAI-compatible API provider, giving you the freedom to choose your preferred AI model.
 
+## Installation
+
+The easiest way to install this add-on is through AnkiWeb.
+
+1. Open Anki and go to **Tools** > **Add-ons** (or **Anki** > **Add-ons** on Mac).
+2. Click **Get Add-ons...**
+3. Enter the code: **`842038474`**
+4. Click **OK** and wait for the download to finish.
+5. Restart Anki to complete the installation.
+
 ## Status
 
 See [TODO.md](TODO.md) for the completed initial roadmap.
