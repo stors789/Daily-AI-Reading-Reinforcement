@@ -2,23 +2,19 @@
 
 An Anki add-on that generates a short reading passage from the cards you studied today.
 
-## What It Does
+## Introduction
 
-- Adds an `AI Reading Reinforcement` entry inside Anki.
-- Uses Anki's own study-day cutoff, so "today" follows Anki's new-day setting.
-- Lists decks with cards studied today.
-- Shows parent decks as aggregate decks, so a parent can generate from all studied child decks.
-- Lets you choose which note fields from each deck are sent to the AI.
-- Saves field selections per deck in the Anki add-on config.
-- Offers all/invert controls for field selection.
-- Lets you save prompt presets for different languages, difficulties, and extra instructions.
-- Extracts new cards and failed review cards from the selected deck, with options to "Select All", select "Failed", or select "New" (which add to your selection instead of clearing it).
-- Supports intuitive drag-to-select functionality for cards.
-- Sends those terms to an OpenAI-compatible API.
-- Displays the generated article in a local styled page, featuring a compact UI layout optimized for multiple languages (English, Chinese, Japanese).
-- Saves Markdown and HTML copies under the add-on's `user_files/articles` directory.
-- Lets you configure common OpenAI-compatible providers inside the add-on page.
-- Can optionally create article cards under a `Daily AI Reading Reinforcement` parent deck (newly created cards are set to suspended by default).
+Daily AI Reading Reinforcement is an Anki add-on designed to bridge the gap between rote memorization and practical language application. It automatically extracts the vocabulary or flashcards you've studied today and leverages AI (like OpenAI, DeepSeek, etc.) to generate a short, engaging reading passage incorporating those exact terms.
+
+By reading a coherent story or article constructed from your daily study material, you naturally reinforce your memory through context, shifting from isolated flashcard drilling to active reading comprehension.
+
+## Key Benefits
+
+- **Contextual Reinforcement**: Move beyond isolated rote learning. Seeing your newly learned vocabulary in a natural context dramatically improves retention and deeper understanding.
+- **Tailored to Your Progress**: The add-on strictly follows your Anki study history. It generates reading materials based only on the cards you learned or failed *today*, ensuring the content is perfectly aligned with your immediate learning curve.
+- **Fully Customizable**: Support for custom prompt presets allows you to dictate the language, difficulty level, and specific formatting requirements for the generated articles.
+- **Closed-Loop Learning**: You can seamlessly save the AI-generated articles back into Anki as new reading cards. By default, these reading cards are suspended, allowing you to manually review them whenever you want to test your reading comprehension.
+- **Flexible AI Integration**: Works with any OpenAI-compatible API provider, giving you the freedom to choose your preferred AI model.
 
 ## Status
 
