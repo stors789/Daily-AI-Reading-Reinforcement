@@ -1156,6 +1156,12 @@ def create_article_card(
         note[field] = values.get(field, "")
 
     add_note_to_deck(note, deck_id)
+    try:
+        card_ids = [c.id for c in note.cards()]
+        if card_ids:
+            mw.col.sched.suspendCards(card_ids)
+    except Exception:
+        pass
     return {
         "noteId": int(getattr(note, "id", 0) or 0),
         "deckName": deck_name_value,
