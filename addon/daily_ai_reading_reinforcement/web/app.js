@@ -74,6 +74,7 @@
     maxTokensLabel: document.getElementById("maxTokensLabel"),
     clearApiKeyLabel: document.getElementById("clearApiKeyLabel"),
     createArticleCardsLabel: document.getElementById("createArticleCardsLabel"),
+    articleCardDeckHint: document.getElementById("articleCardDeckHint"),
     baseUrlInput: document.getElementById("baseUrlInput"),
     modelInput: document.getElementById("modelInput"),
     apiKeyInput: document.getElementById("apiKeyInput"),
@@ -157,6 +158,7 @@
       modelsFetched: "模型列表已更新。",
       clearApiKey: "清除已保存 key",
       createArticleCards: "生成后保存为 Anki 文章卡片",
+      articleCardDestination: "文章卡片牌组：",
       articleCardSkipped: "未创建文章卡片",
       saveApiSettings: "保存 API 设置",
       keySaved: "Key 已保存",
@@ -237,6 +239,7 @@
       modelsFetched: "Model list updated.",
       clearApiKey: "Clear saved key",
       createArticleCards: "Save as Anki article card after generation",
+      articleCardDestination: "Article card deck: ",
       articleCardSkipped: "Article card not created",
       saveApiSettings: "Save API settings",
       keySaved: "Key saved",
@@ -317,6 +320,7 @@
       modelsFetched: "モデル一覧を更新しました。",
       clearApiKey: "保存済み key を消去",
       createArticleCards: "生成後に Anki 文章カードとして保存",
+      articleCardDestination: "文章カードのデッキ：",
       articleCardSkipped: "文章カードは作成していません",
       saveApiSettings: "API 設定を保存",
       keySaved: "Key 保存済み",
@@ -383,6 +387,7 @@
     el.fetchModelsButton.textContent = tr("fetchModels");
     el.clearApiKeyLabel.textContent = tr("clearApiKey");
     el.createArticleCardsLabel.textContent = tr("createArticleCards");
+    renderArticleCardDestination();
     el.saveApiSettingsButton.textContent = tr("saveApiSettings");
     el.apiKeyInput.placeholder = state.apiSettings.hasApiKey ? tr("enterNewKey") : "";
     el.apiKeyStatus.textContent = state.apiSettings.hasApiKey ? tr("keySaved") : tr("noKey");
@@ -515,6 +520,7 @@
     state.currentCards = [];
     state.selectedCardIds = new Set();
     updateGenerateButton();
+    renderArticleCardDestination();
     renderFields();
     el.articleOutput.innerHTML = "";
     el.savedPaths.innerHTML = "";
@@ -747,7 +753,16 @@
     el.createArticleCardsInput.checked = Boolean(state.articleCardSettings.createArticleCards);
     el.apiKeyStatus.textContent = state.apiSettings.hasApiKey ? tr("keySaved") : tr("noKey");
     el.apiKeyInput.placeholder = state.apiSettings.hasApiKey ? tr("enterNewKey") : "";
+    renderArticleCardDestination();
     renderModelOptions();
+  }
+
+  function renderArticleCardDestination() {
+    if (!el.articleCardDeckHint) return;
+    const parentDeck = state.articleCardSettings.parentDeck || "Daily AI Reading Reinforcement";
+    const deck = state.decks.find((item) => item.id === state.selectedDeckId);
+    const targetDeck = deck ? `${parentDeck}::${deck.name}` : parentDeck;
+    el.articleCardDeckHint.textContent = `${tr("articleCardDestination")}${targetDeck}`;
   }
 
   function currentProviderProfile() {

@@ -482,6 +482,13 @@ h2 {
   padding-top: 10px;
 }
 
+.article-card-destination {
+  color: var(--muted);
+  font-size: 12px;
+  line-height: 1.35;
+  overflow-wrap: anywhere;
+}
+
 .preset-editor .inline-check input[type="checkbox"] {
   height: 16px;
   min-height: 0;
