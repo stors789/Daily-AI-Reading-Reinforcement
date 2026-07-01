@@ -37,6 +37,44 @@
           <div class="empty" id="fieldEmptyText">Select a deck</div>
         </div>
       </section>
+
+      <section class="panel settings-panel">
+        <div class="panel-heading">
+          <h2 id="settingsHeading">API Settings</h2>
+          <span class="muted" id="apiKeyStatus">No key</span>
+        </div>
+        <div class="settings-editor">
+          <label class="form-field">
+            <span id="providerLabel">Provider</span>
+            <select id="providerSelect"></select>
+          </label>
+          <label class="form-field">
+            <span id="baseUrlLabel">Base URL</span>
+            <input id="baseUrlInput" autocomplete="off">
+          </label>
+          <label class="form-field">
+            <span id="modelLabel">Model</span>
+            <input id="modelInput" autocomplete="off">
+          </label>
+          <label class="form-field">
+            <span id="apiKeyLabel">API key</span>
+            <input id="apiKeyInput" type="password" autocomplete="off">
+          </label>
+          <label class="form-field compact-field">
+            <span id="temperatureLabel">Temperature</span>
+            <input id="temperatureInput" type="number" min="0" max="2" step="0.1">
+          </label>
+          <label class="form-field compact-field">
+            <span id="maxTokensLabel">Max tokens</span>
+            <input id="maxTokensInput" type="number" min="128" max="32000" step="1">
+          </label>
+          <label class="inline-check">
+            <input id="clearApiKeyInput" type="checkbox">
+            <span id="clearApiKeyLabel">Clear saved key</span>
+          </label>
+          <button class="secondary-button full-button" id="saveApiSettingsButton">Save API settings</button>
+        </div>
+      </section>
     </div>
 
     <section class="panel card-panel">

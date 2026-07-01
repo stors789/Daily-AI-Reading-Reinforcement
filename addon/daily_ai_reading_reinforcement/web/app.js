@@ -8,6 +8,15 @@
     promptPresets: [],
     selectedPromptPresetId: "default",
     uiLanguage: "zh",
+    providerProfiles: [],
+    apiSettings: {
+      providerId: "openai",
+      baseUrl: "https://api.openai.com/v1",
+      model: "gpt-4.1-mini",
+      temperature: 0.7,
+      maxTokens: 1400,
+      hasApiKey: false,
+    },
   };
 
   const el = {
@@ -22,6 +31,7 @@
     fieldsHeading: document.getElementById("fieldsHeading"),
     cardsHeading: document.getElementById("cardsHeading"),
     articleHeading: document.getElementById("articleHeading"),
+    settingsHeading: document.getElementById("settingsHeading"),
     generateButton: document.getElementById("generateButton"),
     selectAllFieldsButton: document.getElementById("selectAllFieldsButton"),
     invertFieldsButton: document.getElementById("invertFieldsButton"),
@@ -37,6 +47,22 @@
     newPresetButton: document.getElementById("newPresetButton"),
     savePresetButton: document.getElementById("savePresetButton"),
     deletePresetButton: document.getElementById("deletePresetButton"),
+    providerSelect: document.getElementById("providerSelect"),
+    providerLabel: document.getElementById("providerLabel"),
+    baseUrlLabel: document.getElementById("baseUrlLabel"),
+    modelLabel: document.getElementById("modelLabel"),
+    apiKeyLabel: document.getElementById("apiKeyLabel"),
+    temperatureLabel: document.getElementById("temperatureLabel"),
+    maxTokensLabel: document.getElementById("maxTokensLabel"),
+    clearApiKeyLabel: document.getElementById("clearApiKeyLabel"),
+    baseUrlInput: document.getElementById("baseUrlInput"),
+    modelInput: document.getElementById("modelInput"),
+    apiKeyInput: document.getElementById("apiKeyInput"),
+    temperatureInput: document.getElementById("temperatureInput"),
+    maxTokensInput: document.getElementById("maxTokensInput"),
+    clearApiKeyInput: document.getElementById("clearApiKeyInput"),
+    apiKeyStatus: document.getElementById("apiKeyStatus"),
+    saveApiSettingsButton: document.getElementById("saveApiSettingsButton"),
     status: document.getElementById("status"),
     articleOutput: document.getElementById("articleOutput"),
     savedPaths: document.getElementById("savedPaths"),
@@ -50,6 +76,7 @@
       fields: "AI 字段",
       cards: "卡片",
       article: "文章",
+      settings: "API 设置",
       refresh: "刷新",
       all: "全选",
       invert: "反选",
@@ -81,6 +108,20 @@
       difficulty: "难度",
       maxWords: "最大字数",
       instructions: "额外提示词要求",
+      provider: "服务商",
+      baseUrl: "Base URL",
+      model: "模型",
+      apiKey: "API key",
+      temperature: "温度",
+      maxTokens: "最大 tokens",
+      clearApiKey: "清除已保存 key",
+      saveApiSettings: "保存 API 设置",
+      keySaved: "Key 已保存",
+      noKey: "无 key",
+      enterNewKey: "留空则保留已保存 key",
+      apiSettingsSaved: "API 设置已保存。",
+      apiMissingBaseUrl: "请输入 API Base URL。",
+      apiMissingModel: "请输入模型名称。",
     },
     en: {
       eyebrow: "Daily AI Reading",
@@ -89,6 +130,7 @@
       fields: "AI Fields",
       cards: "Cards",
       article: "Article",
+      settings: "API Settings",
       refresh: "Refresh",
       all: "All",
       invert: "Invert",
@@ -120,6 +162,20 @@
       difficulty: "Difficulty",
       maxWords: "Max words",
       instructions: "Extra prompt instructions",
+      provider: "Provider",
+      baseUrl: "Base URL",
+      model: "Model",
+      apiKey: "API key",
+      temperature: "Temperature",
+      maxTokens: "Max tokens",
+      clearApiKey: "Clear saved key",
+      saveApiSettings: "Save API settings",
+      keySaved: "Key saved",
+      noKey: "No key",
+      enterNewKey: "Leave blank to keep saved key",
+      apiSettingsSaved: "API settings saved.",
+      apiMissingBaseUrl: "Enter an API base URL.",
+      apiMissingModel: "Enter a model name.",
     },
     ja: {
       eyebrow: "毎日の AI 読解",
@@ -128,6 +184,7 @@
       fields: "AI フィールド",
       cards: "カード",
       article: "文章",
+      settings: "API 設定",
       refresh: "更新",
       all: "全選択",
       invert: "反転",
@@ -159,6 +216,20 @@
       difficulty: "難度",
       maxWords: "最大文字数",
       instructions: "追加プロンプト指示",
+      provider: "プロバイダー",
+      baseUrl: "Base URL",
+      model: "モデル",
+      apiKey: "API key",
+      temperature: "温度",
+      maxTokens: "最大 tokens",
+      clearApiKey: "保存済み key を消去",
+      saveApiSettings: "API 設定を保存",
+      keySaved: "Key 保存済み",
+      noKey: "Key なし",
+      enterNewKey: "空欄なら保存済み key を保持",
+      apiSettingsSaved: "API 設定を保存しました。",
+      apiMissingBaseUrl: "API Base URL を入力してください。",
+      apiMissingModel: "モデル名を入力してください。",
     },
   };
 
@@ -175,6 +246,7 @@
     el.fieldsHeading.textContent = tr("fields");
     el.cardsHeading.textContent = tr("cards");
     el.articleHeading.textContent = tr("article");
+    el.settingsHeading.textContent = tr("settings");
     el.refreshButton.title = tr("refresh");
     el.selectAllFieldsButton.textContent = tr("all");
     el.invertFieldsButton.textContent = tr("invert");
@@ -188,6 +260,16 @@
     el.presetDifficulty.placeholder = tr("difficulty");
     el.presetMaxWords.placeholder = tr("maxWords");
     el.presetInstructions.placeholder = tr("instructions");
+    el.providerLabel.textContent = tr("provider");
+    el.baseUrlLabel.textContent = tr("baseUrl");
+    el.modelLabel.textContent = tr("model");
+    el.apiKeyLabel.textContent = tr("apiKey");
+    el.temperatureLabel.textContent = tr("temperature");
+    el.maxTokensLabel.textContent = tr("maxTokens");
+    el.clearApiKeyLabel.textContent = tr("clearApiKey");
+    el.saveApiSettingsButton.textContent = tr("saveApiSettings");
+    el.apiKeyInput.placeholder = state.apiSettings.hasApiKey ? tr("enterNewKey") : "";
+    el.apiKeyStatus.textContent = state.apiSettings.hasApiKey ? tr("keySaved") : tr("noKey");
     el.uiLanguageSelect.value = state.uiLanguage;
   }
 
@@ -444,6 +526,36 @@
     el.deletePresetButton.disabled = preset.id === "default";
   }
 
+  function renderApiSettings() {
+    if (!state.providerProfiles.length) {
+      state.providerProfiles = [{
+        id: "custom",
+        name: "Custom compatible API",
+        base_url: "",
+        model: "",
+      }];
+    }
+    el.providerSelect.innerHTML = state.providerProfiles
+      .map((profile) => {
+        const selected = profile.id === state.apiSettings.providerId ? " selected" : "";
+        return `<option value="${escapeHtml(profile.id)}"${selected}>${escapeHtml(profile.name)}</option>`;
+      })
+      .join("");
+    el.baseUrlInput.value = state.apiSettings.baseUrl || "";
+    el.modelInput.value = state.apiSettings.model || "";
+    el.temperatureInput.value = state.apiSettings.temperature;
+    el.maxTokensInput.value = state.apiSettings.maxTokens;
+    el.apiKeyInput.value = "";
+    el.clearApiKeyInput.checked = false;
+    el.clearApiKeyInput.disabled = !state.apiSettings.hasApiKey;
+    el.apiKeyStatus.textContent = state.apiSettings.hasApiKey ? tr("keySaved") : tr("noKey");
+    el.apiKeyInput.placeholder = state.apiSettings.hasApiKey ? tr("enterNewKey") : "";
+  }
+
+  function currentProviderProfile() {
+    return state.providerProfiles.find((profile) => profile.id === el.providerSelect.value);
+  }
+
   function currentPreset() {
     return state.promptPresets.find((preset) => preset.id === state.selectedPromptPresetId)
       || state.promptPresets[0]
@@ -479,11 +591,14 @@
         state.promptPresets = payload.promptPresets || [];
         state.selectedPromptPresetId = payload.selectedPromptPresetId || "default";
         state.uiLanguage = payload.uiLanguage || state.uiLanguage;
+        state.providerProfiles = payload.providerProfiles || [];
+        state.apiSettings = payload.apiSettings || state.apiSettings;
         el.dayWindow.textContent = `${formatTime(payload.dayStart)} - ${formatTime(payload.dayEnd)}`;
         el.generateButton.disabled = !state.selectedDeckId;
         applyI18n();
         renderDecks();
         renderPresets();
+        renderApiSettings();
         setStatus(state.decks.length ? tr("selectDeck") : tr("noStudy"));
       }
       if (event === "deckCards") {
@@ -506,6 +621,12 @@
         state.selectedPromptPresetId = payload.selectedPromptPresetId || "default";
         renderPresets();
         setStatus(tr("presetUpdated"));
+      }
+      if (event === "apiSettingsSaved") {
+        state.apiSettings = payload.apiSettings || state.apiSettings;
+        renderApiSettings();
+        applyI18n();
+        setStatus(tr("apiSettingsSaved"));
       }
       if (event === "article") {
         renderArticle(payload);
@@ -590,6 +711,39 @@
 
   el.deletePresetButton.addEventListener("click", () => {
     send("deletePromptPreset", { presetId: state.selectedPromptPresetId });
+  });
+
+  el.providerSelect.addEventListener("change", () => {
+    const profile = currentProviderProfile();
+    state.apiSettings.providerId = el.providerSelect.value;
+    if (profile && profile.id !== "custom") {
+      el.baseUrlInput.value = profile.base_url || "";
+      el.modelInput.value = profile.model || "";
+    }
+  });
+
+  el.saveApiSettingsButton.addEventListener("click", () => {
+    const baseUrl = el.baseUrlInput.value.trim();
+    const model = el.modelInput.value.trim();
+    if (!baseUrl) {
+      setStatus(tr("apiMissingBaseUrl"), true);
+      return;
+    }
+    if (!model) {
+      setStatus(tr("apiMissingModel"), true);
+      return;
+    }
+    send("saveApiSettings", {
+      settings: {
+        providerId: el.providerSelect.value,
+        baseUrl,
+        model,
+        apiKey: el.apiKeyInput.value,
+        clearApiKey: el.clearApiKeyInput.checked,
+        temperature: el.temperatureInput.value,
+        maxTokens: el.maxTokensInput.value,
+      },
+    });
   });
 
   el.refreshButton.addEventListener("click", () => {

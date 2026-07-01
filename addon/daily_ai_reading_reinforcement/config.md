@@ -9,6 +9,9 @@
 `model`
 : Chat completions model name.
 
+`selected_provider_profile`
+: Last selected API provider profile. The add-on UI uses this to prefill common OpenAI-compatible providers.
+
 `temperature`
 : Sampling temperature for the generated article.
 

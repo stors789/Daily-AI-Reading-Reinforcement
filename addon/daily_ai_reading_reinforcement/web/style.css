@@ -112,7 +112,8 @@ h2 {
 }
 
 .deck-panel,
-.field-panel {
+.field-panel,
+.settings-panel {
   min-height: 300px;
 }
 
@@ -283,6 +284,63 @@ h2 {
   display: grid;
   gap: 10px;
   padding: 14px 18px;
+}
+
+.settings-editor {
+  display: grid;
+  gap: 10px;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  padding: 14px;
+}
+
+.form-field {
+  display: grid;
+  gap: 6px;
+  min-width: 0;
+}
+
+.form-field span,
+.inline-check span {
+  color: var(--muted);
+  font-size: 12px;
+  line-height: 1.25;
+  overflow-wrap: anywhere;
+}
+
+.form-field:not(.compact-field) {
+  grid-column: 1 / -1;
+}
+
+.form-field input,
+.form-field select {
+  background: var(--surface-strong);
+  border: 1px solid var(--line);
+  border-radius: 8px;
+  color: var(--ink);
+  font: inherit;
+  min-height: 36px;
+  min-width: 0;
+  padding: 8px 10px;
+  width: 100%;
+}
+
+.inline-check {
+  align-items: center;
+  cursor: pointer;
+  display: flex;
+  gap: 8px;
+  grid-column: 1 / -1;
+  min-width: 0;
+}
+
+.inline-check input {
+  accent-color: var(--accent);
+  flex: 0 0 auto;
+}
+
+.full-button {
+  grid-column: 1 / -1;
+  width: 100%;
 }
 
 .preset-row,

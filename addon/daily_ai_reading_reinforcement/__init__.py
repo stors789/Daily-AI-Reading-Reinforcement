@@ -27,11 +27,45 @@ ADDON_DIR = Path(__file__).resolve().parent
 WEB_DIR = ADDON_DIR / "web"
 ARTICLES_DIR = ADDON_DIR / "user_files" / "articles"
 
+PROVIDER_PROFILES = [
+    {
+        "id": "openai",
+        "name": "OpenAI",
+        "base_url": "https://api.openai.com/v1",
+        "model": "gpt-4.1-mini",
+    },
+    {
+        "id": "deepseek",
+        "name": "DeepSeek",
+        "base_url": "https://api.deepseek.com",
+        "model": "deepseek-chat",
+    },
+    {
+        "id": "qwen",
+        "name": "Qwen DashScope",
+        "base_url": "https://dashscope.aliyuncs.com/compatible-mode/v1",
+        "model": "qwen-plus",
+    },
+    {
+        "id": "openrouter",
+        "name": "OpenRouter",
+        "base_url": "https://openrouter.ai/api/v1",
+        "model": "openai/gpt-4.1-mini",
+    },
+    {
+        "id": "custom",
+        "name": "Custom compatible API",
+        "base_url": "",
+        "model": "",
+    },
+]
+
 
 DEFAULT_CONFIG = {
     "api_key": "",
     "base_url": "https://api.openai.com/v1",
     "model": "gpt-4.1-mini",
+    "selected_provider_profile": "openai",
     "temperature": 0.7,
     "max_tokens": 1400,
     "language": "English",
@@ -130,6 +164,8 @@ window.addEventListener("error", function (event) {
                 self._select_prompt_preset(str(payload.get("presetId", "")))
             elif action == "saveUiLanguage":
                 self._save_ui_language(str(payload.get("uiLanguage", "")))
+            elif action == "saveApiSettings":
+                self._save_api_settings(dict(payload.get("settings") or {}))
             elif action == "saveCollapsedDeckGroups":
                 self._save_collapsed_deck_groups(
                     list(payload.get("collapsedDeckGroups") or [])
@@ -176,6 +212,8 @@ window.addEventListener("error", function (event) {
                 or "default",
                 "uiLanguage": config.get("ui_language") or "zh",
                 "collapsedDeckGroups": list(config.get("collapsed_deck_groups") or []),
+                "providerProfiles": PROVIDER_PROFILES,
+                "apiSettings": api_settings_payload(config),
             },
         )
 
@@ -293,6 +331,42 @@ window.addEventListener("error", function (event) {
         config = load_config()
         config["ui_language"] = ui_language
         mw.addonManager.writeConfig(ADDON_PACKAGE, config)
+
+    def _save_api_settings(self, settings: dict[str, Any]) -> None:
+        provider_id = clean_provider_id(settings.get("providerId"))
+        base_url = clean_base_url(settings.get("baseUrl"))
+        model = clean_text(settings.get("model"))
+        temperature = clean_temperature(settings.get("temperature"))
+        max_tokens = clean_max_tokens(settings.get("maxTokens"))
+
+        if not base_url:
+            self._emit("error", {"message": "Enter an API base URL."})
+            return
+        if not model:
+            self._emit("error", {"message": "Enter a model name."})
+            return
+
+        config = load_config()
+        api_key = str(settings.get("apiKey") or "").strip()
+        clear_api_key = bool(settings.get("clearApiKey"))
+        if api_key:
+            config["api_key"] = api_key
+        elif clear_api_key:
+            config["api_key"] = ""
+
+        config["selected_provider_profile"] = provider_id
+        config["base_url"] = base_url
+        config["model"] = model
+        config["temperature"] = temperature
+        config["max_tokens"] = max_tokens
+        mw.addonManager.writeConfig(ADDON_PACKAGE, config)
+        self._emit(
+            "apiSettingsSaved",
+            {
+                "apiSettings": api_settings_payload(config),
+                "message": "API settings saved.",
+            },
+        )
 
     def _save_collapsed_deck_groups(self, collapsed_groups: list[str]) -> None:
         config = load_config()
@@ -578,6 +652,43 @@ def clean_max_words(value: Any) -> str:
         return ""
     number = max(50, min(5000, int(match.group(0))))
     return str(number)
+
+
+def clean_provider_id(value: Any) -> str:
+    provider_id = clean_text(value)
+    valid_ids = {profile["id"] for profile in PROVIDER_PROFILES}
+    return provider_id if provider_id in valid_ids else "custom"
+
+
+def clean_base_url(value: Any) -> str:
+    return str(value or "").strip().rstrip("/")
+
+
+def clean_temperature(value: Any) -> float:
+    try:
+        number = float(value)
+    except (TypeError, ValueError):
+        number = float(DEFAULT_CONFIG["temperature"])
+    return max(0.0, min(2.0, number))
+
+
+def clean_max_tokens(value: Any) -> int:
+    try:
+        number = int(float(value))
+    except (TypeError, ValueError):
+        number = int(DEFAULT_CONFIG["max_tokens"])
+    return max(128, min(32000, number))
+
+
+def api_settings_payload(config: dict[str, Any]) -> dict[str, Any]:
+    return {
+        "providerId": clean_provider_id(config.get("selected_provider_profile")),
+        "baseUrl": clean_base_url(config.get("base_url") or DEFAULT_CONFIG["base_url"]),
+        "model": clean_text(config.get("model") or DEFAULT_CONFIG["model"]),
+        "temperature": clean_temperature(config.get("temperature")),
+        "maxTokens": clean_max_tokens(config.get("max_tokens")),
+        "hasApiKey": bool(str(config.get("api_key") or "").strip()),
+    }
 
 
 def load_config() -> dict[str, Any]:
