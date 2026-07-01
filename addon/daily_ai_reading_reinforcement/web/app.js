@@ -98,6 +98,7 @@
       loadingCards: "正在读取卡片...",
       ready: "可以生成了。",
       noCards: "这个卡组今天没有候选卡片。",
+      noFields: "没有可用字段。",
       chooseField: "请至少选择一个 AI 输入字段。",
       fieldSaved: "字段选择已保存。",
       presetSaved: "提示词预设已保存。",
@@ -110,6 +111,7 @@
       failedCount: "失败",
       reviews: "次复习",
       childDecks: "个子卡组",
+      expandCollapse: "展开或折叠",
       presetName: "预设名称",
       language: "写作语言",
       difficulty: "难度",
@@ -156,6 +158,7 @@
       loadingCards: "Loading cards...",
       ready: "Ready to generate.",
       noCards: "No candidate cards in this deck today.",
+      noFields: "No fields found.",
       chooseField: "Choose at least one field for AI input.",
       fieldSaved: "Field selection saved.",
       presetSaved: "Prompt preset saved.",
@@ -168,6 +171,7 @@
       failedCount: "failed",
       reviews: "reviews",
       childDecks: "child decks",
+      expandCollapse: "Expand or collapse",
       presetName: "Preset name",
       language: "Language",
       difficulty: "Difficulty",
@@ -214,6 +218,7 @@
       loadingCards: "カードを読み込み中...",
       ready: "生成できます。",
       noCards: "このデッキには今日の候補カードがありません。",
+      noFields: "利用できるフィールドがありません。",
       chooseField: "AI に渡すフィールドを 1 つ以上選んでください。",
       fieldSaved: "フィールド設定を保存しました。",
       presetSaved: "プロンプトプリセットを保存しました。",
@@ -226,6 +231,7 @@
       failedCount: "失敗",
       reviews: "回復習",
       childDecks: "子デッキ",
+      expandCollapse: "展開または折りたたみ",
       presetName: "プリセット名",
       language: "執筆言語",
       difficulty: "難度",
@@ -363,7 +369,7 @@
         const groupClass = row.deck.isGroup ? " aggregate" : "";
         const collapsed = state.collapsedDeckGroups.has(row.deck.name);
         const caret = row.hasChildren
-          ? `<button class="deck-caret" data-collapse-path="${escapeHtml(row.deck.name)}" title="Expand or collapse">${collapsed ? "▸" : "▾"}</button>`
+          ? `<button class="deck-caret" data-collapse-path="${escapeHtml(row.deck.name)}" title="${tr("expandCollapse")}">${collapsed ? "▸" : "▾"}</button>`
           : '<span class="deck-caret-spacer"></span>';
         const childStats = row.hasChildren ? `<span>${row.childCount} ${tr("childDecks")}</span>` : "";
         return `
@@ -406,7 +412,7 @@
         renderFields();
         el.articleOutput.innerHTML = "";
         el.savedPaths.innerHTML = "";
-        setStatus("Loading cards...");
+        setStatus(tr("loadingCards"));
         renderDecks();
         send("selectDeck", { deckId: state.selectedDeckId });
       });
@@ -461,8 +467,8 @@
     el.cardList.innerHTML = cards
       .map((card) => {
         const tags = [
-          card.is_new ? '<span class="tag">new</span>' : "",
-          card.is_failed ? '<span class="tag failed">failed</span>' : "",
+          card.is_new ? `<span class="tag">${tr("newCount")}</span>` : "",
+          card.is_failed ? `<span class="tag failed">${tr("failedCount")}</span>` : "",
           `<span>${card.review_count} ${tr("reviews")}</span>`,
         ]
           .filter(Boolean)
@@ -491,7 +497,7 @@
       return;
     }
     if (!state.fields.length) {
-      el.fieldList.innerHTML = '<div class="empty">No fields found</div>';
+      el.fieldList.innerHTML = `<div class="empty">${tr("noFields")}</div>`;
       setFieldButtons(false);
       return;
     }

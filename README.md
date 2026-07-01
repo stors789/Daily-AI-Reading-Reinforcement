@@ -16,10 +16,12 @@ An Anki add-on that generates a short reading passage from the cards you studied
 - Sends those terms to an OpenAI-compatible API.
 - Displays the generated article in a local styled page.
 - Saves Markdown and HTML copies under the add-on's `user_files/articles` directory.
+- Lets you configure common OpenAI-compatible providers inside the add-on page.
+- Can optionally create article cards under a `Daily AI Reading Reinforcement` parent deck.
 
-## Roadmap
+## Status
 
-See [TODO.md](TODO.md) for planned settings, provider, article-card, and layout work.
+See [TODO.md](TODO.md) for the completed initial roadmap.
 
 ## Layout
 
@@ -55,11 +57,13 @@ The add-on uses an OpenAI-compatible chat completions API:
   "api_key": "",
   "base_url": "https://api.openai.com/v1",
   "model": "gpt-4.1-mini",
+  "selected_provider_profile": "openai",
   "temperature": 0.7,
   "max_tokens": 1400,
   "language": "English",
   "prompt_template": "",
   "deck_field_config": {},
+  "create_article_cards": false,
   "prompt_presets": [
     {
       "id": "default",
