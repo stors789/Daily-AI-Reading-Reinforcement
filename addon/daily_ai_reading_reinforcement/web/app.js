@@ -58,7 +58,6 @@
     savePresetButton: document.getElementById("savePresetButton"),
     deletePresetButton: document.getElementById("deletePresetButton"),
     providerSelect: document.getElementById("providerSelect"),
-    providerNotes: document.getElementById("providerNotes"),
     providerLabel: document.getElementById("providerLabel"),
     baseUrlLabel: document.getElementById("baseUrlLabel"),
     modelLabel: document.getElementById("modelLabel"),
@@ -112,6 +111,13 @@
       presetSaved: "提示词预设已保存。",
       presetUpdated: "提示词预设已更新。",
       savedArticle: "文章已保存：",
+      markdownPath: "Markdown",
+      htmlPath: "HTML",
+      sourceDeck: "来源卡组",
+      generatedAt: "生成时间",
+      reviewNotes: "复习笔记",
+      sourceTerms: "来源词条",
+      fallbackTitle: "阅读文章",
       selectDeckShort: "选择卡组",
       candidateCards: "张候选卡",
       cardsUnit: "张卡",
@@ -175,6 +181,13 @@
       presetSaved: "Prompt preset saved.",
       presetUpdated: "Prompt presets updated.",
       savedArticle: "Saved article for ",
+      markdownPath: "Markdown",
+      htmlPath: "HTML",
+      sourceDeck: "Source deck",
+      generatedAt: "Generated",
+      reviewNotes: "Review notes",
+      sourceTerms: "Source terms",
+      fallbackTitle: "Reading Article",
       selectDeckShort: "Select a deck",
       candidateCards: "candidate cards",
       cardsUnit: "cards",
@@ -238,6 +251,13 @@
       presetSaved: "プロンプトプリセットを保存しました。",
       presetUpdated: "プロンプトプリセットを更新しました。",
       savedArticle: "文章を保存しました：",
+      markdownPath: "Markdown",
+      htmlPath: "HTML",
+      sourceDeck: "元デッキ",
+      generatedAt: "生成日時",
+      reviewNotes: "復習メモ",
+      sourceTerms: "元の語句",
+      fallbackTitle: "読解文章",
       selectDeckShort: "デッキを選択",
       candidateCards: "候補カード",
       cardsUnit: "カード",
@@ -326,6 +346,9 @@
     el.apiKeyStatus.textContent = state.apiSettings.hasApiKey ? tr("keySaved") : tr("noKey");
     el.uiLanguageSelect.value = state.uiLanguage;
     if (el.returnToSelectionButton) el.returnToSelectionButton.textContent = tr("returnToSelection");
+    el.cardCount.textContent = state.selectedDeckId
+      ? el.cardCount.textContent
+      : tr("selectDeckShort");
     
     if (state.decks.length) renderDecks();
     if (state.selectedDeckId) renderFields();
@@ -613,16 +636,6 @@
     el.createArticleCardsInput.checked = Boolean(state.articleCardSettings.createArticleCards);
     el.apiKeyStatus.textContent = state.apiSettings.hasApiKey ? tr("keySaved") : tr("noKey");
     el.apiKeyInput.placeholder = state.apiSettings.hasApiKey ? tr("enterNewKey") : "";
-    const profile = currentProviderProfile();
-    if (profile && profile.id !== "custom" && el.providerNotes) {
-      let notes = [];
-      if (profile.docs_url) notes.push(`<a href="${escapeHtml(profile.docs_url)}" target="_blank" style="color: inherit; text-decoration: underline;">Docs</a>`);
-      if (profile.auth_notes) notes.push(`Auth: ${escapeHtml(profile.auth_notes)}`);
-      if (profile.compatibility_notes) notes.push(`Notes: ${escapeHtml(profile.compatibility_notes)}`);
-      el.providerNotes.innerHTML = notes.join("<br>");
-    } else if (el.providerNotes) {
-      el.providerNotes.innerHTML = "";
-    }
   }
 
   function currentProviderProfile() {
@@ -640,24 +653,114 @@
     renderStatus();
   }
 
-  function renderArticle(payload) {
-    const blocks = String(payload.article || "")
+  function extractBlock(raw, startMarker, endMarker) {
+    const start = raw.indexOf(startMarker);
+    if (start === -1) return "";
+    const contentStart = start + startMarker.length;
+    const end = endMarker ? raw.indexOf(endMarker, contentStart) : -1;
+    return raw.slice(contentStart, end === -1 ? raw.length : end).trim();
+  }
+
+  function parseArticleResponse(rawArticle) {
+    const raw = String(rawArticle || "").trim();
+    const title = extractBlock(raw, "[ARTICLE_TITLE]", "[MAIN_ARTICLE]");
+    const mainArticle = extractBlock(raw, "[MAIN_ARTICLE]", "[REVIEW_NOTES]");
+    const reviewRaw = extractBlock(raw, "[REVIEW_NOTES]", "");
+    if (!title && !mainArticle && !reviewRaw) {
+      return {
+        title: tr("fallbackTitle"),
+        mainArticle: raw,
+        reviewNotes: [],
+        structured: false,
+      };
+    }
+    return {
+      title: title || tr("fallbackTitle"),
+      mainArticle: mainArticle || raw,
+      reviewNotes: parseReviewNotes(reviewRaw),
+      structured: true,
+    };
+  }
+
+  function parseReviewNotes(rawNotes) {
+    return String(rawNotes || "")
+      .split(/\n+/)
+      .map((line) => line.trim().replace(/^[-*]\s*/, ""))
+      .filter(Boolean)
+      .map((line) => {
+        const parts = line.split(/\s*::\s*/);
+        if (parts.length >= 2) {
+          return {
+            term: parts.shift().trim(),
+            note: parts.join(" :: ").trim(),
+          };
+        }
+        const fallbackParts = line.split(/\s*[：:]\s*/);
+        if (fallbackParts.length >= 2) {
+          return {
+            term: fallbackParts.shift().trim(),
+            note: fallbackParts.join(": ").trim(),
+          };
+        }
+        return { term: "", note: line };
+      });
+  }
+
+  function renderParagraphs(text) {
+    return String(text || "")
       .split(/\n{2,}/)
       .filter((block) => block.trim())
-      .map((block) => `<p>${escapeHtml(block).replace(/\n/g, "<br>")}</p>`)
+      .map((block) => `<p>${escapeHtml(block.trim()).replace(/\n/g, "<br>")}</p>`)
       .join("");
+  }
+
+  function renderReviewNotes(notes) {
+    if (!notes.length) {
+      return "";
+    }
+    return `
+      <section class="review-notes">
+        <h3>${tr("reviewNotes")}</h3>
+        <dl>
+          ${notes.map((item) => `
+            ${item.term ? `<dt>${escapeHtml(item.term)}</dt>` : ""}
+            <dd>${escapeHtml(item.note)}</dd>
+          `).join("")}
+        </dl>
+      </section>
+    `;
+  }
+
+  function renderArticle(payload) {
+    const parsed = parseArticleResponse(payload.article);
+    const generatedAt = new Date().toLocaleString();
     const articleCardLine = payload.articleCard
       ? `<div>${tr("articleCardSaved")} ${escapeHtml(payload.articleCard.deckName)}</div>`
       : "";
     const articleCardErrorLine = payload.articleCardError
       ? `<div class="save-warning">${tr("articleCardFailed")}${escapeHtml(payload.articleCardError)}</div>`
       : "";
-    el.articleOutput.innerHTML = blocks;
+    el.articleOutput.innerHTML = `
+      <div class="reading-document">
+        <header class="reading-header">
+          <div class="reading-kicker">${tr("sourceDeck")} · ${escapeHtml(payload.deckName || "")}</div>
+          <h1>${escapeHtml(parsed.title)}</h1>
+          <div class="reading-meta">${tr("generatedAt")} · ${escapeHtml(generatedAt)}</div>
+        </header>
+        <section class="reading-body">
+          ${renderParagraphs(parsed.mainArticle)}
+        </section>
+        ${renderReviewNotes(parsed.reviewNotes)}
+      </div>
+    `;
     el.savedPaths.innerHTML = `
-      <div>Markdown: ${escapeHtml(payload.markdownPath)}</div>
-      <div>HTML: ${escapeHtml(payload.htmlPath)}</div>
-      ${articleCardLine}
-      ${articleCardErrorLine}
+      <details>
+        <summary>${tr("savedArticle")}${escapeHtml(payload.deckName || "")}</summary>
+        <div>${tr("markdownPath")}: ${escapeHtml(payload.markdownPath)}</div>
+        <div>${tr("htmlPath")}: ${escapeHtml(payload.htmlPath)}</div>
+        ${articleCardLine}
+        ${articleCardErrorLine}
+      </details>
     `;
     setStatus("savedArticle", false, { deckName: payload.deckName });
     el.generateButton.disabled = false;
@@ -830,11 +933,11 @@
     const baseUrl = el.baseUrlInput.value.trim();
     const model = el.modelInput.value.trim();
     if (!baseUrl) {
-      setStatus(tr("apiMissingBaseUrl"), true);
+      setStatus("apiMissingBaseUrl", true);
       return;
     }
     if (!model) {
-      setStatus(tr("apiMissingModel"), true);
+      setStatus("apiMissingModel", true);
       return;
     }
     send("saveApiSettings", {
@@ -863,6 +966,7 @@
     state.selectedDeckId = null;
     state.fields = [];
     state.selectedFields = [];
+    state.currentCards = [];
     el.generateButton.disabled = true;
     el.saveFieldsButton.disabled = true;
     setFieldButtons(false);

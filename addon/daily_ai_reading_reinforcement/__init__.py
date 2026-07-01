@@ -256,7 +256,7 @@ window.addEventListener("error", function (event) {
                 or "default",
                 "uiLanguage": config.get("ui_language") or "zh",
                 "collapsedDeckGroups": list(config.get("collapsed_deck_groups") or []),
-                "providerProfiles": PROVIDER_PROFILES,
+                "providerProfiles": provider_profiles_payload(),
                 "apiSettings": api_settings_payload(config),
                 "articleCardSettings": article_card_settings_payload(config),
             },
@@ -761,6 +761,18 @@ def api_settings_payload(config: dict[str, Any]) -> dict[str, Any]:
     }
 
 
+def provider_profiles_payload() -> list[dict[str, str]]:
+    return [
+        {
+            "id": profile["id"],
+            "name": profile["name"],
+            "base_url": profile["base_url"],
+            "model": profile["model"],
+        }
+        for profile in PROVIDER_PROFILES
+    ]
+
+
 def article_card_settings_payload(config: dict[str, Any]) -> dict[str, Any]:
     return {
         "createArticleCards": bool(config.get("create_article_cards")),
@@ -878,18 +890,23 @@ def build_prompt(
         "- Formatting requirements: {instructions}\n\n"
         "Use the provided card fields as source material.\n\n"
         "Output format:\n"
-        "1. Main article\n"
-        "   - Write this section only in the article language.\n"
-        "   - Do not use the reader native language in this section unless it appears as a source term that must be quoted.\n"
-        "   - Do not translate or explain inside the article.\n\n"
-        "2. Review notes\n"
-        "   - Use the reader native language for explanations.\n"
-        "   - Include only concise notes for important source terms.\n\n"
+        "[ARTICLE_TITLE]\n"
+        "A short title in the article language.\n\n"
+        "[MAIN_ARTICLE]\n"
+        "The main article. Use only the article language.\n\n"
+        "[REVIEW_NOTES]\n"
+        "One note per important source term. Use this line format:\n"
+        "- term :: explanation\n\n"
         "Constraints:\n"
+        "- Return exactly the three bracketed blocks above.\n"
+        "- Do not output Markdown headings.\n"
+        "- Do not output HTML.\n"
         "- Follow the requested article language even if source fields contain other languages.\n"
+        "- Do not use the reader native language in [MAIN_ARTICLE] unless it appears as a source term that must be quoted.\n"
+        "- Use the reader native language for explanations in [REVIEW_NOTES].\n"
         "- Follow the length limit.\n"
         "- Preserve source terms accurately when they are the learning targets.\n"
-        "- Do not add sections other than the two sections above.\n\n"
+        "- Do not add sections outside the blocks above.\n\n"
         "Cards:\n{cards}\n"
     )
     template = str(
@@ -942,7 +959,7 @@ def generate_article(
         "messages": [
             {
                 "role": "system",
-                "content": "You write concise, learner-friendly reading passages from vocabulary lists.",
+                "content": "Follow the requested output format and language boundaries exactly.",
             },
             {"role": "user", "content": prompt},
         ],
@@ -1018,7 +1035,7 @@ def create_article_card(
         "Date": time.strftime("%Y-%m-%d"),
         "Source Deck": source_deck_name,
         "Title": title,
-        "Article": article,
+        "Article": render_article_fragment_html(article),
         "Source Terms": "\n".join(card.term for card in cards if card.term),
         "Markdown Path": str(markdown_path),
         "HTML Path": str(html_path),
@@ -1142,12 +1159,92 @@ def add_note_to_deck(note: Any, deck_id: int) -> None:
     mw.col.addNote(note)
 
 
-def render_article_html(deck_name_value: str, cards: list[CandidateCard], article: str) -> str:
-    paragraphs = [
-        f"<p>{html.escape(block).replace(chr(10), '<br>')}</p>"
-        for block in article.split("\n\n")
+def extract_article_block(raw: str, start_marker: str, end_marker: str = "") -> str:
+    start = raw.find(start_marker)
+    if start == -1:
+        return ""
+    content_start = start + len(start_marker)
+    end = raw.find(end_marker, content_start) if end_marker else -1
+    return raw[content_start : len(raw) if end == -1 else end].strip()
+
+
+def parse_article_response(article: str) -> dict[str, Any]:
+    raw = str(article or "").strip()
+    title = extract_article_block(raw, "[ARTICLE_TITLE]", "[MAIN_ARTICLE]")
+    main_article = extract_article_block(raw, "[MAIN_ARTICLE]", "[REVIEW_NOTES]")
+    review_raw = extract_article_block(raw, "[REVIEW_NOTES]")
+    if not title and not main_article and not review_raw:
+        return {
+            "title": "Reading Article",
+            "main_article": raw,
+            "review_notes": [],
+        }
+    return {
+        "title": title or "Reading Article",
+        "main_article": main_article or raw,
+        "review_notes": parse_review_notes(review_raw),
+    }
+
+
+def parse_review_notes(review_raw: str) -> list[dict[str, str]]:
+    notes = []
+    for raw_line in str(review_raw or "").splitlines():
+        line = re.sub(r"^[-*]\s*", "", raw_line.strip())
+        if not line:
+            continue
+        if "::" in line:
+            term, note = line.split("::", 1)
+        elif "：" in line:
+            term, note = line.split("：", 1)
+        elif ":" in line:
+            term, note = line.split(":", 1)
+        else:
+            term, note = "", line
+        notes.append({"term": term.strip(), "note": note.strip()})
+    return notes
+
+
+def render_paragraph_html(text: str) -> str:
+    return "".join(
+        f"<p>{html.escape(block.strip()).replace(chr(10), '<br>')}</p>"
+        for block in str(text or "").split("\n\n")
         if block.strip()
-    ]
+    )
+
+
+def render_review_notes_html(notes: list[dict[str, str]]) -> str:
+    if not notes:
+        return ""
+    rows = []
+    for note in notes:
+        term = html.escape(note.get("term", ""))
+        body = html.escape(note.get("note", ""))
+        rows.append(
+            f"{f'<dt>{term}</dt>' if term else ''}<dd>{body}</dd>"
+        )
+    return f"""
+    <section class="review-notes">
+      <h2>Review Notes</h2>
+      <dl>{''.join(rows)}</dl>
+    </section>
+"""
+
+
+def render_article_fragment_html(article: str) -> str:
+    parsed = parse_article_response(article)
+    return f"""
+<section class="reading-body">
+  {render_paragraph_html(parsed["main_article"])}
+</section>
+{render_review_notes_html(parsed["review_notes"])}
+"""
+
+
+def render_article_html(deck_name_value: str, cards: list[CandidateCard], article: str) -> str:
+    parsed = parse_article_response(article)
+    article_title = html.escape(parsed["title"])
+    article_body = render_paragraph_html(parsed["main_article"])
+    review_notes = render_review_notes_html(parsed["review_notes"])
     terms = "\n".join(
         f"<li>{html.escape(card.term)}</li>" for card in cards[:40] if card.term
     )
@@ -1174,6 +1271,7 @@ def render_article_html(deck_name_value: str, cards: list[CandidateCard], articl
       margin: 0 0 12px;
       font-size: 34px;
       letter-spacing: 0;
+      line-height: 1.25;
     }}
     .meta {{
       color: #6c6256;
@@ -1186,6 +1284,37 @@ def render_article_html(deck_name_value: str, cards: list[CandidateCard], articl
       padding: 32px;
       box-shadow: 0 18px 50px rgba(43, 34, 24, 0.08);
     }}
+    .reading-body {{
+      font-size: 18px;
+      line-height: 1.9;
+    }}
+    .reading-body p {{
+      margin: 0 0 1.05em;
+    }}
+    .review-notes {{
+      background: #f8f4ed;
+      border: 1px solid #ded4c6;
+      border-radius: 8px;
+      margin-top: 28px;
+      padding: 18px;
+    }}
+    .review-notes h2 {{
+      font-size: 18px;
+      margin: 0 0 14px;
+    }}
+    .review-notes dl {{
+      display: grid;
+      gap: 10px 14px;
+      grid-template-columns: minmax(80px, max-content) minmax(0, 1fr);
+      margin: 0;
+    }}
+    .review-notes dt {{
+      color: #1f5558;
+      font-weight: 800;
+    }}
+    .review-notes dd {{
+      margin: 0;
+    }}
     .terms {{
       margin-top: 24px;
       color: #4e453d;
@@ -1194,10 +1323,11 @@ def render_article_html(deck_name_value: str, cards: list[CandidateCard], articl
 </head>
 <body>
   <main>
-    <h1>{html.escape(deck_name_value)}</h1>
-    <div class="meta">Generated {time.strftime('%Y-%m-%d %H:%M:%S')} from {len(cards)} studied cards.</div>
+    <h1>{article_title}</h1>
+    <div class="meta">{html.escape(deck_name_value)} · Generated {time.strftime('%Y-%m-%d %H:%M:%S')} from {len(cards)} studied cards.</div>
     <article>
-      {''.join(paragraphs)}
+      <section class="reading-body">{article_body}</section>
+      {review_notes}
     </article>
     <section class="terms">
       <h2>Source Terms</h2>
