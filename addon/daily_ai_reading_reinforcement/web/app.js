@@ -38,6 +38,7 @@
     cardList: document.getElementById("cardList"),
     cardCount: document.getElementById("cardCount"),
     selectFailedCardsButton: document.getElementById("selectFailedCardsButton"),
+    selectAllCardsButton: document.getElementById("selectAllCardsButton"),
     selectNewCardsButton: document.getElementById("selectNewCardsButton"),
     clearCardSelectionButton: document.getElementById("clearCardSelectionButton"),
     dayWindow: document.getElementById("dayWindow"),
@@ -365,6 +366,7 @@
     el.selectAllFieldsButton.textContent = tr("all");
     el.invertFieldsButton.textContent = tr("invert");
     el.saveFieldsButton.textContent = tr("save");
+    el.selectAllCardsButton.textContent = tr("all");
     el.selectFailedCardsButton.textContent = tr("selectFailedCards");
     el.selectNewCardsButton.textContent = tr("selectNewCards");
     el.clearCardSelectionButton.textContent = tr("clearCardSelection");
@@ -693,6 +695,7 @@
       ? `${selected}/${total} ${tr("selectedCards")}`
       : tr("selectDeckShort");
     const hasCards = total > 0;
+    el.selectAllCardsButton.disabled = !hasCards;
     el.selectFailedCardsButton.disabled = !hasCards;
     el.selectNewCardsButton.disabled = !hasCards;
     el.clearCardSelectionButton.disabled = !hasCards || selected === 0;
@@ -1021,6 +1024,10 @@
   el.invertFieldsButton.addEventListener("click", () => {
     state.selectedFields = state.fields.filter((field) => !state.selectedFields.includes(field));
     renderFields();
+  });
+
+  el.selectAllCardsButton.addEventListener("click", () => {
+    selectCardsByPredicate(() => true);
   });
 
   el.selectFailedCardsButton.addEventListener("click", () => {
