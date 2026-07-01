@@ -1043,6 +1043,51 @@
     renderCards(state.currentCards);
   });
 
+  let isDraggingCard = false;
+  let dragSelectCardValue = true;
+
+  el.cardList.addEventListener("mousedown", (e) => {
+    const item = e.target.closest(".card-item");
+    if (!item) return;
+    isDraggingCard = true;
+    const input = item.querySelector("input");
+    if (e.target.tagName !== "INPUT") {
+      e.preventDefault();
+      dragSelectCardValue = !input.checked;
+      input.checked = dragSelectCardValue;
+      if (dragSelectCardValue) {
+        state.selectedCardIds.add(input.value);
+      } else {
+        state.selectedCardIds.delete(input.value);
+      }
+      item.classList.toggle("selected", dragSelectCardValue);
+      updateCardSelectionControls();
+    } else {
+      dragSelectCardValue = !input.checked;
+    }
+  });
+
+  el.cardList.addEventListener("mouseover", (e) => {
+    if (!isDraggingCard) return;
+    const item = e.target.closest(".card-item");
+    if (!item) return;
+    const input = item.querySelector("input");
+    if (input.checked !== dragSelectCardValue) {
+      input.checked = dragSelectCardValue;
+      if (dragSelectCardValue) {
+        state.selectedCardIds.add(input.value);
+      } else {
+        state.selectedCardIds.delete(input.value);
+      }
+      item.classList.toggle("selected", dragSelectCardValue);
+      updateCardSelectionControls();
+    }
+  });
+
+  document.addEventListener("mouseup", () => {
+    isDraggingCard = false;
+  });
+
   el.saveFieldsButton.addEventListener("click", () => {
     if (!state.selectedDeckId) return;
     send("saveFieldConfig", {
