@@ -56,12 +56,12 @@ PROVIDER_PROFILES = [
         "name": "DeepSeek",
         "base_url": "https://api.deepseek.com",
         "chat_completions_path": "/chat/completions",
-        "default_model": "deepseek-chat",
-        "model": "deepseek-chat",
+        "default_model": "deepseek-v4-flash",
+        "model": "deepseek-v4-flash",
         "docs_url": "https://platform.deepseek.com/api-docs/",
         "verified_at": "2026-07-01",
         "auth_notes": "Bearer token.",
-        "compatibility_notes": "Fully compatible with OpenAI format.",
+        "compatibility_notes": "OpenAI-compatible chat completions. Legacy deepseek-chat is documented as deprecated on 2026-07-24.",
     },
     {
         "id": "qwen",
@@ -70,10 +70,10 @@ PROVIDER_PROFILES = [
         "chat_completions_path": "/chat/completions",
         "default_model": "qwen-plus",
         "model": "qwen-plus",
-        "docs_url": "https://help.aliyun.com/zh/dashscope/developer-reference/compatibility-of-openai-with-dashscope",
+        "docs_url": "https://help.aliyun.com/zh/model-studio/compatibility-of-openai-with-dashscope",
         "verified_at": "2026-07-01",
         "auth_notes": "Bearer token from DashScope console.",
-        "compatibility_notes": "Uses OpenAI compatible endpoints. Role must be system/user/assistant.",
+        "compatibility_notes": "OpenAI-compatible chat completions. Official docs recommend workspace-specific regional base URLs where available; the legacy dashscope.aliyuncs.com endpoint remains usable.",
     },
     {
         "id": "openrouter",
@@ -82,10 +82,10 @@ PROVIDER_PROFILES = [
         "chat_completions_path": "/chat/completions",
         "default_model": "openai/gpt-4o-mini",
         "model": "openai/gpt-4o-mini",
-        "docs_url": "https://openrouter.ai/docs/requests",
+        "docs_url": "https://openrouter.ai/docs/api-reference/chat-completion",
         "verified_at": "2026-07-01",
         "auth_notes": "Bearer token.",
-        "compatibility_notes": "Extremely compatible. May pass extra headers like HTTP-Referer if desired, but not strictly required.",
+        "compatibility_notes": "OpenAI-compatible chat completions through /api/v1/chat/completions.",
     },
     {
         "id": "custom",
@@ -109,7 +109,6 @@ DEFAULT_CONFIG = {
     "selected_provider_profile": "openai",
     "temperature": 0.7,
     "max_tokens": 1400,
-    "language": "English",
     "prompt_template": "",
     "deck_field_config": {},
     "create_article_cards": False,
@@ -786,12 +785,13 @@ def normalize_prompt_presets(config: dict[str, Any]) -> list[dict[str, str]]:
         preset_id = str(raw.get("id") or "").strip()
         if not preset_id:
             continue
+        legacy_language = clean_text(raw.get("language"))
         presets.append(
             {
                 "id": preset_id,
                 "name": clean_text(raw.get("name")) or preset_id,
                 "reader_native_language": clean_text(raw.get("reader_native_language")),
-                "article_language": clean_text(raw.get("article_language")),
+                "article_language": clean_text(raw.get("article_language")) or legacy_language,
                 "difficulty": clean_text(raw.get("difficulty")),
                 "max_words": clean_max_words(raw.get("max_words")),
                 "instructions": clean_text(raw.get("instructions")),

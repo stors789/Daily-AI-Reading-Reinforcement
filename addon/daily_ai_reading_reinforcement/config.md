@@ -18,11 +18,8 @@
 `max_tokens`
 : Maximum tokens for the AI response.
 
-`language`
-: Target language for the article, such as `English` or `中文`.
-
 `prompt_template`
-: Optional custom prompt. You can use `{language}`, `{deck_name}`, and `{cards}` placeholders.
+: Optional custom prompt. You can use `{reader_native_language}`, `{article_language}`, `{difficulty}`, `{length_instruction}`, `{instructions}`, `{deck_name}`, and `{cards}` placeholders.
 
 `deck_field_config`
 : Saved field selections for each deck. This is managed by the add-on UI.
@@ -37,7 +34,7 @@
 : UI language. Supported values are `zh`, `en`, and `ja`.
 
 `prompt_presets`
-: Saved prompt presets. Each preset can define language, difficulty, max words, extra instructions, and an optional full prompt template.
+: Saved prompt presets. Each preset can define reader native language, article language, difficulty, max words, formatting requirements, and an optional full prompt template.
 
 `selected_prompt_preset_id`
 : Last selected prompt preset. This is managed by the add-on UI.

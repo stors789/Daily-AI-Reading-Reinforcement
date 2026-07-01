@@ -60,16 +60,19 @@ The add-on uses an OpenAI-compatible chat completions API:
   "selected_provider_profile": "openai",
   "temperature": 0.7,
   "max_tokens": 1400,
-  "language": "English",
   "prompt_template": "",
   "deck_field_config": {},
   "create_article_cards": false,
+  "collapsed_deck_groups": [],
+  "ui_language": "zh",
   "prompt_presets": [
     {
       "id": "default",
       "name": "Default",
-      "language": "",
+      "reader_native_language": "",
+      "article_language": "",
       "difficulty": "",
+      "max_words": "",
       "instructions": "",
       "prompt_template": ""
     }

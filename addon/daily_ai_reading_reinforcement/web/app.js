@@ -282,12 +282,12 @@
   function renderStatus() {
     let msg = tr(state.statusData.key);
     if (state.statusData.params.deckName) {
-      msg = msg + escapeHtml(state.statusData.params.deckName) + ".";
+      msg = msg + state.statusData.params.deckName + ".";
     }
     if (state.statusData.params.message) {
       msg = state.statusData.params.message; // fallback for raw message errors
     }
-    el.status.innerHTML = msg;
+    el.status.textContent = msg;
     el.status.classList.toggle("error", state.statusData.isError);
   }
 
@@ -440,7 +440,6 @@
       item.addEventListener("click", () => {
         state.selectedDeckId = item.dataset.deckId;
         el.generateButton.disabled = false;
-    setReadingMode(true);
         el.saveFieldsButton.disabled = true;
         state.fields = [];
         state.selectedFields = [];
@@ -524,7 +523,6 @@
         `;
       })
       .join("");
-    setStatus("ready");
   }
 
   function renderFields() {
@@ -702,6 +700,7 @@
         state.selectedFields = payload.selectedFields || [];
         renderFields();
         renderCards(payload.cards || []);
+        setStatus("ready");
       }
       if (event === "fieldConfigSaved") {
         state.selectedFields = payload.selectedFields || state.selectedFields;
@@ -821,8 +820,8 @@
     const profile = currentProviderProfile();
     state.apiSettings.providerId = el.providerSelect.value;
     if (profile && profile.id !== "custom") {
-      el.baseUrlInput.value = profile.base_url || "";
-      el.modelInput.value = profile.model || "";
+      state.apiSettings.baseUrl = profile.base_url || "";
+      state.apiSettings.model = profile.model || "";
     }
     renderApiSettings();
   });
