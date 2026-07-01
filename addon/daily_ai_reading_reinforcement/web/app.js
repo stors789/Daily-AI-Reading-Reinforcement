@@ -700,11 +700,9 @@
   }
 
   function selectCardsByPredicate(predicate) {
-    state.selectedCardIds = new Set(
-      state.currentCards
-        .filter(predicate)
-        .map((card) => String(card.cid))
-    );
+    state.currentCards
+      .filter(predicate)
+      .forEach((card) => state.selectedCardIds.add(String(card.cid)));
     renderCards(state.currentCards);
   }
 
