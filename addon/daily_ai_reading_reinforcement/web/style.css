@@ -410,6 +410,10 @@ h2 {
   padding: 14px 18px;
 }
 
+.save-warning {
+  color: var(--warn);
+}
+
 .empty {
   color: var(--muted);
   padding: 14px;

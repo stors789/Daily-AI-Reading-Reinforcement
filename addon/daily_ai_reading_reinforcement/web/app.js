@@ -17,6 +17,11 @@
       maxTokens: 1400,
       hasApiKey: false,
     },
+    articleCardSettings: {
+      createArticleCards: false,
+      parentDeck: "Daily AI Reading Reinforcement",
+      noteType: "Daily AI Reading Reinforcement Article",
+    },
   };
 
   const el = {
@@ -55,12 +60,14 @@
     temperatureLabel: document.getElementById("temperatureLabel"),
     maxTokensLabel: document.getElementById("maxTokensLabel"),
     clearApiKeyLabel: document.getElementById("clearApiKeyLabel"),
+    createArticleCardsLabel: document.getElementById("createArticleCardsLabel"),
     baseUrlInput: document.getElementById("baseUrlInput"),
     modelInput: document.getElementById("modelInput"),
     apiKeyInput: document.getElementById("apiKeyInput"),
     temperatureInput: document.getElementById("temperatureInput"),
     maxTokensInput: document.getElementById("maxTokensInput"),
     clearApiKeyInput: document.getElementById("clearApiKeyInput"),
+    createArticleCardsInput: document.getElementById("createArticleCardsInput"),
     apiKeyStatus: document.getElementById("apiKeyStatus"),
     saveApiSettingsButton: document.getElementById("saveApiSettingsButton"),
     status: document.getElementById("status"),
@@ -115,11 +122,15 @@
       temperature: "温度",
       maxTokens: "最大 tokens",
       clearApiKey: "清除已保存 key",
+      createArticleCards: "生成后创建文章卡片",
       saveApiSettings: "保存 API 设置",
       keySaved: "Key 已保存",
       noKey: "无 key",
       enterNewKey: "留空则保留已保存 key",
       apiSettingsSaved: "API 设置已保存。",
+      articleCardSettingSaved: "文章卡片设置已保存。",
+      articleCardSaved: "文章卡片已创建到",
+      articleCardFailed: "文章已保存，但创建卡片失败：",
       apiMissingBaseUrl: "请输入 API Base URL。",
       apiMissingModel: "请输入模型名称。",
     },
@@ -169,11 +180,15 @@
       temperature: "Temperature",
       maxTokens: "Max tokens",
       clearApiKey: "Clear saved key",
+      createArticleCards: "Create article cards after generation",
       saveApiSettings: "Save API settings",
       keySaved: "Key saved",
       noKey: "No key",
       enterNewKey: "Leave blank to keep saved key",
       apiSettingsSaved: "API settings saved.",
+      articleCardSettingSaved: "Article card setting saved.",
+      articleCardSaved: "Article card created in",
+      articleCardFailed: "Article saved, but card creation failed: ",
       apiMissingBaseUrl: "Enter an API base URL.",
       apiMissingModel: "Enter a model name.",
     },
@@ -223,11 +238,15 @@
       temperature: "温度",
       maxTokens: "最大 tokens",
       clearApiKey: "保存済み key を消去",
+      createArticleCards: "生成後に文章カードを作成",
       saveApiSettings: "API 設定を保存",
       keySaved: "Key 保存済み",
       noKey: "Key なし",
       enterNewKey: "空欄なら保存済み key を保持",
       apiSettingsSaved: "API 設定を保存しました。",
+      articleCardSettingSaved: "文章カード設定を保存しました。",
+      articleCardSaved: "文章カードを作成しました：",
+      articleCardFailed: "文章は保存しましたが、カード作成に失敗しました：",
       apiMissingBaseUrl: "API Base URL を入力してください。",
       apiMissingModel: "モデル名を入力してください。",
     },
@@ -267,6 +286,7 @@
     el.temperatureLabel.textContent = tr("temperature");
     el.maxTokensLabel.textContent = tr("maxTokens");
     el.clearApiKeyLabel.textContent = tr("clearApiKey");
+    el.createArticleCardsLabel.textContent = tr("createArticleCards");
     el.saveApiSettingsButton.textContent = tr("saveApiSettings");
     el.apiKeyInput.placeholder = state.apiSettings.hasApiKey ? tr("enterNewKey") : "";
     el.apiKeyStatus.textContent = state.apiSettings.hasApiKey ? tr("keySaved") : tr("noKey");
@@ -548,6 +568,7 @@
     el.apiKeyInput.value = "";
     el.clearApiKeyInput.checked = false;
     el.clearApiKeyInput.disabled = !state.apiSettings.hasApiKey;
+    el.createArticleCardsInput.checked = Boolean(state.articleCardSettings.createArticleCards);
     el.apiKeyStatus.textContent = state.apiSettings.hasApiKey ? tr("keySaved") : tr("noKey");
     el.apiKeyInput.placeholder = state.apiSettings.hasApiKey ? tr("enterNewKey") : "";
   }
@@ -573,10 +594,18 @@
       .filter((block) => block.trim())
       .map((block) => `<p>${escapeHtml(block).replace(/\n/g, "<br>")}</p>`)
       .join("");
+    const articleCardLine = payload.articleCard
+      ? `<div>${tr("articleCardSaved")} ${escapeHtml(payload.articleCard.deckName)}</div>`
+      : "";
+    const articleCardErrorLine = payload.articleCardError
+      ? `<div class="save-warning">${tr("articleCardFailed")}${escapeHtml(payload.articleCardError)}</div>`
+      : "";
     el.articleOutput.innerHTML = blocks;
     el.savedPaths.innerHTML = `
       <div>Markdown: ${escapeHtml(payload.markdownPath)}</div>
       <div>HTML: ${escapeHtml(payload.htmlPath)}</div>
+      ${articleCardLine}
+      ${articleCardErrorLine}
     `;
     setStatus(`${tr("savedArticle")}${payload.deckName}.`);
     el.generateButton.disabled = false;
@@ -593,6 +622,7 @@
         state.uiLanguage = payload.uiLanguage || state.uiLanguage;
         state.providerProfiles = payload.providerProfiles || [];
         state.apiSettings = payload.apiSettings || state.apiSettings;
+        state.articleCardSettings = payload.articleCardSettings || state.articleCardSettings;
         el.dayWindow.textContent = `${formatTime(payload.dayStart)} - ${formatTime(payload.dayEnd)}`;
         el.generateButton.disabled = !state.selectedDeckId;
         applyI18n();
@@ -627,6 +657,11 @@
         renderApiSettings();
         applyI18n();
         setStatus(tr("apiSettingsSaved"));
+      }
+      if (event === "articleCardSettingsSaved") {
+        state.articleCardSettings = payload.articleCardSettings || state.articleCardSettings;
+        renderApiSettings();
+        setStatus(tr("articleCardSettingSaved"));
       }
       if (event === "article") {
         renderArticle(payload);
@@ -742,6 +777,15 @@
         clearApiKey: el.clearApiKeyInput.checked,
         temperature: el.temperatureInput.value,
         maxTokens: el.maxTokensInput.value,
+      },
+    });
+  });
+
+  el.createArticleCardsInput.addEventListener("change", () => {
+    state.articleCardSettings.createArticleCards = el.createArticleCardsInput.checked;
+    send("saveArticleCardSettings", {
+      settings: {
+        createArticleCards: state.articleCardSettings.createArticleCards,
       },
     });
   });

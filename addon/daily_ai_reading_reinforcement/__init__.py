@@ -26,6 +26,17 @@ ADDON_PACKAGE = __name__
 ADDON_DIR = Path(__file__).resolve().parent
 WEB_DIR = ADDON_DIR / "web"
 ARTICLES_DIR = ADDON_DIR / "user_files" / "articles"
+ARTICLE_PARENT_DECK = "Daily AI Reading Reinforcement"
+ARTICLE_NOTE_TYPE = "Daily AI Reading Reinforcement Article"
+ARTICLE_FIELDS = [
+    "Date",
+    "Source Deck",
+    "Title",
+    "Article",
+    "Source Terms",
+    "Markdown Path",
+    "HTML Path",
+]
 
 PROVIDER_PROFILES = [
     {
@@ -71,6 +82,7 @@ DEFAULT_CONFIG = {
     "language": "English",
     "prompt_template": "",
     "deck_field_config": {},
+    "create_article_cards": False,
     "collapsed_deck_groups": [],
     "ui_language": "zh",
     "prompt_presets": [
@@ -166,6 +178,8 @@ window.addEventListener("error", function (event) {
                 self._save_ui_language(str(payload.get("uiLanguage", "")))
             elif action == "saveApiSettings":
                 self._save_api_settings(dict(payload.get("settings") or {}))
+            elif action == "saveArticleCardSettings":
+                self._save_article_card_settings(dict(payload.get("settings") or {}))
             elif action == "saveCollapsedDeckGroups":
                 self._save_collapsed_deck_groups(
                     list(payload.get("collapsedDeckGroups") or [])
@@ -214,6 +228,7 @@ window.addEventListener("error", function (event) {
                 "collapsedDeckGroups": list(config.get("collapsed_deck_groups") or []),
                 "providerProfiles": PROVIDER_PROFILES,
                 "apiSettings": api_settings_payload(config),
+                "articleCardSettings": article_card_settings_payload(config),
             },
         )
 
@@ -368,6 +383,18 @@ window.addEventListener("error", function (event) {
             },
         )
 
+    def _save_article_card_settings(self, settings: dict[str, Any]) -> None:
+        config = load_config()
+        config["create_article_cards"] = bool(settings.get("createArticleCards"))
+        mw.addonManager.writeConfig(ADDON_PACKAGE, config)
+        self._emit(
+            "articleCardSettingsSaved",
+            {
+                "articleCardSettings": article_card_settings_payload(config),
+                "message": "Article card setting saved.",
+            },
+        )
+
     def _save_collapsed_deck_groups(self, collapsed_groups: list[str]) -> None:
         config = load_config()
         config["collapsed_deck_groups"] = [
@@ -423,6 +450,7 @@ window.addEventListener("error", function (event) {
                 "article": article,
                 "markdownPath": str(saved["markdown"]),
                 "htmlPath": str(saved["html"]),
+                "articleCard": None,
             }
 
         def on_done(future: Any) -> None:
@@ -431,6 +459,17 @@ window.addEventListener("error", function (event) {
             except Exception as exc:
                 self._emit("error", {"message": str(exc)})
                 return
+            if bool(config.get("create_article_cards")):
+                try:
+                    result["articleCard"] = create_article_card(
+                        payload["name"],
+                        cards,
+                        result["article"],
+                        Path(result["markdownPath"]),
+                        Path(result["htmlPath"]),
+                    )
+                except Exception as exc:
+                    result["articleCardError"] = str(exc)
             self._emit(
                 "article",
                 result,
@@ -691,6 +730,14 @@ def api_settings_payload(config: dict[str, Any]) -> dict[str, Any]:
     }
 
 
+def article_card_settings_payload(config: dict[str, Any]) -> dict[str, Any]:
+    return {
+        "createArticleCards": bool(config.get("create_article_cards")),
+        "parentDeck": ARTICLE_PARENT_DECK,
+        "noteType": ARTICLE_NOTE_TYPE,
+    }
+
+
 def load_config() -> dict[str, Any]:
     config = DEFAULT_CONFIG.copy()
     loaded = mw.addonManager.getConfig(ADDON_PACKAGE) or {}
@@ -898,6 +945,149 @@ def save_article(
     markdown_path.write_text("\n".join(metadata) + article + "\n", encoding="utf-8")
     html_path.write_text(render_article_html(deck_name_value, cards, article), encoding="utf-8")
     return {"markdown": markdown_path, "html": html_path}
+
+
+def create_article_card(
+    source_deck_name: str,
+    cards: list[CandidateCard],
+    article: str,
+    markdown_path: Path,
+    html_path: Path,
+) -> dict[str, Any]:
+    if mw.col is None:
+        raise RuntimeError("No Anki collection is open.")
+
+    deck_name_value = article_deck_name(source_deck_name)
+    deck_id = get_or_create_deck_id(deck_name_value)
+    model = get_or_create_article_model()
+    note = mw.col.new_note(model)
+    title = article_card_title(source_deck_name)
+    values = {
+        "Date": time.strftime("%Y-%m-%d"),
+        "Source Deck": source_deck_name,
+        "Title": title,
+        "Article": article,
+        "Source Terms": "\n".join(card.term for card in cards if card.term),
+        "Markdown Path": str(markdown_path),
+        "HTML Path": str(html_path),
+    }
+    for field in ARTICLE_FIELDS:
+        note[field] = values.get(field, "")
+
+    add_note_to_deck(note, deck_id)
+    return {
+        "noteId": int(getattr(note, "id", 0) or 0),
+        "deckName": deck_name_value,
+        "noteType": ARTICLE_NOTE_TYPE,
+        "date": values["Date"],
+    }
+
+
+def article_deck_name(source_deck_name: str) -> str:
+    source = clean_text(source_deck_name).replace("::", "::")
+    return f"{ARTICLE_PARENT_DECK}::{source or 'Generated Articles'}"
+
+
+def article_card_title(source_deck_name: str) -> str:
+    return f"{time.strftime('%Y-%m-%d')} Reading - {source_deck_name}"
+
+
+def get_or_create_deck_id(deck_name_value: str) -> int:
+    decks = mw.col.decks
+    id_for_name = getattr(decks, "id_for_name", None)
+    if callable(id_for_name):
+        return int(id_for_name(deck_name_value))
+    return int(decks.id(deck_name_value))
+
+
+def get_or_create_article_model() -> Any:
+    models = mw.col.models
+    by_name = getattr(models, "by_name", None) or getattr(models, "byName", None)
+    model = by_name(ARTICLE_NOTE_TYPE) if callable(by_name) else None
+    if model is not None:
+        return model
+
+    model = models.new(ARTICLE_NOTE_TYPE)
+    for field_name in ARTICLE_FIELDS:
+        add_model_field(models, model, new_model_field(models, field_name))
+
+    template = new_model_template(models, "Article")
+    template["qfmt"] = """
+<section class="dairr-card">
+  <div class="dairr-date">{{Date}}</div>
+  <h1>{{Title}}</h1>
+  <div class="dairr-source">{{Source Deck}}</div>
+</section>
+"""
+    template["afmt"] = """
+{{FrontSide}}
+<hr id="answer">
+<article class="dairr-article">{{Article}}</article>
+<section class="dairr-terms">
+  <h2>Source Terms</h2>
+  <pre>{{Source Terms}}</pre>
+</section>
+"""
+    add_model_template(models, model, template)
+    css = """
+.card {
+  color: #28231e;
+  font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
+  line-height: 1.65;
+  text-align: left;
+}
+.dairr-date,
+.dairr-source {
+  color: #776d61;
+  font-size: 13px;
+}
+.dairr-card h1 {
+  font-size: 24px;
+  margin: 8px 0;
+}
+.dairr-article {
+  font-size: 17px;
+  margin-top: 16px;
+}
+.dairr-terms pre {
+  white-space: pre-wrap;
+}
+"""
+    model["css"] = css
+    models.add(model)
+    return model
+
+
+def new_model_field(models: Any, field_name: str) -> Any:
+    new_field = getattr(models, "new_field", None) or getattr(models, "newField", None)
+    return new_field(field_name)
+
+
+def add_model_field(models: Any, model: Any, field: Any) -> None:
+    add_field = getattr(models, "add_field", None) or getattr(models, "addField", None)
+    add_field(model, field)
+
+
+def new_model_template(models: Any, template_name: str) -> Any:
+    new_template = getattr(models, "new_template", None) or getattr(models, "newTemplate", None)
+    return new_template(template_name)
+
+
+def add_model_template(models: Any, model: Any, template: Any) -> None:
+    add_template = getattr(models, "add_template", None) or getattr(models, "addTemplate", None)
+    add_template(model, template)
+
+
+def add_note_to_deck(note: Any, deck_id: int) -> None:
+    add_note = getattr(mw.col, "add_note", None)
+    if callable(add_note):
+        add_note(note, deck_id)
+        return
+    try:
+        note.model()["did"] = deck_id
+    except Exception:
+        pass
+    mw.col.addNote(note)
 
 
 def render_article_html(deck_name_value: str, cards: list[CandidateCard], article: str) -> str:

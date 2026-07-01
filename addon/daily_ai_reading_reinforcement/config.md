@@ -27,6 +27,9 @@
 `deck_field_config`
 : Saved field selections for each deck. This is managed by the add-on UI.
 
+`create_article_cards`
+: When true, each generated article is also saved as an Anki note under `Daily AI Reading Reinforcement::<source deck>`.
+
 `collapsed_deck_groups`
 : Saved collapsed parent deck paths. This is managed by the add-on UI.
 

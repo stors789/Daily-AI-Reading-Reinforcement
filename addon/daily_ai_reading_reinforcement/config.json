@@ -8,6 +8,7 @@
   "language": "English",
   "prompt_template": "",
   "deck_field_config": {},
+  "create_article_cards": false,
   "collapsed_deck_groups": [],
   "ui_language": "zh",
   "prompt_presets": [
