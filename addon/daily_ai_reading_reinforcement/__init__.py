@@ -1177,8 +1177,24 @@ def get_or_create_deck_id(deck_name_value: str) -> int:
     decks = mw.col.decks
     id_for_name = getattr(decks, "id_for_name", None)
     if callable(id_for_name):
-        return int(id_for_name(deck_name_value))
-    return int(decks.id(deck_name_value))
+        existing_id = id_for_name(deck_name_value)
+        if existing_id is not None:
+            return int(existing_id)
+
+    legacy_id = getattr(decks, "id", None)
+    if callable(legacy_id):
+        deck_id = legacy_id(deck_name_value)
+        if deck_id is not None:
+            return int(deck_id)
+
+    add_normal_deck = getattr(decks, "add_normal_deck_with_name", None)
+    if callable(add_normal_deck):
+        deck = add_normal_deck(deck_name_value)
+        deck_id = getattr(deck, "id", None)
+        if deck_id is not None:
+            return int(deck_id)
+
+    raise RuntimeError(f"Could not create article card deck: {deck_name_value}")
 
 
 def get_or_create_article_model() -> Any:
