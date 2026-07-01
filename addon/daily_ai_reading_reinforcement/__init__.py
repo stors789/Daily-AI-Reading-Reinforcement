@@ -108,7 +108,7 @@ DEFAULT_CONFIG = {
     "model": "gpt-4.1-mini",
     "selected_provider_profile": "openai",
     "temperature": 0.7,
-    "max_tokens": 1400,
+    "max_tokens": 30000,
     "prompt_template": "",
     "deck_field_config": {},
     "create_article_cards": False,
@@ -221,6 +221,7 @@ window.addEventListener("error", function (event) {
                 self._generate_article(
                     str(payload.get("deckId", "")),
                     str(payload.get("presetId", "")),
+                    payload.get("cardIds"),
                 )
             else:
                 self._emit("error", {"message": f"Unknown command: {action}"})
@@ -467,7 +468,9 @@ window.addEventListener("error", function (event) {
         ]
         mw.addonManager.writeConfig(ADDON_PACKAGE, config)
 
-    def _generate_article(self, deck_id: str, preset_id: str) -> None:
+    def _generate_article(
+        self, deck_id: str, preset_id: str, selected_card_ids: Any = None
+    ) -> None:
         payload = self.deck_payloads.get(deck_id)
         if not payload:
             self._emit("error", {"message": "Select a deck with study activity first."})
@@ -477,6 +480,15 @@ window.addEventListener("error", function (event) {
         if not cards:
             self._emit("error", {"message": "This deck has no candidate cards today."})
             return
+        if selected_card_ids is not None:
+            selected_ids = card_id_set(selected_card_ids)
+            if not selected_ids:
+                self._emit("error", {"message": "Choose at least one card for generation."})
+                return
+            cards = [card for card in cards if card.cid in selected_ids]
+            if not cards:
+                self._emit("error", {"message": "Selected cards are no longer available."})
+                return
 
         config = load_config()
         preset = prompt_preset_by_id(config, preset_id)
@@ -751,11 +763,46 @@ def clean_max_words(value: Any) -> str:
     text = clean_text(value)
     if not text:
         return ""
-    match = re.search(r"\d+", text)
-    if not match:
+    numbers = [int(match) for match in re.findall(r"\d+", text)]
+    if not numbers:
         return ""
-    number = max(50, min(5000, int(match.group(0))))
-    return str(number)
+    first = clamp_word_count(numbers[0])
+    if len(numbers) == 1:
+        return str(first)
+    second = clamp_word_count(numbers[1])
+    low, high = sorted((first, second))
+    if low == high:
+        return str(high)
+    return f"{low}-{high}"
+
+
+def clamp_word_count(value: int) -> int:
+    return max(50, min(10000, int(value)))
+
+
+def word_range_bounds(value: Any) -> tuple[int, int] | None:
+    cleaned = clean_max_words(value)
+    if not cleaned:
+        return None
+    numbers = [int(match) for match in re.findall(r"\d+", cleaned)]
+    if not numbers:
+        return None
+    if len(numbers) == 1:
+        return (numbers[0], numbers[0])
+    low, high = sorted((numbers[0], numbers[1]))
+    return (low, high)
+
+
+def card_id_set(value: Any) -> set[int]:
+    if not isinstance(value, list):
+        return set()
+    ids: set[int] = set()
+    for item in value:
+        try:
+            ids.add(int(item))
+        except (TypeError, ValueError):
+            continue
+    return ids
 
 
 def clean_provider_id(value: Any) -> str:
@@ -890,11 +937,15 @@ def build_prompt(
     )
     difficulty = str(preset.get("difficulty") or "appropriate for the learner")
     max_words = str(preset.get("max_words") or "")
-    length_instruction = (
-        f"Do not exceed about {max_words} words or characters."
-        if max_words
-        else "No fixed length limit."
-    )
+    bounds = word_range_bounds(max_words)
+    if bounds and bounds[0] != bounds[1]:
+        length_instruction = (
+            f"Write between about {bounds[0]} and {bounds[1]} words or characters."
+        )
+    elif bounds:
+        length_instruction = f"Write about {bounds[0]} words or characters."
+    else:
+        length_instruction = "No fixed length limit."
     instructions = str(preset.get("instructions") or "No extra formatting instructions.")
     card_lines = []
     for index, card in enumerate(cards[:80], start=1):
@@ -967,12 +1018,7 @@ def writing_language_for_ui(ui_language: str) -> str:
 
 
 def max_tokens_for_request(config: dict[str, Any], preset: dict[str, str]) -> int:
-    configured = int(config.get("max_tokens") or DEFAULT_CONFIG["max_tokens"])
-    max_words = clean_max_words(preset.get("max_words"))
-    if not max_words:
-        return configured
-    suggested = max(300, int(max_words) * 3)
-    return min(configured, suggested)
+    return int(config.get("max_tokens") or DEFAULT_CONFIG["max_tokens"])
 
 
 def fetch_openai_compatible_models(base_url: str, api_key: str) -> list[str]:

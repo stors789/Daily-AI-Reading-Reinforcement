@@ -152,6 +152,14 @@ h2 {
   text-align: right;
 }
 
+.card-heading-actions {
+  align-items: flex-end;
+  display: grid;
+  gap: 8px;
+  justify-items: end;
+  min-width: 0;
+}
+
 .button-row {
   display: flex;
   flex: 1 1 auto;
@@ -159,6 +167,15 @@ h2 {
   gap: 8px;
   justify-content: flex-end;
   min-width: 0;
+}
+
+.compact-buttons {
+  flex: 0 1 auto;
+}
+
+.compact-buttons .secondary-button {
+  min-height: 30px;
+  padding: 0 10px;
 }
 
 .deck-list,
@@ -181,6 +198,28 @@ h2 {
   cursor: pointer;
   margin-bottom: 8px;
   padding: 10px;
+}
+
+.card-item {
+  align-items: flex-start;
+  display: flex;
+  gap: 10px;
+}
+
+.card-item input {
+  accent-color: var(--accent);
+  flex: 0 0 auto;
+  margin-top: 3px;
+}
+
+.card-content {
+  display: grid;
+  min-width: 0;
+}
+
+.card-item.selected {
+  background: #f4f8f6;
+  border-color: rgba(47, 111, 115, 0.5);
 }
 
 .field-item {
@@ -239,6 +278,12 @@ h2 {
   overflow-wrap: anywhere;
 }
 
+.card-term,
+.card-meta {
+  display: block;
+  min-width: 0;
+}
+
 .deck-name {
   align-items: flex-start;
   display: flex;
@@ -260,6 +305,10 @@ h2 {
   font-size: 12px;
   gap: 6px 8px;
   margin-top: 6px;
+}
+
+.card-fields {
+  display: block;
 }
 
 .tag {

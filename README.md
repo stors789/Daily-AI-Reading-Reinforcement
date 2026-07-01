@@ -59,7 +59,7 @@ The add-on uses an OpenAI-compatible chat completions API:
   "model": "gpt-4.1-mini",
   "selected_provider_profile": "openai",
   "temperature": 0.7,
-  "max_tokens": 1400,
+  "max_tokens": 30000,
   "prompt_template": "",
   "deck_field_config": {},
   "create_article_cards": false,

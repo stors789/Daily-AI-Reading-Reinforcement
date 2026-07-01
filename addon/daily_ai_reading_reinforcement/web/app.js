@@ -6,6 +6,7 @@
     fields: [],
     selectedFields: [],
     currentCards: [],
+    selectedCardIds: new Set(),
     promptPresets: [],
     selectedPromptPresetId: "default",
     uiLanguage: "zh",
@@ -17,7 +18,7 @@
       baseUrl: "https://api.openai.com/v1",
       model: "gpt-4.1-mini",
       temperature: 0.7,
-      maxTokens: 1400,
+      maxTokens: 30000,
       hasApiKey: false,
     },
     articleCardSettings: {
@@ -36,6 +37,9 @@
     deckList: document.getElementById("deckList"),
     cardList: document.getElementById("cardList"),
     cardCount: document.getElementById("cardCount"),
+    selectFailedCardsButton: document.getElementById("selectFailedCardsButton"),
+    selectNewCardsButton: document.getElementById("selectNewCardsButton"),
+    clearCardSelectionButton: document.getElementById("clearCardSelectionButton"),
     dayWindow: document.getElementById("dayWindow"),
     decksHeading: document.getElementById("decksHeading"),
     fieldsHeading: document.getElementById("fieldsHeading"),
@@ -111,6 +115,7 @@
       noCards: "这个卡组今天没有候选卡片。",
       noFields: "没有可用字段。",
       chooseField: "请至少选择一个 AI 输入字段。",
+      chooseCard: "请至少选择一张卡片。",
       fieldSaved: "字段选择已保存。",
       presetSaved: "提示词预设已保存。",
       presetUpdated: "提示词预设已更新。",
@@ -124,6 +129,10 @@
       fallbackTitle: "阅读文章",
       selectDeckShort: "选择卡组",
       candidateCards: "张候选卡",
+      selectedCards: "已选",
+      selectFailedCards: "全选失败",
+      selectNewCards: "全选新学",
+      clearCardSelection: "取消选择",
       cardsUnit: "张卡",
       newCount: "新学",
       failedCount: "失败",
@@ -134,7 +143,7 @@
       readerNativeLanguage: "阅读者母语",
       articleLanguage: "生成文章语言",
       difficulty: "难度",
-      maxWords: "最大字数",
+      maxWords: "字数范围",
       instructions: "格式要求",
       provider: "服务商",
       baseUrl: "Base URL",
@@ -186,6 +195,7 @@
       noCards: "No candidate cards in this deck today.",
       noFields: "No fields found.",
       chooseField: "Choose at least one field for AI input.",
+      chooseCard: "Choose at least one card.",
       fieldSaved: "Field selection saved.",
       presetSaved: "Prompt preset saved.",
       presetUpdated: "Prompt presets updated.",
@@ -199,6 +209,10 @@
       fallbackTitle: "Reading Article",
       selectDeckShort: "Select a deck",
       candidateCards: "candidate cards",
+      selectedCards: "selected",
+      selectFailedCards: "All failed",
+      selectNewCards: "All new",
+      clearCardSelection: "Clear",
       cardsUnit: "cards",
       newCount: "new",
       failedCount: "failed",
@@ -209,7 +223,7 @@
       readerNativeLanguage: "Reader Native Language",
       articleLanguage: "Article Language",
       difficulty: "Difficulty",
-      maxWords: "Max words",
+      maxWords: "Word range",
       instructions: "Formatting requirements",
       provider: "Provider",
       baseUrl: "Base URL",
@@ -261,6 +275,7 @@
       noCards: "このデッキには今日の候補カードがありません。",
       noFields: "利用できるフィールドがありません。",
       chooseField: "AI に渡すフィールドを 1 つ以上選んでください。",
+      chooseCard: "カードを 1 枚以上選んでください。",
       fieldSaved: "フィールド設定を保存しました。",
       presetSaved: "プロンプトプリセットを保存しました。",
       presetUpdated: "プロンプトプリセットを更新しました。",
@@ -274,6 +289,10 @@
       fallbackTitle: "読解文章",
       selectDeckShort: "デッキを選択",
       candidateCards: "候補カード",
+      selectedCards: "選択中",
+      selectFailedCards: "失敗を全選択",
+      selectNewCards: "新規を全選択",
+      clearCardSelection: "選択解除",
       cardsUnit: "カード",
       newCount: "新規",
       failedCount: "失敗",
@@ -284,7 +303,7 @@
       readerNativeLanguage: "読者の母語",
       articleLanguage: "生成記事の言語",
       difficulty: "難度",
-      maxWords: "最大文字数",
+      maxWords: "文字数範囲",
       instructions: "フォーマット要件",
       provider: "プロバイダー",
       baseUrl: "Base URL",
@@ -342,6 +361,9 @@
     el.selectAllFieldsButton.textContent = tr("all");
     el.invertFieldsButton.textContent = tr("invert");
     el.saveFieldsButton.textContent = tr("save");
+    el.selectFailedCardsButton.textContent = tr("selectFailedCards");
+    el.selectNewCardsButton.textContent = tr("selectNewCards");
+    el.clearCardSelectionButton.textContent = tr("clearCardSelection");
     el.generateButton.textContent = tr("generate");
     el.newPresetButton.textContent = tr("new");
     el.savePresetButton.textContent = tr("save");
@@ -367,9 +389,7 @@
     el.uiLanguageSelect.value = state.uiLanguage;
     if (el.returnToSelectionButton) el.returnToSelectionButton.textContent = tr("returnToSelection");
     renderModelOptions();
-    el.cardCount.textContent = state.selectedDeckId
-      ? el.cardCount.textContent
-      : tr("selectDeckShort");
+    updateCardSelectionControls();
     
     if (state.decks.length) renderDecks();
     if (state.selectedDeckId) renderFields();
@@ -489,11 +509,12 @@
 
   function selectDeck(deckId) {
     state.selectedDeckId = deckId;
-    el.generateButton.disabled = false;
     el.saveFieldsButton.disabled = true;
     state.fields = [];
     state.selectedFields = [];
     state.currentCards = [];
+    state.selectedCardIds = new Set();
+    updateGenerateButton();
     renderFields();
     el.articleOutput.innerHTML = "";
     el.savedPaths.innerHTML = "";
@@ -562,14 +583,17 @@
 
   function renderCards(cards) {
     state.currentCards = cards || [];
-    el.cardCount.textContent = `${cards.length} ${tr("candidateCards")}`;
-    if (!cards.length) {
+    updateCardSelectionControls();
+    if (!state.currentCards.length) {
       el.cardList.innerHTML = `<div class="empty">${tr("noCards")}</div>`;
       return;
     }
 
-    el.cardList.innerHTML = cards
+    el.cardList.innerHTML = state.currentCards
       .map((card) => {
+        const cardId = String(card.cid);
+        const checked = state.selectedCardIds.has(cardId) ? " checked" : "";
+        const selected = checked ? " selected" : "";
         const tags = [
           card.is_new ? `<span class="tag">${tr("newCount")}</span>` : "",
           card.is_failed ? `<span class="tag failed">${tr("failedCount")}</span>` : "",
@@ -583,14 +607,28 @@
           .map((entry) => `${escapeHtml(entry[0])}: ${escapeHtml(entry[1])}`)
           .join("<br>");
         return `
-          <div class="card-item">
-            <div class="card-term">${escapeHtml(card.term)}</div>
-            <div class="card-meta">${tags}</div>
-            ${fieldText ? `<div class="card-meta">${fieldText}</div>` : ""}
-          </div>
+          <label class="card-item${selected}">
+            <input type="checkbox" value="${escapeHtml(cardId)}"${checked}>
+            <span class="card-content">
+              <span class="card-term">${escapeHtml(card.term)}</span>
+              <span class="card-meta">${tags}</span>
+              ${fieldText ? `<span class="card-meta card-fields">${fieldText}</span>` : ""}
+            </span>
+          </label>
         `;
       })
       .join("");
+    el.cardList.querySelectorAll("input").forEach((input) => {
+      input.addEventListener("change", () => {
+        if (input.checked) {
+          state.selectedCardIds.add(input.value);
+        } else {
+          state.selectedCardIds.delete(input.value);
+        }
+        input.closest(".card-item").classList.toggle("selected", input.checked);
+        updateCardSelectionControls();
+      });
+    });
   }
 
   function renderFields() {
@@ -622,18 +660,46 @@
         state.selectedFields = Array.from(el.fieldList.querySelectorAll("input:checked"))
           .map((item) => item.value);
         el.saveFieldsButton.disabled = state.selectedFields.length === 0;
-        el.generateButton.disabled = state.selectedFields.length === 0;
+        updateGenerateButton();
       });
     });
     setFieldButtons(true);
     el.saveFieldsButton.disabled = state.selectedFields.length === 0;
-    el.generateButton.disabled = state.selectedFields.length === 0;
+    updateGenerateButton();
   }
 
   function setFieldButtons(enabled) {
     el.selectAllFieldsButton.disabled = !enabled;
     el.invertFieldsButton.disabled = !enabled;
     el.saveFieldsButton.disabled = !enabled;
+  }
+
+  function updateGenerateButton() {
+    el.generateButton.disabled = !state.selectedDeckId
+      || state.selectedFields.length === 0
+      || state.selectedCardIds.size === 0;
+  }
+
+  function updateCardSelectionControls() {
+    const total = state.currentCards.length;
+    const selected = state.selectedCardIds.size;
+    el.cardCount.textContent = state.selectedDeckId
+      ? `${selected}/${total} ${tr("selectedCards")}`
+      : tr("selectDeckShort");
+    const hasCards = total > 0;
+    el.selectFailedCardsButton.disabled = !hasCards;
+    el.selectNewCardsButton.disabled = !hasCards;
+    el.clearCardSelectionButton.disabled = !hasCards || selected === 0;
+    updateGenerateButton();
+  }
+
+  function selectCardsByPredicate(predicate) {
+    state.selectedCardIds = new Set(
+      state.currentCards
+        .filter(predicate)
+        .map((card) => String(card.cid))
+    );
+    renderCards(state.currentCards);
   }
 
   function renderPresets() {
@@ -826,7 +892,7 @@
       </details>
     `;
     setStatus("savedArticle", false, { deckName: payload.deckName });
-    el.generateButton.disabled = false;
+    updateGenerateButton();
     setReadingMode(true);
   }
 
@@ -854,7 +920,7 @@
         state.apiSettings = payload.apiSettings || state.apiSettings;
         state.articleCardSettings = payload.articleCardSettings || state.articleCardSettings;
         el.dayWindow.textContent = `${formatTime(payload.dayStart)} - ${formatTime(payload.dayEnd)}`;
-        el.generateButton.disabled = !state.selectedDeckId;
+        updateGenerateButton();
         applyI18n();
         renderDecks();
         renderPresets();
@@ -865,8 +931,10 @@
       if (event === "deckCards") {
         state.fields = payload.fields || [];
         state.selectedFields = payload.selectedFields || [];
+        state.currentCards = payload.cards || [];
+        state.selectedCardIds = new Set(state.currentCards.map((card) => String(card.cid)));
         renderFields();
-        renderCards(payload.cards || []);
+        renderCards(state.currentCards);
         setStatus("ready");
       }
       if (event === "fieldConfigSaved") {
@@ -905,7 +973,7 @@
         renderArticle(payload);
       }
       if (event === "error") {
-        el.generateButton.disabled = !state.selectedDeckId;
+        updateGenerateButton();
         el.fetchModelsButton.disabled = false;
         setStatus("error", true, payload.message ? { message: payload.message } : {});
       }
@@ -918,10 +986,18 @@
       setStatus("chooseField", true);
       return;
     }
+    if (!state.selectedCardIds.size) {
+      setStatus("chooseCard", true);
+      return;
+    }
     el.articleOutput.innerHTML = "";
     el.savedPaths.innerHTML = "";
     setReadingMode(false);
-    send("generate", { deckId: state.selectedDeckId, presetId: state.selectedPromptPresetId });
+    send("generate", {
+      deckId: state.selectedDeckId,
+      presetId: state.selectedPromptPresetId,
+      cardIds: Array.from(state.selectedCardIds),
+    });
   });
 
   el.selectAllFieldsButton.addEventListener("click", () => {
@@ -932,6 +1008,19 @@
   el.invertFieldsButton.addEventListener("click", () => {
     state.selectedFields = state.fields.filter((field) => !state.selectedFields.includes(field));
     renderFields();
+  });
+
+  el.selectFailedCardsButton.addEventListener("click", () => {
+    selectCardsByPredicate((card) => Boolean(card.is_failed));
+  });
+
+  el.selectNewCardsButton.addEventListener("click", () => {
+    selectCardsByPredicate((card) => Boolean(card.is_new));
+  });
+
+  el.clearCardSelectionButton.addEventListener("click", () => {
+    state.selectedCardIds = new Set();
+    renderCards(state.currentCards);
   });
 
   el.saveFieldsButton.addEventListener("click", () => {
@@ -1062,12 +1151,12 @@
     state.fields = [];
     state.selectedFields = [];
     state.currentCards = [];
-    el.generateButton.disabled = true;
+    state.selectedCardIds = new Set();
     el.saveFieldsButton.disabled = true;
     setFieldButtons(false);
     el.cardList.innerHTML = "";
     renderFields();
-    el.cardCount.textContent = tr("selectDeckShort");
+    updateCardSelectionControls();
     send("load");
   });
 

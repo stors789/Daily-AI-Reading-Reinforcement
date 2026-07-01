@@ -86,7 +86,14 @@
     <section class="panel card-panel">
       <div class="panel-heading">
         <h2 id="cardsHeading">Cards</h2>
-        <span class="muted" id="cardCount">选择卡组</span>
+        <div class="card-heading-actions">
+          <span class="muted" id="cardCount">选择卡组</span>
+          <div class="button-row compact-buttons">
+            <button class="secondary-button" id="selectFailedCardsButton" disabled>Failed</button>
+            <button class="secondary-button" id="selectNewCardsButton" disabled>New</button>
+            <button class="secondary-button" id="clearCardSelectionButton" disabled>Clear</button>
+          </div>
+        </div>
       </div>
       <div class="card-list" id="cardList"></div>
     </section>
@@ -111,7 +118,7 @@
           <input id="presetReaderNativeLanguage" placeholder="Reader Native Language">
           <input id="presetArticleLanguage" placeholder="Article Language">
           <input id="presetDifficulty" placeholder="Difficulty">
-          <input id="presetMaxWords" placeholder="Max words">
+          <input id="presetMaxWords" placeholder="Word range">
         </div>
         <textarea id="presetInstructions" rows="3" placeholder="Formatting requirements"></textarea>
         <label class="inline-check article-card-toggle">
