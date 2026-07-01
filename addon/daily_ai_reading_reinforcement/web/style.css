@@ -137,14 +137,21 @@ h2 {
 }
 
 .panel-heading {
-  align-items: flex-start;
+  align-items: center;
   border-bottom: 1px solid var(--line);
   display: flex;
+  flex-wrap: wrap;
   gap: 12px;
   justify-content: space-between;
   min-height: 54px;
   min-width: 0;
   padding: 12px;
+}
+
+.panel-heading h2 {
+  flex-shrink: 0;
+  white-space: nowrap;
+  word-break: keep-all;
 }
 
 .panel-heading .muted {
