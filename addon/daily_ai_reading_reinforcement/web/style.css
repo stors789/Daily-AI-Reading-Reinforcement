@@ -408,7 +408,7 @@ h2 {
   grid-template-columns: repeat(2, minmax(0, 1fr));
 }
 
-.preset-editor input,
+.preset-editor input:not([type="checkbox"]),
 .preset-editor select,
 .preset-editor textarea {
   background: var(--surface-strong);
@@ -429,7 +429,15 @@ h2 {
 
 .article-card-toggle {
   border-top: 1px solid var(--line);
+  min-height: 36px;
   padding-top: 10px;
+}
+
+.preset-editor .inline-check input[type="checkbox"] {
+  height: 16px;
+  min-height: 0;
+  padding: 0;
+  width: 16px;
 }
 
 .primary-button:disabled,
