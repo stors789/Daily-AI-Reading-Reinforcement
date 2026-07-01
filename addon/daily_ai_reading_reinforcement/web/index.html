@@ -47,6 +47,7 @@
           <label class="form-field">
             <span id="providerLabel">Provider</span>
             <select id="providerSelect"></select>
+            <div id="providerNotes" class="muted" style="margin-top: 4px; font-size: 11px; line-height: 1.4;"></div>
           </label>
           <label class="form-field">
             <span id="baseUrlLabel">Base URL</span>
@@ -92,7 +93,10 @@
     <section class="panel article-panel">
       <div class="panel-heading">
         <h2 id="articleHeading">Article</h2>
-        <button class="primary-button" id="generateButton" disabled>Generate</button>
+        <div class="button-row">
+          <button class="secondary-button" id="returnToSelectionButton" style="display: none;">Return to selection</button>
+          <button class="primary-button" id="generateButton" disabled>Generate</button>
+        </div>
       </div>
       <div class="preset-editor">
         <div class="preset-row">
@@ -103,7 +107,8 @@
         </div>
         <div class="preset-grid">
           <input id="presetName" placeholder="Preset name">
-          <input id="presetLanguage" placeholder="Language">
+          <input id="presetReaderNativeLanguage" placeholder="Reader Native Language">
+          <input id="presetArticleLanguage" placeholder="Article Language">
           <input id="presetDifficulty" placeholder="Difficulty">
           <input id="presetMaxWords" placeholder="Max words">
         </div>

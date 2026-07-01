@@ -5,6 +5,7 @@
     collapsedDeckGroups: new Set(),
     fields: [],
     selectedFields: [],
+    currentCards: [],
     promptPresets: [],
     selectedPromptPresetId: "default",
     uiLanguage: "zh",
@@ -22,6 +23,8 @@
       parentDeck: "Daily AI Reading Reinforcement",
       noteType: "Daily AI Reading Reinforcement Article",
     },
+    statusData: { key: "selectDeck", isError: false, params: {} },
+    readingMode: false,
   };
 
   const el = {
@@ -45,7 +48,9 @@
     fieldList: document.getElementById("fieldList"),
     presetSelect: document.getElementById("presetSelect"),
     presetName: document.getElementById("presetName"),
-    presetLanguage: document.getElementById("presetLanguage"),
+    presetReaderNativeLanguage: document.getElementById("presetReaderNativeLanguage"),
+    presetArticleLanguage: document.getElementById("presetArticleLanguage"),
+    returnToSelectionButton: document.getElementById("returnToSelectionButton"),
     presetDifficulty: document.getElementById("presetDifficulty"),
     presetMaxWords: document.getElementById("presetMaxWords"),
     presetInstructions: document.getElementById("presetInstructions"),
@@ -53,6 +58,7 @@
     savePresetButton: document.getElementById("savePresetButton"),
     deletePresetButton: document.getElementById("deletePresetButton"),
     providerSelect: document.getElementById("providerSelect"),
+    providerNotes: document.getElementById("providerNotes"),
     providerLabel: document.getElementById("providerLabel"),
     baseUrlLabel: document.getElementById("baseUrlLabel"),
     modelLabel: document.getElementById("modelLabel"),
@@ -91,6 +97,8 @@
       generate: "生成",
       new: "新建",
       delete: "删除",
+      generating: "生成中...",
+      returnToSelection: "退出阅读模式",
       loadingDay: "正在读取 Anki 日期...",
       selectDeck: "选择一个今天学过的卡组。",
       noStudy: "这个 Anki 日没有找到学习记录。",
@@ -113,10 +121,11 @@
       childDecks: "个子卡组",
       expandCollapse: "展开或折叠",
       presetName: "预设名称",
-      language: "写作语言",
+      readerNativeLanguage: "阅读者母语",
+      articleLanguage: "生成文章语言",
       difficulty: "难度",
       maxWords: "最大字数",
-      instructions: "额外提示词要求",
+      instructions: "格式要求",
       provider: "服务商",
       baseUrl: "Base URL",
       model: "模型",
@@ -151,6 +160,8 @@
       generate: "Generate",
       new: "New",
       delete: "Delete",
+      generating: "Generating...",
+      returnToSelection: "Return to selection",
       loadingDay: "Loading Anki day...",
       selectDeck: "Choose a deck studied today.",
       noStudy: "No study activity found for this Anki day.",
@@ -173,10 +184,11 @@
       childDecks: "child decks",
       expandCollapse: "Expand or collapse",
       presetName: "Preset name",
-      language: "Language",
+      readerNativeLanguage: "Reader Native Language",
+      articleLanguage: "Article Language",
       difficulty: "Difficulty",
       maxWords: "Max words",
-      instructions: "Extra prompt instructions",
+      instructions: "Formatting requirements",
       provider: "Provider",
       baseUrl: "Base URL",
       model: "Model",
@@ -211,6 +223,8 @@
       generate: "生成",
       new: "新規",
       delete: "削除",
+      generating: "生成中...",
+      returnToSelection: "選択に戻る",
       loadingDay: "Anki の日付を読み込み中...",
       selectDeck: "今日学習したデッキを選んでください。",
       noStudy: "この Anki 日には学習記録がありません。",
@@ -233,10 +247,11 @@
       childDecks: "子デッキ",
       expandCollapse: "展開または折りたたみ",
       presetName: "プリセット名",
-      language: "執筆言語",
+      readerNativeLanguage: "読者の母語",
+      articleLanguage: "生成記事の言語",
       difficulty: "難度",
       maxWords: "最大文字数",
-      instructions: "追加プロンプト指示",
+      instructions: "フォーマット要件",
       provider: "プロバイダー",
       baseUrl: "Base URL",
       model: "モデル",
@@ -264,6 +279,18 @@
       || key;
   }
 
+  function renderStatus() {
+    let msg = tr(state.statusData.key);
+    if (state.statusData.params.deckName) {
+      msg = msg + escapeHtml(state.statusData.params.deckName) + ".";
+    }
+    if (state.statusData.params.message) {
+      msg = state.statusData.params.message; // fallback for raw message errors
+    }
+    el.status.innerHTML = msg;
+    el.status.classList.toggle("error", state.statusData.isError);
+  }
+
   function applyI18n() {
     el.eyebrowText.textContent = tr("eyebrow");
     el.titleText.textContent = tr("title");
@@ -281,7 +308,8 @@
     el.savePresetButton.textContent = tr("save");
     el.deletePresetButton.textContent = tr("delete");
     el.presetName.placeholder = tr("presetName");
-    el.presetLanguage.placeholder = tr("language");
+    el.presetReaderNativeLanguage.placeholder = tr("readerNativeLanguage");
+    el.presetArticleLanguage.placeholder = tr("articleLanguage");
     el.presetDifficulty.placeholder = tr("difficulty");
     el.presetMaxWords.placeholder = tr("maxWords");
     el.presetInstructions.placeholder = tr("instructions");
@@ -297,6 +325,12 @@
     el.apiKeyInput.placeholder = state.apiSettings.hasApiKey ? tr("enterNewKey") : "";
     el.apiKeyStatus.textContent = state.apiSettings.hasApiKey ? tr("keySaved") : tr("noKey");
     el.uiLanguageSelect.value = state.uiLanguage;
+    if (el.returnToSelectionButton) el.returnToSelectionButton.textContent = tr("returnToSelection");
+    
+    if (state.decks.length) renderDecks();
+    if (state.selectedDeckId) renderFields();
+    if (state.selectedDeckId) renderCards(state.currentCards);
+    renderStatus();
   }
 
   const bridgeQueue = [];
@@ -406,13 +440,15 @@
       item.addEventListener("click", () => {
         state.selectedDeckId = item.dataset.deckId;
         el.generateButton.disabled = false;
+    setReadingMode(true);
         el.saveFieldsButton.disabled = true;
         state.fields = [];
         state.selectedFields = [];
         renderFields();
         el.articleOutput.innerHTML = "";
         el.savedPaths.innerHTML = "";
-        setStatus(tr("loadingCards"));
+        setReadingMode(false);
+        setStatus("loadingCards");
         renderDecks();
         send("selectDeck", { deckId: state.selectedDeckId });
       });
@@ -458,6 +494,7 @@
   }
 
   function renderCards(cards) {
+    state.currentCards = cards || [];
     el.cardCount.textContent = `${cards.length} ${tr("candidateCards")}`;
     if (!cards.length) {
       el.cardList.innerHTML = `<div class="empty">${tr("noCards")}</div>`;
@@ -487,17 +524,17 @@
         `;
       })
       .join("");
-    setStatus(tr("ready"));
+    setStatus("ready");
   }
 
   function renderFields() {
     if (!state.selectedDeckId) {
-      el.fieldList.innerHTML = `<div class="empty">${tr("selectDeckShort")}</div>`;
+      el.fieldList.innerHTML = `<div class="empty" id="fieldEmptyText">${tr("selectDeckShort")}</div>`;
       setFieldButtons(false);
       return;
     }
     if (!state.fields.length) {
-      el.fieldList.innerHTML = `<div class="empty">${tr("noFields")}</div>`;
+      el.fieldList.innerHTML = `<div class="empty" id="fieldEmptyText">${tr("noFields")}</div>`;
       setFieldButtons(false);
       return;
     }
@@ -535,7 +572,7 @@
 
   function renderPresets() {
     if (!state.promptPresets.length) {
-      state.promptPresets = [{ id: "default", name: "Default", language: "", difficulty: "", max_words: "", instructions: "" }];
+      state.promptPresets = [{ id: "default", name: "Default", reader_native_language: "", article_language: "", difficulty: "", max_words: "", instructions: "" }];
     }
     el.presetSelect.innerHTML = state.promptPresets
       .map((preset) => {
@@ -545,7 +582,8 @@
       .join("");
     const preset = currentPreset();
     el.presetName.value = preset.name || "";
-    el.presetLanguage.value = preset.language || "";
+    if(el.presetReaderNativeLanguage) el.presetReaderNativeLanguage.value = preset.reader_native_language || "";
+    if(el.presetArticleLanguage) el.presetArticleLanguage.value = preset.article_language || "";
     el.presetDifficulty.value = preset.difficulty || "";
     el.presetMaxWords.value = preset.max_words || "";
     el.presetInstructions.value = preset.instructions || "";
@@ -577,6 +615,16 @@
     el.createArticleCardsInput.checked = Boolean(state.articleCardSettings.createArticleCards);
     el.apiKeyStatus.textContent = state.apiSettings.hasApiKey ? tr("keySaved") : tr("noKey");
     el.apiKeyInput.placeholder = state.apiSettings.hasApiKey ? tr("enterNewKey") : "";
+    const profile = currentProviderProfile();
+    if (profile && profile.id !== "custom" && el.providerNotes) {
+      let notes = [];
+      if (profile.docs_url) notes.push(`<a href="${escapeHtml(profile.docs_url)}" target="_blank" style="color: inherit; text-decoration: underline;">Docs</a>`);
+      if (profile.auth_notes) notes.push(`Auth: ${escapeHtml(profile.auth_notes)}`);
+      if (profile.compatibility_notes) notes.push(`Notes: ${escapeHtml(profile.compatibility_notes)}`);
+      el.providerNotes.innerHTML = notes.join("<br>");
+    } else if (el.providerNotes) {
+      el.providerNotes.innerHTML = "";
+    }
   }
 
   function currentProviderProfile() {
@@ -586,12 +634,12 @@
   function currentPreset() {
     return state.promptPresets.find((preset) => preset.id === state.selectedPromptPresetId)
       || state.promptPresets[0]
-      || { id: "default", name: "Default", language: "", difficulty: "", max_words: "", instructions: "" };
+      || { id: "default", name: "Default", reader_native_language: "", article_language: "", difficulty: "", max_words: "", instructions: "" };
   }
 
-  function setStatus(message, isError = false) {
-    el.status.textContent = message;
-    el.status.classList.toggle("error", isError);
+  function setStatus(key, isError = false, params = {}) {
+    state.statusData = { key, isError, params };
+    renderStatus();
   }
 
   function renderArticle(payload) {
@@ -613,8 +661,20 @@
       ${articleCardLine}
       ${articleCardErrorLine}
     `;
-    setStatus(`${tr("savedArticle")}${payload.deckName}.`);
+    setStatus("savedArticle", false, { deckName: payload.deckName });
     el.generateButton.disabled = false;
+    setReadingMode(true);
+  }
+
+  function setReadingMode(active) {
+    state.readingMode = active;
+    document.body.classList.toggle("reading-mode", active);
+  }
+
+  if (el.returnToSelectionButton) {
+    el.returnToSelectionButton.addEventListener("click", () => {
+      setReadingMode(false);
+    });
   }
 
   window.DAIRR = {
@@ -635,7 +695,7 @@
         renderDecks();
         renderPresets();
         renderApiSettings();
-        setStatus(state.decks.length ? tr("selectDeck") : tr("noStudy"));
+        setStatus(state.decks.length ? "selectDeck" : "noStudy");
       }
       if (event === "deckCards") {
         state.fields = payload.fields || [];
@@ -646,35 +706,35 @@
       if (event === "fieldConfigSaved") {
         state.selectedFields = payload.selectedFields || state.selectedFields;
         renderFields();
-        setStatus(tr("fieldSaved"));
+        setStatus("fieldSaved");
       }
       if (event === "generating") {
         el.generateButton.disabled = true;
-        setStatus(payload.message || "Generating...");
+        setStatus("generating", false, payload.message ? { message: payload.message } : {});
       }
       if (event === "promptPresets") {
         state.promptPresets = payload.promptPresets || [];
         state.selectedPromptPresetId = payload.selectedPromptPresetId || "default";
         renderPresets();
-        setStatus(tr("presetUpdated"));
+        setStatus("presetUpdated");
       }
       if (event === "apiSettingsSaved") {
         state.apiSettings = payload.apiSettings || state.apiSettings;
         renderApiSettings();
         applyI18n();
-        setStatus(tr("apiSettingsSaved"));
+        setStatus("apiSettingsSaved");
       }
       if (event === "articleCardSettingsSaved") {
         state.articleCardSettings = payload.articleCardSettings || state.articleCardSettings;
         renderApiSettings();
-        setStatus(tr("articleCardSettingSaved"));
+        setStatus("articleCardSettingSaved");
       }
       if (event === "article") {
         renderArticle(payload);
       }
       if (event === "error") {
         el.generateButton.disabled = !state.selectedDeckId;
-        setStatus(payload.message || "Something went wrong.", true);
+        setStatus("error", true, payload.message ? { message: payload.message } : {});
       }
     },
   };
@@ -682,11 +742,12 @@
   el.generateButton.addEventListener("click", () => {
     if (!state.selectedDeckId) return;
     if (!state.selectedFields.length) {
-      setStatus(tr("chooseField"), true);
+      setStatus("chooseField", true);
       return;
     }
     el.articleOutput.innerHTML = "";
     el.savedPaths.innerHTML = "";
+    setReadingMode(false);
     send("generate", { deckId: state.selectedDeckId, presetId: state.selectedPromptPresetId });
   });
 
@@ -720,7 +781,7 @@
     renderDecks();
     renderFields();
     send("saveUiLanguage", { uiLanguage: state.uiLanguage });
-    setStatus(tr("selectDeck"));
+    setStatus("selectDeck");
   });
 
   el.newPresetButton.addEventListener("click", () => {
@@ -728,7 +789,8 @@
     state.promptPresets.push({
       id: state.selectedPromptPresetId,
       name: "New Preset",
-      language: "",
+      reader_native_language: "",
+      article_language: "",
       difficulty: "",
       max_words: "",
       instructions: "",
@@ -741,7 +803,8 @@
       preset: {
         id: state.selectedPromptPresetId,
         name: el.presetName.value,
-        language: el.presetLanguage.value,
+        reader_native_language: el.presetReaderNativeLanguage ? el.presetReaderNativeLanguage.value : "",
+        article_language: el.presetArticleLanguage ? el.presetArticleLanguage.value : "",
         difficulty: el.presetDifficulty.value,
         max_words: el.presetMaxWords.value,
         instructions: el.presetInstructions.value,
@@ -761,6 +824,7 @@
       el.baseUrlInput.value = profile.base_url || "";
       el.modelInput.value = profile.model || "";
     }
+    renderApiSettings();
   });
 
   el.saveApiSettingsButton.addEventListener("click", () => {

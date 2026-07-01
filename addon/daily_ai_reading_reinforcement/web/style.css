@@ -500,3 +500,27 @@ h2 {
     grid-template-columns: 1fr;
   }
 }
+
+
+/* Reading Mode */
+.reading-mode .left-stack,
+.reading-mode .card-panel {
+  display: none;
+}
+
+.reading-mode .workspace {
+  grid-template-columns: 1fr;
+  max-width: 900px;
+}
+
+.reading-mode .article-panel {
+  min-height: 80vh;
+}
+
+.reading-mode #returnToSelectionButton {
+  display: inline-flex !important;
+}
+
+.reading-mode .preset-editor {
+  display: none;
+}

@@ -43,31 +43,61 @@ PROVIDER_PROFILES = [
         "id": "openai",
         "name": "OpenAI",
         "base_url": "https://api.openai.com/v1",
-        "model": "gpt-4.1-mini",
+        "chat_completions_path": "/chat/completions",
+        "default_model": "gpt-4o-mini",
+        "model": "gpt-4o-mini",
+        "docs_url": "https://platform.openai.com/docs/api-reference/chat",
+        "verified_at": "2026-07-01",
+        "auth_notes": "Bearer token with sk-...",
+        "compatibility_notes": "Official OpenAI API.",
     },
     {
         "id": "deepseek",
         "name": "DeepSeek",
         "base_url": "https://api.deepseek.com",
+        "chat_completions_path": "/chat/completions",
+        "default_model": "deepseek-chat",
         "model": "deepseek-chat",
+        "docs_url": "https://platform.deepseek.com/api-docs/",
+        "verified_at": "2026-07-01",
+        "auth_notes": "Bearer token.",
+        "compatibility_notes": "Fully compatible with OpenAI format.",
     },
     {
         "id": "qwen",
         "name": "Qwen DashScope",
         "base_url": "https://dashscope.aliyuncs.com/compatible-mode/v1",
+        "chat_completions_path": "/chat/completions",
+        "default_model": "qwen-plus",
         "model": "qwen-plus",
+        "docs_url": "https://help.aliyun.com/zh/dashscope/developer-reference/compatibility-of-openai-with-dashscope",
+        "verified_at": "2026-07-01",
+        "auth_notes": "Bearer token from DashScope console.",
+        "compatibility_notes": "Uses OpenAI compatible endpoints. Role must be system/user/assistant.",
     },
     {
         "id": "openrouter",
         "name": "OpenRouter",
         "base_url": "https://openrouter.ai/api/v1",
-        "model": "openai/gpt-4.1-mini",
+        "chat_completions_path": "/chat/completions",
+        "default_model": "openai/gpt-4o-mini",
+        "model": "openai/gpt-4o-mini",
+        "docs_url": "https://openrouter.ai/docs/requests",
+        "verified_at": "2026-07-01",
+        "auth_notes": "Bearer token.",
+        "compatibility_notes": "Extremely compatible. May pass extra headers like HTTP-Referer if desired, but not strictly required.",
     },
     {
         "id": "custom",
         "name": "Custom compatible API",
         "base_url": "",
+        "chat_completions_path": "/chat/completions",
+        "default_model": "",
         "model": "",
+        "docs_url": "",
+        "verified_at": "",
+        "auth_notes": "Provide appropriate credentials.",
+        "compatibility_notes": "Assumes standard OpenAI chat completions endpoint (/chat/completions).",
     },
 ]
 
@@ -89,7 +119,8 @@ DEFAULT_CONFIG = {
         {
             "id": "default",
             "name": "Default",
-            "language": "",
+            "reader_native_language": "",
+            "article_language": "",
             "difficulty": "",
             "max_words": "",
             "instructions": "",
@@ -281,7 +312,8 @@ window.addEventListener("error", function (event) {
         clean_preset = {
             "id": preset_id,
             "name": clean_text(preset.get("name")) or "Untitled",
-            "language": clean_text(preset.get("language")),
+            "reader_native_language": clean_text(preset.get("reader_native_language")),
+            "article_language": clean_text(preset.get("article_language")),
             "difficulty": clean_text(preset.get("difficulty")),
             "max_words": clean_max_words(preset.get("max_words")),
             "instructions": clean_text(preset.get("instructions")),
@@ -758,7 +790,8 @@ def normalize_prompt_presets(config: dict[str, Any]) -> list[dict[str, str]]:
             {
                 "id": preset_id,
                 "name": clean_text(raw.get("name")) or preset_id,
-                "language": clean_text(raw.get("language")),
+                "reader_native_language": clean_text(raw.get("reader_native_language")),
+                "article_language": clean_text(raw.get("article_language")),
                 "difficulty": clean_text(raw.get("difficulty")),
                 "max_words": clean_max_words(raw.get("max_words")),
                 "instructions": clean_text(raw.get("instructions")),
@@ -772,7 +805,8 @@ def normalize_prompt_presets(config: dict[str, Any]) -> list[dict[str, str]]:
             {
                 "id": "default",
                 "name": "Default",
-                "language": "",
+                "reader_native_language": "",
+                "article_language": "",
                 "difficulty": "",
                 "max_words": "",
                 "instructions": "",
@@ -801,11 +835,12 @@ def build_prompt(
     selected_fields: list[str],
     preset: dict[str, str],
 ) -> str:
-    language = str(
-        preset.get("language")
-        or writing_language_for_ui(str(config.get("ui_language") or "zh"))
-        or config.get("language")
-        or "English"
+    ui_lang = writing_language_for_ui(str(config.get("ui_language") or "zh"))
+    reader_native_language = str(
+        preset.get("reader_native_language") or ui_lang or "English"
+    )
+    article_language = str(
+        preset.get("article_language") or "the language being learned"
     )
     difficulty = str(preset.get("difficulty") or "appropriate for the learner")
     max_words = str(preset.get("max_words") or "")
@@ -814,7 +849,7 @@ def build_prompt(
         if max_words
         else "No fixed length limit."
     )
-    instructions = str(preset.get("instructions") or "No extra instructions.")
+    instructions = str(preset.get("instructions") or "No extra formatting instructions.")
     card_lines = []
     for index, card in enumerate(cards[:80], start=1):
         labels = []
@@ -834,21 +869,35 @@ def build_prompt(
             card_lines.append(f"{index}. ({label})")
 
     default_prompt = (
-        "You are helping an Anki learner reinforce vocabulary through reading.\n"
-        "Write one coherent, enjoyable short article in {language} using the studied cards below.\n"
-        "Target difficulty: {difficulty}.\n"
-        "Length: {length_instruction}\n"
-        "Extra instructions: {instructions}\n"
-        "Prioritize failed cards naturally, then new cards. Keep the article readable and not list-like.\n"
-        "After the article, include a short vocabulary review section with the most important terms.\n\n"
-        "Deck: {deck_name}\n"
+        "You are generating a reading reinforcement text for a language learner.\n\n"
+        "Inputs:\n"
+        "- Reader native language: {reader_native_language}\n"
+        "- Article language: {article_language}\n"
+        "- Difficulty: {difficulty}\n"
+        "- Length limit: {length_instruction}\n"
+        "- Formatting requirements: {instructions}\n\n"
+        "Use the provided card fields as source material.\n\n"
+        "Output format:\n"
+        "1. Main article\n"
+        "   - Write this section only in the article language.\n"
+        "   - Do not use the reader native language in this section unless it appears as a source term that must be quoted.\n"
+        "   - Do not translate or explain inside the article.\n\n"
+        "2. Review notes\n"
+        "   - Use the reader native language for explanations.\n"
+        "   - Include only concise notes for important source terms.\n\n"
+        "Constraints:\n"
+        "- Follow the requested article language even if source fields contain other languages.\n"
+        "- Follow the length limit.\n"
+        "- Preserve source terms accurately when they are the learning targets.\n"
+        "- Do not add sections other than the two sections above.\n\n"
         "Cards:\n{cards}\n"
     )
     template = str(
         preset.get("prompt_template") or config.get("prompt_template") or default_prompt
     )
     return template.format(
-        language=language,
+        reader_native_language=reader_native_language,
+        article_language=article_language,
         difficulty=difficulty,
         max_words=max_words,
         length_instruction=length_instruction,
@@ -882,11 +931,14 @@ def generate_article(
     selected_fields: list[str],
     preset: dict[str, str],
 ) -> str:
-    base_url = str(config.get("base_url") or DEFAULT_CONFIG["base_url"]).rstrip("/")
-    url = f"{base_url}/chat/completions"
+    provider_id = clean_provider_id(config.get("selected_provider_profile"))
+    provider = next((p for p in PROVIDER_PROFILES if p["id"] == provider_id), PROVIDER_PROFILES[-1])
+    base_url = str(config.get("base_url") or provider.get("base_url") or DEFAULT_CONFIG["base_url"]).rstrip("/")
+    chat_path = provider.get("chat_completions_path", "/chat/completions")
+    url = f"{base_url}{chat_path}"
     prompt = build_prompt(config, deck_name_value, cards, selected_fields, preset)
     request_payload = {
-        "model": config.get("model") or DEFAULT_CONFIG["model"],
+        "model": config.get("model") or provider.get("model") or DEFAULT_CONFIG["model"],
         "messages": [
             {
                 "role": "system",
