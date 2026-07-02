@@ -27,6 +27,8 @@
     },
     statusData: { key: "selectDeck", isError: false, params: {} },
     readingMode: false,
+    dayStart: 0,
+    dayEnd: 0,
   };
 
   const el = {
@@ -401,6 +403,9 @@
     renderModelOptions();
     updateCardSelectionControls();
     
+    if (state.dayStart && state.dayEnd) {
+      el.dayWindow.textContent = `${formatTime(state.dayStart)} - ${formatTime(state.dayEnd)}`;
+    }
     if (state.decks.length) renderDecks();
     if (state.selectedDeckId) renderFields();
     if (state.selectedDeckId) renderCards(state.currentCards);
@@ -455,7 +460,7 @@
 
   function formatTime(seconds) {
     const date = new Date(seconds * 1000);
-    return date.toLocaleString([], {
+    return date.toLocaleString(state.uiLanguage || [], {
       month: "short",
       day: "numeric",
       hour: "2-digit",
@@ -937,7 +942,9 @@
         state.providerProfiles = payload.providerProfiles || [];
         state.apiSettings = payload.apiSettings || state.apiSettings;
         state.articleCardSettings = payload.articleCardSettings || state.articleCardSettings;
-        el.dayWindow.textContent = `${formatTime(payload.dayStart)} - ${formatTime(payload.dayEnd)}`;
+        state.dayStart = payload.dayStart;
+        state.dayEnd = payload.dayEnd;
+        el.dayWindow.textContent = `${formatTime(state.dayStart)} - ${formatTime(state.dayEnd)}`;
         updateGenerateButton();
         applyI18n();
         renderDecks();
