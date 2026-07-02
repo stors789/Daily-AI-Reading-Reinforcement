@@ -104,6 +104,8 @@
         <h2 id="articleHeading">Article</h2>
         <div class="button-row">
           <button class="secondary-button" id="returnToSelectionButton" style="display: none;">Return to selection</button>
+          <button class="secondary-button" id="regenerateButton" style="display: none;">Regenerate</button>
+          <button class="secondary-button" id="saveArticleToCardButton" style="display: none;">Save to Card</button>
           <button class="primary-button" id="generateButton" disabled>Generate</button>
         </div>
       </div>
@@ -122,10 +124,6 @@
           <input id="presetMaxWords" placeholder="Word range">
         </div>
         <textarea id="presetInstructions" rows="3" placeholder="Formatting requirements"></textarea>
-        <label class="inline-check article-card-toggle">
-          <input id="createArticleCardsInput" type="checkbox">
-          <span id="createArticleCardsLabel">Create article cards after generation</span>
-        </label>
         <div class="article-card-destination" id="articleCardDeckHint"></div>
       </div>
       <div class="status" id="status">Choose a deck studied today.</div>

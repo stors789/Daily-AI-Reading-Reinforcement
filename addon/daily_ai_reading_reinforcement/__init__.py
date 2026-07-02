@@ -111,7 +111,6 @@ DEFAULT_CONFIG = {
     "max_tokens": 30000,
     "prompt_template": "",
     "deck_field_config": {},
-    "create_article_cards": False,
     "last_selected_deck_id": "",
     "collapsed_deck_groups": [],
     "ui_language": "zh",
@@ -216,6 +215,14 @@ window.addEventListener("error", function (event) {
             elif action == "saveCollapsedDeckGroups":
                 self._save_collapsed_deck_groups(
                     list(payload.get("collapsedDeckGroups") or [])
+                )
+            elif action == "saveArticleCard":
+                self._save_article_card(
+                    str(payload.get("deckId", "")),
+                    payload.get("cardIds"),
+                    str(payload.get("article", "")),
+                    str(payload.get("markdownPath", "")),
+                    str(payload.get("htmlPath", "")),
                 )
             elif action == "generate":
                 self._generate_article(
@@ -451,7 +458,6 @@ window.addEventListener("error", function (event) {
 
     def _save_article_card_settings(self, settings: dict[str, Any]) -> None:
         config = load_config()
-        config["create_article_cards"] = bool(settings.get("createArticleCards"))
         mw.addonManager.writeConfig(ADDON_PACKAGE, config)
         self._emit(
             "articleCardSettingsSaved",
@@ -467,6 +473,43 @@ window.addEventListener("error", function (event) {
             clean_text(group) for group in collapsed_groups if clean_text(group)
         ]
         mw.addonManager.writeConfig(ADDON_PACKAGE, config)
+
+    def _save_article_card(
+        self,
+        deck_id: str,
+        selected_card_ids: Any,
+        article: str,
+        markdown_path: str,
+        html_path: str,
+    ) -> None:
+        payload = self.deck_payloads.get(deck_id)
+        if not payload:
+            self._emit("error", {"message": "Select a deck with study activity first."})
+            return
+
+        cards = payload["cards"]
+        if selected_card_ids is not None:
+            selected_ids = card_id_set(selected_card_ids)
+            if selected_ids:
+                cards = [card for card in cards if card.cid in selected_ids]
+
+        def task() -> dict[str, Any]:
+            return create_article_card(
+                payload["name"],
+                cards,
+                article,
+                Path(markdown_path),
+                Path(html_path),
+            )
+
+        def on_done(future: Any) -> None:
+            try:
+                article_card = future.result()
+                self._emit("articleCardSaved", {"articleCard": article_card})
+            except Exception as exc:
+                self._emit("articleCardSaved", {"articleCardError": str(exc)})
+
+        mw.taskman.run_in_background(task, on_done)
 
     def _generate_article(
         self, deck_id: str, preset_id: str, selected_card_ids: Any = None
@@ -536,17 +579,7 @@ window.addEventListener("error", function (event) {
             except Exception as exc:
                 self._emit("error", {"message": str(exc)})
                 return
-            if bool(config.get("create_article_cards")):
-                try:
-                    result["articleCard"] = create_article_card(
-                        payload["name"],
-                        cards,
-                        result["article"],
-                        Path(result["markdownPath"]),
-                        Path(result["htmlPath"]),
-                    )
-                except Exception as exc:
-                    result["articleCardError"] = str(exc)
+
             self._emit(
                 "article",
                 result,
@@ -856,7 +889,6 @@ def provider_profiles_payload() -> list[dict[str, str]]:
 
 def article_card_settings_payload(config: dict[str, Any]) -> dict[str, Any]:
     return {
-        "createArticleCards": bool(config.get("create_article_cards")),
         "parentDeck": ARTICLE_PARENT_DECK,
         "noteType": ARTICLE_NOTE_TYPE,
     }

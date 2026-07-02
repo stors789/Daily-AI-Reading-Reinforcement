@@ -22,7 +22,6 @@
       hasApiKey: false,
     },
     articleCardSettings: {
-      createArticleCards: false,
       parentDeck: "Daily AI Reading Reinforcement",
       noteType: "Daily AI Reading Reinforcement Article",
     },
@@ -48,6 +47,8 @@
     articleHeading: document.getElementById("articleHeading"),
     settingsHeading: document.getElementById("settingsHeading"),
     generateButton: document.getElementById("generateButton"),
+    regenerateButton: document.getElementById("regenerateButton"),
+    saveArticleToCardButton: document.getElementById("saveArticleToCardButton"),
     selectAllFieldsButton: document.getElementById("selectAllFieldsButton"),
     invertFieldsButton: document.getElementById("invertFieldsButton"),
     saveFieldsButton: document.getElementById("saveFieldsButton"),
@@ -74,7 +75,6 @@
     temperatureLabel: document.getElementById("temperatureLabel"),
     maxTokensLabel: document.getElementById("maxTokensLabel"),
     clearApiKeyLabel: document.getElementById("clearApiKeyLabel"),
-    createArticleCardsLabel: document.getElementById("createArticleCardsLabel"),
     articleCardDeckHint: document.getElementById("articleCardDeckHint"),
     baseUrlInput: document.getElementById("baseUrlInput"),
     modelInput: document.getElementById("modelInput"),
@@ -82,7 +82,6 @@
     temperatureInput: document.getElementById("temperatureInput"),
     maxTokensInput: document.getElementById("maxTokensInput"),
     clearApiKeyInput: document.getElementById("clearApiKeyInput"),
-    createArticleCardsInput: document.getElementById("createArticleCardsInput"),
     apiKeyStatus: document.getElementById("apiKeyStatus"),
     saveApiSettingsButton: document.getElementById("saveApiSettingsButton"),
     status: document.getElementById("status"),
@@ -158,7 +157,8 @@
       fetchingModels: "正在获取模型...",
       modelsFetched: "模型列表已更新。",
       clearApiKey: "清除已保存 key",
-      createArticleCards: "生成后保存为 Anki 文章卡片",
+      regenerate: "重生成",
+      saveArticleToCard: "保存到卡片",
       articleCardDestination: "文章卡片牌组：",
       articleCardSkipped: "未创建文章卡片",
       saveApiSettings: "保存 API 设置",
@@ -239,7 +239,8 @@
       fetchingModels: "Fetching models...",
       modelsFetched: "Model list updated.",
       clearApiKey: "Clear saved key",
-      createArticleCards: "Save as Anki article card after generation",
+      regenerate: "Regenerate",
+      saveArticleToCard: "Save to Card",
       articleCardDestination: "Article card deck: ",
       articleCardSkipped: "Article card not created",
       saveApiSettings: "Save API settings",
@@ -320,7 +321,8 @@
       fetchingModels: "モデルを取得中...",
       modelsFetched: "モデル一覧を更新しました。",
       clearApiKey: "保存済み key を消去",
-      createArticleCards: "生成後に Anki 文章カードとして保存",
+      regenerate: "再生成",
+      saveArticleToCard: "カードに保存",
       articleCardDestination: "文章カードのデッキ：",
       articleCardSkipped: "文章カードは作成していません",
       saveApiSettings: "API 設定を保存",
@@ -388,7 +390,8 @@
     el.maxTokensLabel.textContent = tr("maxTokens");
     el.fetchModelsButton.textContent = tr("fetchModels");
     el.clearApiKeyLabel.textContent = tr("clearApiKey");
-    el.createArticleCardsLabel.textContent = tr("createArticleCards");
+    if (el.regenerateButton) el.regenerateButton.textContent = tr("regenerate");
+    if (el.saveArticleToCardButton) el.saveArticleToCardButton.textContent = tr("saveArticleToCard");
     renderArticleCardDestination();
     el.saveApiSettingsButton.textContent = tr("saveApiSettings");
     el.apiKeyInput.placeholder = state.apiSettings.hasApiKey ? tr("enterNewKey") : "";
@@ -751,7 +754,6 @@
     el.apiKeyInput.value = "";
     el.clearApiKeyInput.checked = false;
     el.clearApiKeyInput.disabled = !state.apiSettings.hasApiKey;
-    el.createArticleCardsInput.checked = Boolean(state.articleCardSettings.createArticleCards);
     el.apiKeyStatus.textContent = state.apiSettings.hasApiKey ? tr("keySaved") : tr("noKey");
     el.apiKeyInput.placeholder = state.apiSettings.hasApiKey ? tr("enterNewKey") : "";
     renderArticleCardDestination();
@@ -986,7 +988,19 @@
         setStatus("articleCardSettingSaved");
       }
       if (event === "article") {
+        state.lastGeneratedArticle = payload;
+        if (el.saveArticleToCardButton) el.saveArticleToCardButton.disabled = false;
         renderArticle(payload);
+      }
+      if (event === "articleCardSaved") {
+        if (el.saveArticleToCardButton) el.saveArticleToCardButton.disabled = false;
+        if (payload.articleCardError) {
+          setStatus("articleCardFailed", true, { message: payload.articleCardError });
+        } else if (payload.articleCard) {
+          setStatus("articleCardSaved", false, { deckName: payload.articleCard.deck });
+        } else {
+          setStatus("articleCardSkipped", false);
+        }
       }
       if (event === "error") {
         updateGenerateButton();
@@ -995,6 +1009,33 @@
       }
     },
   };
+
+  
+
+  if (el.regenerateButton) {
+    el.regenerateButton.addEventListener("click", () => {
+      el.generateButton.click();
+    });
+  }
+
+  if (el.saveArticleToCardButton) {
+    el.saveArticleToCardButton.addEventListener("click", () => {
+      if (!state.lastGeneratedArticle) return;
+      
+      const payload = state.lastGeneratedArticle;
+      
+      el.saveArticleToCardButton.disabled = true;
+      setStatus("generating", false, { message: "Saving to card..." });
+      
+      send("saveArticleCard", {
+        deckId: state.selectedDeckId,
+        cardIds: Array.from(state.selectedCardIds),
+        article: payload.article,
+        markdownPath: payload.markdownPath,
+        htmlPath: payload.htmlPath
+      });
+    });
+  }
 
   el.generateButton.addEventListener("click", () => {
     if (!state.selectedDeckId) return;
@@ -1179,14 +1220,6 @@
     });
   });
 
-  el.createArticleCardsInput.addEventListener("change", () => {
-    state.articleCardSettings.createArticleCards = el.createArticleCardsInput.checked;
-    send("saveArticleCardSettings", {
-      settings: {
-        createArticleCards: state.articleCardSettings.createArticleCards,
-      },
-    });
-  });
 
   el.fetchModelsButton.addEventListener("click", () => {
     const baseUrl = el.baseUrlInput.value.trim();

@@ -698,10 +698,16 @@ h2 {
   padding: 28px 38px 42px;
 }
 
-.reading-mode #returnToSelectionButton {
+.reading-mode #returnToSelectionButton,
+.reading-mode #regenerateButton,
+.reading-mode #saveArticleToCardButton {
   display: inline-flex !important;
 }
 
 .reading-mode .preset-editor {
   display: none;
+}
+
+.reading-mode #generateButton {
+  display: none !important;
 }
