@@ -6,7 +6,9 @@ An Anki add-on that generates a short reading passage from the cards you studied
 
 Daily AI Reading Reinforcement is an Anki add-on designed to bridge the gap between rote memorization and practical language application. It automatically extracts the vocabulary or flashcards you've studied today and leverages AI (like OpenAI, DeepSeek, etc.) to generate a short, engaging reading passage incorporating those exact terms.
 
-![Interface Screenshot](assets/screenshot.png)
+![Interface Screenshot 1](assets/screenshot1.png)
+
+![Interface Screenshot 2](assets/screenshot2.png)
 
 By reading a coherent story or article constructed from your daily study material, you naturally reinforce your memory through context, shifting from isolated flashcard drilling to active reading comprehension.
 
