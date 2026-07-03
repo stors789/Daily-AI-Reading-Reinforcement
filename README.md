@@ -30,10 +30,6 @@ The easiest way to install this add-on is through AnkiWeb.
 4. Click **OK** and wait for the download to finish.
 5. Restart Anki to complete the installation.
 
-## Status
-
-See [TODO.md](TODO.md) for the completed initial roadmap.
-
 ## Layout
 
 ```text
