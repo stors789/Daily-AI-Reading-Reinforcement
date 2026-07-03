@@ -5,6 +5,7 @@
       <h1 id="titleText">Reading Reinforcement</h1>
     </div>
     <div class="top-actions">
+      <button class="secondary-button" id="historyButton" title="History">📖</button>
       <select id="uiLanguageSelect" class="language-select">
         <option value="zh">中文</option>
         <option value="en">English</option>
@@ -13,6 +14,16 @@
       <div class="day-window" id="dayWindow">Loading Anki day...</div>
     </div>
   </header>
+
+  <section class="panel history-panel" id="historyPanel" style="display: none;">
+    <div class="panel-heading">
+      <h2 id="historyHeading">历史文章</h2>
+      <button class="secondary-button" id="historyCloseButton">✕</button>
+    </div>
+    <div class="history-list" id="historyList">
+      <div class="empty" id="historyEmptyText">没有已保存的文章。</div>
+    </div>
+  </section>
 
   <section class="workspace">
     <div class="left-stack">

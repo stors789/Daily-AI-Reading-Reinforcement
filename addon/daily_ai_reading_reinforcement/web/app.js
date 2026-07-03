@@ -89,6 +89,12 @@
     status: document.getElementById("status"),
     articleOutput: document.getElementById("articleOutput"),
     savedPaths: document.getElementById("savedPaths"),
+    historyButton: document.getElementById("historyButton"),
+    historyPanel: document.getElementById("historyPanel"),
+    historyHeading: document.getElementById("historyHeading"),
+    historyList: document.getElementById("historyList"),
+    historyCloseButton: document.getElementById("historyCloseButton"),
+    historyEmptyText: document.getElementById("historyEmptyText"),
   };
 
   const I18N = {
@@ -174,6 +180,10 @@
       apiMissingBaseUrl: "请输入 API Base URL。",
       apiMissingModel: "请输入模型名称。",
       toggleTranslation: "显示/隐藏翻译",
+      historyTitle: "历史文章",
+      historyEmpty: "没有已保存的文章。",
+      historyCards: "张卡片",
+      historyClose: "关闭",
     },
     en: {
       eyebrow: "Daily AI Reading",
@@ -257,6 +267,10 @@
       apiMissingBaseUrl: "Enter an API base URL.",
       apiMissingModel: "Enter a model name.",
       toggleTranslation: "Show/hide translation",
+      historyTitle: "Article History",
+      historyEmpty: "No saved articles.",
+      historyCards: "cards",
+      historyClose: "Close",
     },
     ja: {
       eyebrow: "毎日の AI 読解",
@@ -340,6 +354,10 @@
       apiMissingBaseUrl: "API Base URL を入力してください。",
       apiMissingModel: "モデル名を入力してください。",
       toggleTranslation: "翻訳の表示/非表示",
+      historyTitle: "過去の記事",
+      historyEmpty: "保存された記事はありません。",
+      historyCards: "カード",
+      historyClose: "閉じる",
     },
   };
 
@@ -403,6 +421,9 @@
     el.apiKeyStatus.textContent = state.apiSettings.hasApiKey ? tr("keySaved") : tr("noKey");
     el.uiLanguageSelect.value = state.uiLanguage;
     if (el.returnToSelectionButton) el.returnToSelectionButton.textContent = tr("returnToSelection");
+    if (el.historyHeading) el.historyHeading.textContent = tr("historyTitle");
+    if (el.historyButton) el.historyButton.title = tr("historyTitle");
+    if (el.historyCloseButton) el.historyCloseButton.title = tr("historyClose");
     renderModelOptions();
     updateCardSelectionControls();
     
@@ -1066,10 +1087,75 @@
         el.fetchModelsButton.disabled = false;
         setStatus("error", true, payload.message ? { message: payload.message } : {});
       }
+      if (event === "articleList") {
+        renderArticleHistory(payload.articles || []);
+      }
+      if (event === "articleLoaded") {
+        closeHistoryPanel();
+        const loadedPayload = {
+          deckName: payload.deck || "",
+          article: payload.article || "",
+          markdownPath: payload.path || "",
+          htmlPath: payload.htmlPath || "",
+          articleCard: null,
+        };
+        state.lastGeneratedArticle = loadedPayload;
+        if (el.saveArticleToCardButton) el.saveArticleToCardButton.disabled = false;
+        renderArticle(loadedPayload);
+      }
     },
   };
 
-  
+  function openHistoryPanel() {
+    if (el.historyPanel) {
+      el.historyPanel.style.display = "";
+      send("listArticles");
+    }
+  }
+
+  function closeHistoryPanel() {
+    if (el.historyPanel) {
+      el.historyPanel.style.display = "none";
+    }
+  }
+
+  function renderArticleHistory(articles) {
+    if (!el.historyList) return;
+    if (!articles.length) {
+      el.historyList.innerHTML = `<div class="empty">${tr("historyEmpty")}</div>`;
+      return;
+    }
+    el.historyList.innerHTML = articles
+      .map((item) => {
+        return `
+          <div class="history-item" data-path="${escapeHtml(item.path)}">
+            <div class="history-item-title">${escapeHtml(item.deck || item.filename)}</div>
+            <div class="history-item-meta">
+              ${escapeHtml(item.generated_at || "")}
+              ${item.card_count ? ` · ${escapeHtml(item.card_count)} ${tr("historyCards")}` : ""}
+            </div>
+          </div>
+        `;
+      })
+      .join("");
+    el.historyList.querySelectorAll(".history-item").forEach((item) => {
+      item.addEventListener("click", () => {
+        send("loadArticle", { path: item.dataset.path });
+      });
+    });
+  }
+
+  if (el.historyButton) {
+    el.historyButton.addEventListener("click", () => {
+      openHistoryPanel();
+    });
+  }
+
+  if (el.historyCloseButton) {
+    el.historyCloseButton.addEventListener("click", () => {
+      closeHistoryPanel();
+    });
+  }
 
   if (el.regenerateButton) {
     el.regenerateButton.addEventListener("click", () => {

@@ -230,6 +230,10 @@ window.addEventListener("error", function (event) {
                     str(payload.get("presetId", "")),
                     payload.get("cardIds"),
                 )
+            elif action == "listArticles":
+                self._list_articles()
+            elif action == "loadArticle":
+                self._load_article(str(payload.get("path", "")))
             else:
                 self._emit("error", {"message": f"Unknown command: {action}"})
         except Exception as exc:
@@ -591,6 +595,33 @@ window.addEventListener("error", function (event) {
         data = json.dumps({"event": event, "payload": payload}, ensure_ascii=False)
         self.web.eval(f"window.DAIRR.receive({data});")
 
+    def _list_articles(self) -> None:
+        def task() -> dict[str, Any]:
+            return {"articles": list_saved_articles()}
+
+        def on_done(future: Any) -> None:
+            try:
+                result = future.result()
+            except Exception as exc:
+                self._emit("error", {"message": str(exc)})
+                return
+            self._emit("articleList", result)
+
+        mw.taskman.run_in_background(task, on_done)
+
+    def _load_article(self, path: str) -> None:
+        def task() -> dict[str, Any]:
+            return load_saved_article(path)
+
+        def on_done(future: Any) -> None:
+            try:
+                result = future.result()
+            except Exception as exc:
+                self._emit("error", {"message": str(exc)})
+                return
+            self._emit("articleLoaded", result)
+
+        mw.taskman.run_in_background(task, on_done)
 
 def get_day_cutoff(col: Any) -> int:
     sched = col.sched
@@ -1166,6 +1197,65 @@ def save_article(
     markdown_path.write_text("\n".join(metadata) + article + "\n", encoding="utf-8")
     html_path.write_text(render_article_html(deck_name_value, cards, article), encoding="utf-8")
     return {"markdown": markdown_path, "html": html_path}
+
+
+def list_saved_articles() -> list[dict[str, str]]:
+    if not ARTICLES_DIR.is_dir():
+        return []
+    articles = []
+    for md_file in sorted(ARTICLES_DIR.glob("*.md"), reverse=True):
+        try:
+            text = md_file.read_text(encoding="utf-8")
+        except Exception:
+            continue
+        meta = parse_article_frontmatter(text)
+        articles.append({
+            "path": str(md_file),
+            "filename": md_file.name,
+            "deck": meta.get("deck", ""),
+            "generated_at": meta.get("generated_at", ""),
+            "card_count": meta.get("card_count", ""),
+        })
+    return articles
+
+
+def parse_article_frontmatter(text: str) -> dict[str, str]:
+    meta: dict[str, str] = {}
+    if not text.startswith("---"):
+        return meta
+    end = text.find("---", 3)
+    if end == -1:
+        return meta
+    for line in text[3:end].strip().splitlines():
+        if ":" in line:
+            key, _, value = line.partition(":")
+            meta[key.strip()] = value.strip()
+    return meta
+
+
+def load_saved_article(path: str) -> dict[str, Any]:
+    article_path = Path(path)
+    if not article_path.is_file():
+        raise RuntimeError(f"Article file not found: {path}")
+    if not str(article_path).startswith(str(ARTICLES_DIR)):
+        raise RuntimeError("Access denied: path outside articles directory.")
+    text = article_path.read_text(encoding="utf-8")
+    meta = parse_article_frontmatter(text)
+    # Strip frontmatter to get article body
+    body = text
+    if text.startswith("---"):
+        end = text.find("---", 3)
+        if end != -1:
+            body = text[end + 3:].strip()
+    html_path = article_path.with_suffix(".html")
+    return {
+        "path": str(article_path),
+        "deck": meta.get("deck", ""),
+        "generated_at": meta.get("generated_at", ""),
+        "card_count": meta.get("card_count", ""),
+        "article": body,
+        "htmlPath": str(html_path) if html_path.is_file() else "",
+    }
 
 
 def create_article_card(

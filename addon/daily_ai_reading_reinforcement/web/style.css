@@ -674,6 +674,43 @@ h2 {
   padding: 14px;
 }
 
+/* History Panel */
+.history-panel {
+  margin: 0 auto 16px;
+  max-width: 1600px;
+}
+
+.history-list {
+  max-height: 400px;
+  overflow: auto;
+  padding: 10px;
+}
+
+.history-item {
+  background: var(--surface-strong);
+  border: 1px solid transparent;
+  border-radius: 8px;
+  cursor: pointer;
+  margin-bottom: 8px;
+  padding: 12px 14px;
+  transition: border-color 0.15s;
+}
+
+.history-item:hover {
+  border-color: rgba(47, 111, 115, 0.42);
+}
+
+.history-item-title {
+  font-weight: 700;
+  overflow-wrap: anywhere;
+}
+
+.history-item-meta {
+  color: var(--muted);
+  font-size: 12px;
+  margin-top: 4px;
+}
+
 @media (max-width: 1020px) {
   .workspace {
     grid-template-columns: 1fr;
