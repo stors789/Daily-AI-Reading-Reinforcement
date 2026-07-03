@@ -173,6 +173,7 @@
       articleCardFailed: "文章已保存，但创建卡片失败：",
       apiMissingBaseUrl: "请输入 API Base URL。",
       apiMissingModel: "请输入模型名称。",
+      toggleTranslation: "显示/隐藏翻译",
     },
     en: {
       eyebrow: "Daily AI Reading",
@@ -255,6 +256,7 @@
       articleCardFailed: "Article saved, but card creation failed: ",
       apiMissingBaseUrl: "Enter an API base URL.",
       apiMissingModel: "Enter a model name.",
+      toggleTranslation: "Show/hide translation",
     },
     ja: {
       eyebrow: "毎日の AI 読解",
@@ -337,6 +339,7 @@
       articleCardFailed: "文章は保存しましたが、カード作成に失敗しました：",
       apiMissingBaseUrl: "API Base URL を入力してください。",
       apiMissingModel: "モデル名を入力してください。",
+      toggleTranslation: "翻訳の表示/非表示",
     },
   };
 
@@ -855,10 +858,59 @@
   }
 
   function renderParagraphs(text) {
-    return String(text || "")
-      .split(/\n{2,}/)
-      .filter((block) => block.trim())
-      .map((block) => `<p>${escapeHtml(block.trim()).replace(/\n/g, "<br>")}</p>`)
+    const raw = String(text || "");
+    const lines = raw.split(/\n/);
+    const segments = [];
+    let currentParagraph = [];
+
+    for (let i = 0; i < lines.length; i++) {
+      const line = lines[i];
+      const trimmed = line.trim();
+      if (trimmed.match(/^\[T\]\s*/i)) {
+        // This is a translation line
+        const translation = trimmed.replace(/^\[T\]\s*/i, "").trim();
+        if (currentParagraph.length > 0) {
+          segments.push({
+            paragraph: currentParagraph.join("\n").trim(),
+            translation: translation,
+          });
+          currentParagraph = [];
+        } else if (segments.length > 0) {
+          // Attach to previous segment if no current paragraph
+          segments[segments.length - 1].translation = translation;
+        }
+      } else if (trimmed === "") {
+        // Empty line: flush current paragraph
+        if (currentParagraph.length > 0) {
+          segments.push({
+            paragraph: currentParagraph.join("\n").trim(),
+            translation: "",
+          });
+          currentParagraph = [];
+        }
+      } else {
+        currentParagraph.push(line);
+      }
+    }
+    // Flush remaining
+    if (currentParagraph.length > 0) {
+      segments.push({
+        paragraph: currentParagraph.join("\n").trim(),
+        translation: "",
+      });
+    }
+
+    return segments
+      .filter((seg) => seg.paragraph)
+      .map((seg, idx) => {
+        const pHtml = `<p>${escapeHtml(seg.paragraph).replace(/\n/g, "<br>")}</p>`;
+        if (!seg.translation) return pHtml;
+        const tId = `trans-${idx}`;
+        return `${pHtml}<div class="translation-row">` +
+          `<button class="translation-toggle" onclick="(function(b){var el=document.getElementById('${tId}');var show=el.style.display==='none';el.style.display=show?'block':'none';b.classList.toggle('open',show);})(this)" title="${tr("toggleTranslation")}">🌐</button>` +
+          `<div class="translation-block" id="${tId}" style="display:none;">${escapeHtml(seg.translation)}</div>` +
+          `</div>`;
+      })
       .join("");
   }
 

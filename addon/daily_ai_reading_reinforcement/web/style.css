@@ -547,6 +547,46 @@ h2 {
   margin: 0 0 1.05em;
 }
 
+.translation-row {
+  display: flex;
+  align-items: flex-start;
+  gap: 8px;
+  margin: -0.5em 0 1.2em;
+}
+
+.translation-toggle {
+  background: #e9f0ed;
+  border: 1px solid var(--line);
+  border-radius: 6px;
+  color: var(--accent);
+  cursor: pointer;
+  flex: 0 0 auto;
+  font-size: 14px;
+  line-height: 1;
+  min-height: 0;
+  padding: 4px 6px;
+  transition: background 0.15s;
+}
+
+.translation-toggle:hover,
+.translation-toggle.open {
+  background: var(--accent);
+  color: #fff;
+}
+
+.translation-block {
+  background: #f8f6f1;
+  border-left: 3px solid var(--accent);
+  border-radius: 0 6px 6px 0;
+  color: var(--muted);
+  flex: 1 1 0;
+  font-size: 14px;
+  line-height: 1.65;
+  min-width: 0;
+  overflow-wrap: anywhere;
+  padding: 6px 12px;
+}
+
 .reading-document {
   margin: 0 auto;
   max-width: 820px;
