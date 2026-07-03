@@ -27,6 +27,7 @@
     },
     statusData: { key: "selectDeck", isError: false, params: {} },
     readingMode: false,
+    writingMode: "horizontal",
     dayStart: 0,
     dayEnd: 0,
   };
@@ -95,6 +96,9 @@
     historyList: document.getElementById("historyList"),
     historyCloseButton: document.getElementById("historyCloseButton"),
     historyEmptyText: document.getElementById("historyEmptyText"),
+    writingModeButtons: document.getElementById("writingModeButtons"),
+    writingModeHorizontal: document.getElementById("writingModeHorizontal"),
+    writingModeVertical: document.getElementById("writingModeVertical"),
   };
 
   const I18N = {
@@ -184,6 +188,8 @@
       historyEmpty: "没有已保存的文章。",
       historyCards: "张卡片",
       historyClose: "关闭",
+      writingHorizontal: "横",
+      writingVertical: "竖",
     },
     en: {
       eyebrow: "Daily AI Reading",
@@ -271,6 +277,8 @@
       historyEmpty: "No saved articles.",
       historyCards: "cards",
       historyClose: "Close",
+      writingHorizontal: "横",
+      writingVertical: "縦",
     },
     ja: {
       eyebrow: "毎日の AI 読解",
@@ -358,6 +366,8 @@
       historyEmpty: "保存された記事はありません。",
       historyCards: "カード",
       historyClose: "閉じる",
+      writingHorizontal: "横",
+      writingVertical: "縦",
     },
   };
 
@@ -424,6 +434,8 @@
     if (el.historyHeading) el.historyHeading.textContent = tr("historyTitle");
     if (el.historyButton) el.historyButton.title = tr("historyTitle");
     if (el.historyCloseButton) el.historyCloseButton.title = tr("historyClose");
+    if (el.writingModeHorizontal) el.writingModeHorizontal.textContent = tr("writingHorizontal");
+    if (el.writingModeVertical) el.writingModeVertical.textContent = tr("writingVertical");
     renderModelOptions();
     updateCardSelectionControls();
     
@@ -995,6 +1007,12 @@
   function setReadingMode(active) {
     state.readingMode = active;
     document.body.classList.toggle("reading-mode", active);
+    if (!active) {
+      state.writingMode = "horizontal";
+      if (el.articleOutput) el.articleOutput.classList.remove("vertical-rl");
+      if (el.writingModeHorizontal) el.writingModeHorizontal.classList.add("active");
+      if (el.writingModeVertical) el.writingModeVertical.classList.remove("active");
+    }
   }
 
   if (el.returnToSelectionButton) {
@@ -1154,6 +1172,31 @@
   if (el.historyCloseButton) {
     el.historyCloseButton.addEventListener("click", () => {
       closeHistoryPanel();
+    });
+  }
+
+  function setWritingMode(mode) {
+    state.writingMode = mode;
+    if (el.articleOutput) {
+      el.articleOutput.classList.toggle("vertical-rl", mode === "vertical");
+    }
+    if (el.writingModeHorizontal) {
+      el.writingModeHorizontal.classList.toggle("active", mode === "horizontal");
+    }
+    if (el.writingModeVertical) {
+      el.writingModeVertical.classList.toggle("active", mode === "vertical");
+    }
+  }
+
+  if (el.writingModeHorizontal) {
+    el.writingModeHorizontal.addEventListener("click", () => {
+      setWritingMode("horizontal");
+    });
+  }
+
+  if (el.writingModeVertical) {
+    el.writingModeVertical.addEventListener("click", () => {
+      setWritingMode("vertical");
     });
   }
 

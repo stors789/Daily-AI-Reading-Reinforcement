@@ -804,3 +804,59 @@ h2 {
 .reading-mode #generateButton {
   display: none !important;
 }
+
+/* Writing Mode Toggle */
+.writing-mode-buttons {
+  display: flex;
+  gap: 2px;
+  background: #ece4d9;
+  border-radius: 8px;
+  padding: 2px;
+}
+
+.writing-mode-buttons .secondary-button {
+  min-height: 30px;
+  padding: 0 10px;
+  border-radius: 6px;
+  font-size: 13px;
+}
+
+.writing-mode-buttons .secondary-button.active {
+  background: var(--accent);
+  color: #fff;
+}
+
+.reading-mode #writingModeButtons {
+  display: flex !important;
+}
+
+/* Vertical Writing Mode (縦書き) */
+.vertical-rl .reading-body {
+  writing-mode: vertical-rl;
+  text-orientation: mixed;
+  overflow-x: auto;
+  overflow-y: hidden;
+  max-height: none;
+  height: calc(70vh - 100px);
+  padding: 20px 10px;
+  line-height: 2.0;
+  letter-spacing: 0.04em;
+}
+
+.vertical-rl .reading-body p {
+  margin: 0 1.2em 0 0;
+}
+
+.vertical-rl .translation-row {
+  writing-mode: horizontal-tb;
+  margin: 0 1.2em 0 0;
+  flex-direction: column;
+}
+
+.vertical-rl .translation-block {
+  writing-mode: horizontal-tb;
+}
+
+.vertical-rl .review-notes {
+  writing-mode: horizontal-tb;
+}
