@@ -770,6 +770,29 @@ h2 {
   .reading-mode .article-output {
     padding: 20px 18px 32px;
   }
+  /* Narrow screen: tabs switch between article and notes */
+  .reading-mode .article-output {
+    flex-direction: column;
+    padding: 0;
+  }
+  .reading-mode .reading-tabs {
+    display: flex;
+  }
+  .reading-mode .article-scroll {
+    flex: 1 1 0;
+    padding: 20px 18px 32px;
+  }
+  .reading-mode .notes-panel {
+    border-left: 0;
+    border-top: 1px solid var(--line);
+    flex: 1 1 0;
+  }
+  .reading-mode .article-output.view-notes .article-scroll {
+    display: none;
+  }
+  .reading-mode .article-output.view-article .notes-panel {
+    display: none;
+  }
 
   .reading-body {
     font-size: 16px;
@@ -796,9 +819,37 @@ h2 {
   min-height: 80vh;
 }
 
+/* Reading mode: split article (scroll) + notes (sidebar) */
 .reading-mode .article-output {
-  max-height: calc(80vh - 150px);
+  display: flex;
+  flex-direction: row;
+  max-height: none;
+  overflow: hidden;
+  padding: 0;
+}
+
+.reading-mode .article-scroll {
+  flex: 1 1 0;
+  min-width: 0;
+  overflow: auto;
   padding: 28px 38px 42px;
+}
+
+.reading-mode .notes-panel {
+  border-left: 1px solid var(--line);
+  flex: 0 0 320px;
+  min-height: 0;
+  min-width: 0;
+  overflow: auto;
+  padding: 22px 22px 32px;
+}
+
+.reading-mode .notes-panel:empty {
+  display: none;
+}
+
+.reading-mode .reading-tabs {
+  display: none;
 }
 
 .reading-mode #returnToSelectionButton,
@@ -838,6 +889,34 @@ h2 {
 
 .reading-mode #writingModeButtons {
   display: flex !important;
+}
+/* Reading tabs (narrow screen only, see media query) */
+.reading-tabs {
+  border-bottom: 1px solid var(--line);
+  display: none;
+  gap: 2px;
+  padding: 8px 12px 0;
+}
+
+.reading-tab {
+  background: transparent;
+  border: 0;
+  border-bottom: 2px solid transparent;
+  color: var(--muted);
+  cursor: pointer;
+  font-size: 13px;
+  font-weight: 700;
+  min-height: 32px;
+  padding: 4px 14px;
+}
+
+.reading-tab:hover {
+  color: var(--ink);
+}
+
+.reading-tab.active {
+  border-bottom-color: var(--accent);
+  color: var(--accent-dark);
 }
 
 /* Vertical Writing Mode (縦書き) */

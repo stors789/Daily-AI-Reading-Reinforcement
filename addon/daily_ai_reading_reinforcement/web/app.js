@@ -26,9 +26,10 @@
       noteType: "Daily AI Reading Reinforcement Article",
     },
     statusData: { key: "selectDeck", isError: false, params: {} },
-    readingMode: false,
-    writingMode: "horizontal",
-    dayStart: 0,
+   readingMode: false,
+   writingMode: "horizontal",
+    readingTab: "article",
+   dayStart: 0,
     dayEnd: 0,
   };
 
@@ -89,6 +90,11 @@
     saveApiSettingsButton: document.getElementById("saveApiSettingsButton"),
     status: document.getElementById("status"),
     articleOutput: document.getElementById("articleOutput"),
+    articleScroll: document.getElementById("articleScroll"),
+    notesPanel: document.getElementById("notesPanel"),
+    readingTabs: document.getElementById("readingTabs"),
+    readingTabArticle: document.getElementById("readingTabArticle"),
+    readingTabNotes: document.getElementById("readingTabNotes"),
     savedPaths: document.getElementById("savedPaths"),
     historyButton: document.getElementById("historyButton"),
     historyPanel: document.getElementById("historyPanel"),
@@ -138,6 +144,9 @@
       sourceDeck: "来源卡组",
       generatedAt: "生成时间",
       reviewNotes: "复习笔记",
+      reviewNotesEmpty: "暂无复习笔记。",
+      readingTabArticle: "文章",
+      readingTabNotes: "笔记",
       sourceTerms: "来源词条",
       fallbackTitle: "阅读文章",
       selectDeckShort: "请选择卡组",
@@ -228,6 +237,9 @@
       sourceDeck: "Source deck",
       generatedAt: "Generated",
       reviewNotes: "Review notes",
+      reviewNotesEmpty: "No review notes yet.",
+      readingTabArticle: "Article",
+      readingTabNotes: "Notes",
       sourceTerms: "Source terms",
       fallbackTitle: "Reading Article",
       selectDeckShort: "Choose a deck",
@@ -318,6 +330,9 @@
       sourceDeck: "元デッキ",
       generatedAt: "生成日時",
       reviewNotes: "復習メモ",
+      reviewNotesEmpty: "復習メモはまだありません。",
+      readingTabArticle: "文章",
+      readingTabNotes: "ノート",
       sourceTerms: "元の語句",
       fallbackTitle: "読解文章",
       selectDeckShort: "デッキを選択",
@@ -439,8 +454,10 @@
     if (el.historyButton) el.historyButton.title = tr("historyTitle");
     if (el.historyCloseButton) el.historyCloseButton.title = tr("historyClose");
     if (el.writingModeHorizontal) el.writingModeHorizontal.textContent = tr("writingHorizontal");
-    if (el.writingModeVertical) el.writingModeVertical.textContent = tr("writingVertical");
-    renderModelOptions();
+   if (el.writingModeVertical) el.writingModeVertical.textContent = tr("writingVertical");
+    if (el.readingTabArticle) el.readingTabArticle.textContent = tr("readingTabArticle");
+    if (el.readingTabNotes) el.readingTabNotes.textContent = tr("readingTabNotes");
+   renderModelOptions();
     updateCardSelectionControls();
     
     if (state.dayStart && state.dayEnd) {
@@ -572,7 +589,8 @@
     updateGenerateButton();
     renderArticleCardDestination();
     renderFields();
-    el.articleOutput.innerHTML = "";
+    if (el.articleScroll) el.articleScroll.innerHTML = "";
+    if (el.notesPanel) el.notesPanel.innerHTML = "";
     el.savedPaths.innerHTML = "";
     setReadingMode(false);
     setStatus("loadingCards");
@@ -983,7 +1001,7 @@
     const articleCardErrorLine = payload.articleCardError
       ? `<div class="save-warning">${tr("articleCardFailed")}${escapeHtml(payload.articleCardError)}</div>`
       : "";
-    el.articleOutput.innerHTML = `
+    el.articleScroll.innerHTML = `
       <div class="reading-document">
         <header class="reading-header">
           <div class="reading-kicker">${tr("sourceDeck")} · ${escapeHtml(payload.deckName || "")}</div>
@@ -993,9 +1011,13 @@
         <section class="reading-body">
           ${renderParagraphs(parsed.mainArticle)}
         </section>
-        ${renderReviewNotes(parsed.reviewNotes)}
       </div>
     `;
+    const notesHtml = renderReviewNotes(parsed.reviewNotes);
+    el.notesPanel.innerHTML = notesHtml
+      ? notesHtml
+      : `<div class="empty">${tr("reviewNotesEmpty")}</div>`;
+    setReadingTab("article");
     el.savedPaths.innerHTML = `
       <details>
         <summary>${tr("savedArticle")}${escapeHtml(payload.deckName || "")}</summary>
@@ -1016,10 +1038,28 @@
     document.body.classList.toggle("reading-mode", active);
     if (!active) {
       state.writingMode = "horizontal";
-      if (el.articleOutput) el.articleOutput.classList.remove("vertical-rl");
+      state.readingTab = "article";
+      if (el.articleOutput) el.articleOutput.classList.remove("vertical-rl", "view-article", "view-notes");
       if (el.writingModeHorizontal) el.writingModeHorizontal.classList.add("active");
       if (el.writingModeVertical) el.writingModeVertical.classList.remove("active");
     }
+  }
+
+  function setReadingTab(tab) {
+    state.readingTab = tab;
+    if (el.articleOutput) {
+      el.articleOutput.classList.remove("view-article", "view-notes");
+      el.articleOutput.classList.add(tab === "notes" ? "view-notes" : "view-article");
+    }
+    if (el.readingTabArticle) el.readingTabArticle.classList.toggle("active", tab === "article");
+    if (el.readingTabNotes) el.readingTabNotes.classList.toggle("active", tab === "notes");
+  }
+
+  if (el.readingTabArticle) {
+    el.readingTabArticle.addEventListener("click", () => setReadingTab("article"));
+  }
+  if (el.readingTabNotes) {
+    el.readingTabNotes.addEventListener("click", () => setReadingTab("notes"));
   }
 
   if (el.returnToSelectionButton) {
@@ -1242,7 +1282,8 @@
       setStatus("chooseCard", true);
       return;
     }
-    el.articleOutput.innerHTML = "";
+    if (el.articleScroll) el.articleScroll.innerHTML = "";
+    if (el.notesPanel) el.notesPanel.innerHTML = "";
     el.savedPaths.innerHTML = "";
     setReadingMode(false);
     send("generate", {
