@@ -945,7 +945,7 @@ h2 {
 
 .reading-mode .workspace {
   grid-template-columns: 1fr;
-  max-width: 980px;
+  max-width: 1400px;
 }
 
 .reading-mode .article-panel {
