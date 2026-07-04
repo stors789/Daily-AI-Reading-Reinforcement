@@ -582,6 +582,10 @@ h2 {
   padding-left: 5px;
 }
 
+.para-translation[hidden] {
+  display: none !important;
+}
+
 
 
 .reading-document {
@@ -990,6 +994,11 @@ h2 {
   padding: 28px 38px 42px;
 }
 
+.reading-mode .vertical-rl .article-scroll {
+  overflow-x: auto;
+  overflow-y: hidden;
+}
+
 .reading-mode .notes-panel {
   grid-area: notes;
   border-left: 1px solid var(--line);
@@ -1080,10 +1089,12 @@ h2 {
 
 /* Vertical Writing Mode (縦書き) */
 .vertical-rl .reading-body {
+  display: block;
   writing-mode: vertical-rl;
   text-orientation: mixed;
-  height: auto;
-  max-height: 54em; /* 27 chars × 2.0 line-height */
+  width: max-content;
+  height: 100%;
+  max-height: none;
   /* No vertical scrollbar — overflow creates new columns to the left */
   overflow-y: hidden;
   overflow-x: auto;
@@ -1101,13 +1112,19 @@ h2 {
 }
 
 .vertical-rl .reading-document {
+  align-items: flex-start;
+  display: flex;
+  justify-content: flex-end;
+  height: 100%;
   max-width: none;
+  width: 100%;
 }
 
 /* ---- Paragraph + Translation group ---- */
 .reading-para-group {
   /* In horizontal mode: children stack vertically (para on top, translation below).
      In vertical-rl mode: children flow right-to-left (para on right, translation to its left). */
+  break-inside: avoid;
 }
 
 /* Translation block shared styles */
@@ -1129,6 +1146,7 @@ h2 {
 .vertical-rl .reading-para-group {
   /* In vertical-rl, child blocks flow right-to-left.
      The <p> appears on the right, the translation <div> appears to its left. */
+  display: block;
 }
 
 .vertical-rl .para-translation {
@@ -1142,6 +1160,10 @@ h2 {
   letter-spacing: 0.04em;
   margin: 0;
   padding: 8px 12px;
+}
+
+.vertical-rl .translation-open {
+  margin-left: 0.8em;
 }
 
 /* Reset the toggle button in vertical mode — keep it inline but subtle */

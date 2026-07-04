@@ -997,9 +997,9 @@
         }
         const tId = `trans-${idx}`;
         const toggleHtml = `<button class="para-translate-toggle" type="button" ` +
-          `onclick="(function(b){var el=document.getElementById('${tId}');var show=el.style.display==='none';el.style.display=show?'block':'none';b.classList.toggle('open',show);})(this)" ` +
+          `onclick="(function(b){var el=document.getElementById('${tId}');var group=b.closest('.reading-para-group');var show=el.hidden;b.setAttribute('aria-expanded',show?'true':'false');el.hidden=!show;b.classList.toggle('open',show);if(group){group.classList.toggle('translation-open',show);}})(this)" ` +
           `title="${tr("toggleTranslation")}" aria-expanded="false">${escapeHtml(tr("translateButtonShort"))}</button>`;
-        const translationHtml = `<div class="para-translation" id="${tId}" style="display:none;">${escapeHtml(seg.translation)}</div>`;
+        const translationHtml = `<div class="para-translation" id="${tId}" hidden>${escapeHtml(seg.translation)}</div>`;
         return `<div class="reading-para-group"><p class="reading-para">${bodyHtml} ${toggleHtml}</p>${translationHtml}</div>`;
       })
       .join("");
@@ -1067,6 +1067,9 @@
     setStatus("savedArticle", false, { deckName: payload.deckName });
     updateGenerateButton();
     setReadingMode(true);
+    if (state.writingMode === "vertical") {
+      alignVerticalArticleRight();
+    }
   }
 
   function setReadingMode(active) {
@@ -1389,6 +1392,18 @@
     renderHistoryView();
   }
 
+  function alignVerticalArticleRight() {
+    if (!el.articleScroll) return;
+    window.requestAnimationFrame(() => {
+      const maxScrollLeft = el.articleScroll.scrollWidth - el.articleScroll.clientWidth;
+      if (maxScrollLeft <= 0) return;
+      el.articleScroll.scrollLeft = maxScrollLeft;
+      if (el.articleScroll.scrollLeft === 0) {
+        el.articleScroll.scrollLeft = -maxScrollLeft;
+      }
+    });
+  }
+
   if (el.historyButton) {
     el.historyButton.addEventListener("click", () => {
       openHistoryPanel();
@@ -1405,6 +1420,9 @@
     state.writingMode = mode;
     if (el.articleOutput) {
       el.articleOutput.classList.toggle("vertical-rl", mode === "vertical");
+    }
+    if (mode === "vertical" && el.articleScroll) {
+      alignVerticalArticleRight();
     }
     if (el.writingModeHorizontal) {
       el.writingModeHorizontal.classList.toggle("active", mode === "horizontal");
