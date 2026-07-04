@@ -1294,29 +1294,33 @@
       el.historyHeatmap.innerHTML = `<div class="empty">${tr("historyNoDate")}</div>`;
       return;
     }
-    // Build a week-grid heatmap from the earliest to latest date.
+    // Build a stable week-grid heatmap. A tiny one-day range looks broken, so
+    // keep at least 13 weeks visible while still expanding to include older history.
     const first = new Date(dates[0] + "T00:00:00");
     const last = new Date(dates[dates.length - 1] + "T00:00:00");
-    // Align grid to start on Sunday.
-    const start = new Date(first);
-    start.setDate(start.getDate() - start.getDay());
+    const end = new Date(last);
+    end.setDate(end.getDate() + (6 - end.getDay()));
+    const firstAligned = new Date(first);
+    firstAligned.setDate(firstAligned.getDate() - firstAligned.getDay());
+    const minimumStart = new Date(end);
+    minimumStart.setDate(minimumStart.getDate() - (13 * 7 - 1));
+    const start = firstAligned < minimumStart ? firstAligned : minimumStart;
     const maxCount = Math.max(...group.dateCount.values(), 1);
     const cells = [];
     const weekdayLabels = ["S", "M", "T", "W", "T", "F", "S"];
     const labelCol = weekdayLabels.map((d) => `<div class="heatmap-weekday">${d}</div>`).join("");
     let cursor = new Date(start);
     let weekCol = 0;
-    while (cursor <= last || weekCol % 7 !== 0) {
+    while (cursor <= end || weekCol % 7 !== 0) {
       const key = `${cursor.getFullYear()}-${String(cursor.getMonth() + 1).padStart(2, "0")}-${String(cursor.getDate()).padStart(2, "0")}`;
       const count = group.dateCount.get(key) || 0;
-      const inRange = cursor >= first && cursor <= last;
       let level = 0;
       if (count > 0) {
         level = Math.ceil((count / maxCount) * 4);
       }
       const selected = key === state.historySelectedDate ? " selected" : "";
-      const title = inRange ? `${key} · ${count} ${tr("historyArticlesCount")}` : key;
-      cells.push(`<div class="heatmap-cell level-${level}${selected}${inRange ? "" : " empty"}" data-date="${key}" title="${escapeHtml(title)}"></div>`);
+      const title = `${key} · ${count} ${tr("historyArticlesCount")}`;
+      cells.push(`<div class="heatmap-cell level-${level}${selected}" data-date="${key}" title="${escapeHtml(title)}"></div>`);
       cursor.setDate(cursor.getDate() + 1);
       weekCol++;
     }
@@ -1325,6 +1329,7 @@
       cells.push(`<div class="heatmap-cell filler"></div>`);
     }
     el.historyHeatmap.innerHTML =
+      `<div class="history-section-label">${tr("historyHeatmapHeading")}</div>` +
       `<div class="heatmap-grid">` +
       `<div class="heatmap-weekdays">${labelCol}</div>` +
       `<div class="heatmap-cells">${cells.join("")}</div>` +
