@@ -106,7 +106,6 @@ h2 {
   grid-template-columns: minmax(250px, 300px) minmax(280px, 360px) minmax(340px, 1fr);
   margin: 0 auto;
   max-width: 1600px;
-  align-items: start;
 }
 
 .left-stack {
