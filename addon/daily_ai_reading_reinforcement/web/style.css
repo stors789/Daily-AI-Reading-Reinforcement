@@ -547,44 +547,54 @@ h2 {
   margin: 0 0 1.05em;
 }
 
-.translation-row {
-  display: flex;
-  align-items: flex-start;
-  gap: 8px;
-  margin: -0.5em 0 1.2em;
+/* Inline per-paragraph translation toggle (replaces translation-row) */
+.reading-para {
+  position: relative;
 }
 
-.translation-toggle {
-  background: #e9f0ed;
-  border: 1px solid var(--line);
-  border-radius: 6px;
-  color: var(--accent);
-  cursor: pointer;
-  flex: 0 0 auto;
-  font-size: 14px;
-  line-height: 1;
-  min-height: 0;
-  padding: 4px 6px;
-  transition: background 0.15s;
-}
-
-.translation-toggle:hover,
-.translation-toggle.open {
-  background: var(--accent);
-  color: #fff;
-}
-
-.translation-block {
-  background: #f8f6f1;
-  border-left: 3px solid var(--accent);
-  border-radius: 0 6px 6px 0;
+.para-translate-toggle {
+  background: transparent;
+  border: 0;
+  border-radius: 3px;
   color: var(--muted);
-  flex: 1 1 0;
-  font-size: 14px;
+  cursor: pointer;
+  display: inline;
+  font-size: 0.72em;
+  font-weight: 600;
+  line-height: 1;
+  margin-left: 0.35em;
+  min-height: 0;
+  opacity: 0.65;
+  padding: 0 3px;
+  vertical-align: baseline;
+}
+
+.para-translate-toggle:hover {
+  color: var(--accent-dark);
+  opacity: 1;
+  text-decoration: underline;
+  text-underline-offset: 3px;
+}
+
+.para-translate-toggle.open {
+  border-left: 2px solid var(--accent);
+  color: var(--accent-dark);
+  margin-left: 0.5em;
+  opacity: 1;
+  padding-left: 5px;
+}
+
+.para-translation {
+  background: rgba(47, 111, 115, 0.05);
+  border-left: 2px solid var(--accent);
+  border-radius: 0 4px 4px 0;
+  color: var(--muted);
+  display: block;
+  font-size: 0.82em;
   line-height: 1.65;
-  min-width: 0;
+  margin: 0.45em 0 0;
   overflow-wrap: anywhere;
-  padding: 6px 12px;
+  padding: 2px 10px;
 }
 
 .reading-document {
@@ -845,16 +855,6 @@ h2 {
 
 .vertical-rl .reading-body p {
   margin: 0 1.2em 0 0;
-}
-
-.vertical-rl .translation-row {
-  writing-mode: horizontal-tb;
-  margin: 0 1.2em 0 0;
-  flex-direction: column;
-}
-
-.vertical-rl .translation-block {
-  writing-mode: horizontal-tb;
 }
 
 .vertical-rl .review-notes {

@@ -184,6 +184,7 @@
       apiMissingBaseUrl: "请输入 API Base URL。",
       apiMissingModel: "请输入模型名称。",
       toggleTranslation: "显示/隐藏翻译",
+      translateButtonShort: "译",
       historyTitle: "历史文章",
       historyEmpty: "没有已保存的文章。",
       historyCards: "张卡片",
@@ -273,6 +274,7 @@
       apiMissingBaseUrl: "Enter an API base URL.",
       apiMissingModel: "Enter a model name.",
       toggleTranslation: "Show/hide translation",
+      translateButtonShort: "TR",
       historyTitle: "Article History",
       historyEmpty: "No saved articles.",
       historyCards: "cards",
@@ -362,6 +364,7 @@
       apiMissingBaseUrl: "API Base URL を入力してください。",
       apiMissingModel: "モデル名を入力してください。",
       toggleTranslation: "翻訳の表示/非表示",
+      translateButtonShort: "訳",
       historyTitle: "過去の記事",
       historyEmpty: "保存された記事はありません。",
       historyCards: "カード",
@@ -937,13 +940,16 @@
     return segments
       .filter((seg) => seg.paragraph)
       .map((seg, idx) => {
-        const pHtml = `<p>${escapeHtml(seg.paragraph).replace(/\n/g, "<br>")}</p>`;
-        if (!seg.translation) return pHtml;
+        if (!seg.translation) {
+          return `<p class="reading-para">${escapeHtml(seg.paragraph).replace(/\n/g, "<br>")}</p>`;
+        }
         const tId = `trans-${idx}`;
-        return `${pHtml}<div class="translation-row">` +
-          `<button class="translation-toggle" onclick="(function(b){var el=document.getElementById('${tId}');var show=el.style.display==='none';el.style.display=show?'block':'none';b.classList.toggle('open',show);})(this)" title="${tr("toggleTranslation")}">🌐</button>` +
-          `<div class="translation-block" id="${tId}" style="display:none;">${escapeHtml(seg.translation)}</div>` +
-          `</div>`;
+        const bodyHtml = escapeHtml(seg.paragraph).replace(/\n/g, "<br>");
+        const toggleHtml = `<button class="para-translate-toggle" type="button" ` +
+          `onclick="(function(b){var el=document.getElementById('${tId}');var show=el.style.display==='none';el.style.display=show?'block':'none';b.classList.toggle('open',show);})(this)" ` +
+          `title="${tr("toggleTranslation")}" aria-expanded="false">${escapeHtml(tr("translateButtonShort"))}</button>`;
+        const translationHtml = `<span class="para-translation" id="${tId}" style="display:none;">${escapeHtml(seg.translation)}</span>`;
+        return `<p class="reading-para">${bodyHtml} ${toggleHtml}${translationHtml}</p>`;
       })
       .join("");
   }
