@@ -1082,9 +1082,11 @@ h2 {
 .vertical-rl .reading-body {
   writing-mode: vertical-rl;
   text-orientation: mixed;
-  overflow-x: auto;
+  height: auto;
+  max-height: 72em;
+  /* No vertical scrollbar — overflow creates new columns to the left */
   overflow-y: hidden;
-  height: calc(100vh - 340px);
+  overflow-x: auto;
   padding: 20px 10px;
   line-height: 2.0;
   letter-spacing: 0.04em;
