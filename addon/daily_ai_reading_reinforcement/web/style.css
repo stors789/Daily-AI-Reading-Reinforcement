@@ -690,8 +690,133 @@ h2 {
   max-width: 1600px;
 }
 
-.history-list {
-  max-height: 400px;
+.history-body {
+  display: grid;
+  grid-template-columns: minmax(180px, 240px) minmax(0, 1fr);
+  min-height: 0;
+}
+
+.history-decks {
+  border-right: 1px solid var(--line);
+  max-height: 420px;
+  overflow: auto;
+  padding: 10px;
+}
+
+.history-right {
+  display: flex;
+  flex-direction: column;
+  min-height: 0;
+}
+
+.history-deck-item {
+  background: var(--surface-strong);
+  border: 1px solid transparent;
+  border-radius: 8px;
+  cursor: pointer;
+  margin-bottom: 8px;
+  padding: 10px 12px;
+  transition: border-color 0.15s;
+}
+
+.history-deck-item:hover,
+.history-deck-item.selected {
+  border-color: rgba(47, 111, 115, 0.42);
+}
+
+.history-deck-item.selected {
+  background: #f4f8f6;
+}
+
+.history-deck-name {
+  font-weight: 700;
+  overflow-wrap: anywhere;
+}
+
+.history-deck-meta {
+  color: var(--muted);
+  display: flex;
+  flex-wrap: wrap;
+  font-size: 12px;
+  gap: 4px 10px;
+  margin-top: 4px;
+}
+
+.history-heatmap {
+  border-bottom: 1px solid var(--line);
+  max-height: 220px;
+  overflow: auto;
+  padding: 12px;
+}
+
+.heatmap-grid {
+  display: flex;
+  gap: 4px;
+}
+
+.heatmap-weekdays {
+  display: grid;
+  grid-template-rows: repeat(7, 1fr);
+  flex: 0 0 auto;
+  gap: 3px;
+  margin-right: 2px;
+}
+
+.heatmap-weekday {
+  color: var(--muted);
+  font-size: 10px;
+  line-height: 14px;
+  text-align: center;
+}
+
+.heatmap-cells {
+  display: grid;
+  grid-auto-flow: column;
+  grid-template-rows: repeat(7, 1fr);
+  gap: 3px;
+}
+
+.heatmap-cell {
+  border-radius: 3px;
+  cursor: pointer;
+  height: 14px;
+  width: 14px;
+}
+
+.heatmap-cell.filler,
+.heatmap-cell.empty {
+  background: transparent;
+  cursor: default;
+}
+
+.heatmap-cell.level-0 {
+  background: #ece4d9;
+}
+
+.heatmap-cell.level-1 {
+  background: #b8d4cf;
+}
+
+.heatmap-cell.level-2 {
+  background: #7eb5af;
+}
+
+.heatmap-cell.level-3 {
+  background: #4d948f;
+}
+
+.heatmap-cell.level-4 {
+  background: var(--accent);
+}
+
+.heatmap-cell.selected {
+  outline: 2px solid var(--accent-dark);
+  outline-offset: 1px;
+}
+
+.history-articles {
+  flex: 1 1 0;
+  max-height: 200px;
   overflow: auto;
   padding: 10px;
 }
@@ -733,6 +858,15 @@ h2 {
   .preset-row,
   .preset-grid {
     grid-template-columns: 1fr;
+  }
+  /* History panel: stack vertically on narrow screens */
+  .history-body {
+    grid-template-columns: 1fr;
+  }
+  .history-decks {
+    border-right: 0;
+    border-bottom: 1px solid var(--line);
+    max-height: 200px;
   }
 }
 

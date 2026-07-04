@@ -28,7 +28,10 @@
     statusData: { key: "selectDeck", isError: false, params: {} },
    readingMode: false,
    writingMode: "horizontal",
-    readingTab: "article",
+   readingTab: "article",
+    historyArticles: [],
+    historySelectedDeck: null,
+    historySelectedDate: null,
    dayStart: 0,
     dayEnd: 0,
   };
@@ -97,10 +100,13 @@
     readingTabNotes: document.getElementById("readingTabNotes"),
     savedPaths: document.getElementById("savedPaths"),
     historyButton: document.getElementById("historyButton"),
-    historyPanel: document.getElementById("historyPanel"),
-    historyHeading: document.getElementById("historyHeading"),
-    historyList: document.getElementById("historyList"),
-    historyCloseButton: document.getElementById("historyCloseButton"),
+   historyPanel: document.getElementById("historyPanel"),
+   historyHeading: document.getElementById("historyHeading"),
+    historyDecks: document.getElementById("historyDecks"),
+    historyRight: document.getElementById("historyRight"),
+    historyHeatmap: document.getElementById("historyHeatmap"),
+    historyArticles: document.getElementById("historyArticles"),
+   historyCloseButton: document.getElementById("historyCloseButton"),
     historyEmptyText: document.getElementById("historyEmptyText"),
     writingModeButtons: document.getElementById("writingModeButtons"),
     writingModeHorizontal: document.getElementById("writingModeHorizontal"),
@@ -197,11 +203,18 @@
       historyTitle: "历史文章",
       historyEmpty: "没有已保存的文章。",
       historyCards: "张卡片",
-      historyClose: "关闭",
-      writingHorizontal: "横",
-      writingVertical: "竖",
-    },
-    en: {
+     historyClose: "关闭",
+      historyDecksHeading: "牌组",
+      historyHeatmapHeading: "日期",
+      historyArticlesHeading: "文章",
+      historyNoDeck: "请选择一个牌组。",
+      historyNoDate: "请选择一个日期。",
+      historyArticlesCount: "篇文章",
+      historyRecentDate: "最近",
+     writingHorizontal: "横",
+     writingVertical: "竖",
+   },
+   en: {
       eyebrow: "Daily AI Reading",
       title: "Reading Reinforcement",
       decks: "Studied Decks",
@@ -290,9 +303,16 @@
       historyTitle: "Article History",
       historyEmpty: "No saved articles.",
       historyCards: "cards",
-      historyClose: "Close",
-      writingHorizontal: "横",
-      writingVertical: "縦",
+     historyClose: "Close",
+      historyDecksHeading: "Decks",
+      historyHeatmapHeading: "Dates",
+      historyArticlesHeading: "Articles",
+      historyNoDeck: "Choose a deck.",
+      historyNoDate: "Choose a date.",
+      historyArticlesCount: "articles",
+      historyRecentDate: "Recent",
+     writingHorizontal: "横",
+     writingVertical: "縦",
     },
     ja: {
       eyebrow: "毎日の AI 読解",
@@ -383,18 +403,25 @@
       historyTitle: "過去の記事",
       historyEmpty: "保存された記事はありません。",
       historyCards: "カード",
-      historyClose: "閉じる",
-      writingHorizontal: "横",
-      writingVertical: "縦",
+     historyClose: "閉じる",
+      historyDecksHeading: "デッキ",
+      historyHeatmapHeading: "日付",
+      historyArticlesHeading: "記事",
+      historyNoDeck: "デッキを選んでください。",
+      historyNoDate: "日付を選んでください。",
+      historyArticlesCount: "件",
+      historyRecentDate: "最近",
+     writingHorizontal: "横",
+     writingVertical: "縦",
     },
   };
 
- function tr(key) {
+  function tr(key) {
     const lang = I18N[state.uiLanguage];
     if (lang && Object.prototype.hasOwnProperty.call(lang, key)) return lang[key];
     if (Object.prototype.hasOwnProperty.call(I18N.en, key)) return I18N.en[key];
     return key;
- }
+  }
 
   function renderStatus() {
     let msg = tr(state.statusData.key);
@@ -1173,9 +1200,165 @@
 
   function openHistoryPanel() {
     if (el.historyPanel) {
+      state.historySelectedDeck = null;
+      state.historySelectedDate = null;
       el.historyPanel.style.display = "";
       send("listArticles");
     }
+  }
+
+  function dateKeyFromGenerated(generatedAt) {
+    if (!generatedAt) return "";
+    const d = new Date(generatedAt);
+    if (isNaN(d.getTime())) return "";
+    return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, "0")}-${String(d.getDate()).padStart(2, "0")}`;
+  }
+
+  function groupHistoryByDeck(articles) {
+    const map = new Map();
+    articles.forEach((item) => {
+      const deck = item.deck || item.filename || tr("fallbackTitle");
+      const date = dateKeyFromGenerated(item.generated_at);
+      if (!map.has(deck)) {
+        map.set(deck, { deck, articles: [], dateCount: new Map(), latest: "" });
+      }
+      const entry = map.get(deck);
+      entry.articles.push(item);
+      if (date) {
+        entry.dateCount.set(date, (entry.dateCount.get(date) || 0) + 1);
+        if (!entry.latest || date > entry.latest) entry.latest = date;
+      }
+    });
+    return Array.from(map.values()).sort((a, b) => b.latest.localeCompare(a.latest));
+  }
+
+  function renderHistoryDecks(deckGroups) {
+    if (!el.historyDecks) return;
+    if (!deckGroups.length) {
+      el.historyDecks.innerHTML = `<div class="empty">${tr("historyEmpty")}</div>`;
+      return;
+    }
+    el.historyDecks.innerHTML = deckGroups
+      .map((group) => {
+        const selected = group.deck === state.historySelectedDeck ? " selected" : "";
+        const count = group.articles.length;
+        const latest = group.latest ? group.latest : "—";
+        return `
+          <div class="history-deck-item${selected}" data-deck="${escapeHtml(group.deck)}">
+            <div class="history-deck-name">${escapeHtml(group.deck)}</div>
+            <div class="history-deck-meta">
+              <span>${count} ${tr("historyArticlesCount")}</span>
+              <span>${tr("historyRecentDate")} ${escapeHtml(latest)}</span>
+            </div>
+          </div>
+        `;
+      })
+      .join("");
+    el.historyDecks.querySelectorAll(".history-deck-item").forEach((item) => {
+      item.addEventListener("click", () => {
+        state.historySelectedDeck = item.dataset.deck;
+        state.historySelectedDate = null;
+        renderHistoryView();
+      });
+    });
+  }
+
+  function renderHistoryHeatmap(deckGroups) {
+    if (!el.historyHeatmap) return;
+    const group = deckGroups.find((g) => g.deck === state.historySelectedDeck);
+    if (!group) {
+      el.historyHeatmap.innerHTML = `<div class="empty">${tr("historyNoDeck")}</div>`;
+      return;
+    }
+    const dates = Array.from(group.dateCount.keys()).sort();
+    if (!dates.length) {
+      el.historyHeatmap.innerHTML = `<div class="empty">${tr("historyNoDate")}</div>`;
+      return;
+    }
+    // Build a week-grid heatmap from the earliest to latest date.
+    const first = new Date(dates[0] + "T00:00:00");
+    const last = new Date(dates[dates.length - 1] + "T00:00:00");
+    // Align grid to start on Sunday.
+    const start = new Date(first);
+    start.setDate(start.getDate() - start.getDay());
+    const maxCount = Math.max(...group.dateCount.values(), 1);
+    const cells = [];
+    const weekdayLabels = ["S", "M", "T", "W", "T", "F", "S"];
+    const labelCol = weekdayLabels.map((d) => `<div class="heatmap-weekday">${d}</div>`).join("");
+    let cursor = new Date(start);
+    let weekCol = 0;
+    while (cursor <= last || weekCol % 7 !== 0) {
+      const key = `${cursor.getFullYear()}-${String(cursor.getMonth() + 1).padStart(2, "0")}-${String(cursor.getDate()).padStart(2, "0")}`;
+      const count = group.dateCount.get(key) || 0;
+      const inRange = cursor >= first && cursor <= last;
+      let level = 0;
+      if (count > 0) {
+        level = Math.ceil((count / maxCount) * 4);
+      }
+      const selected = key === state.historySelectedDate ? " selected" : "";
+      const title = inRange ? `${key} · ${count} ${tr("historyArticlesCount")}` : key;
+      cells.push(`<div class="heatmap-cell level-${level}${selected}${inRange ? "" : " empty"}" data-date="${key}" title="${escapeHtml(title)}"></div>`);
+      cursor.setDate(cursor.getDate() + 1);
+      weekCol++;
+    }
+    // Pad trailing cells to complete the last week column.
+    while (cells.length % 7 !== 0) {
+      cells.push(`<div class="heatmap-cell filler"></div>`);
+    }
+    el.historyHeatmap.innerHTML =
+      `<div class="heatmap-grid">` +
+      `<div class="heatmap-weekdays">${labelCol}</div>` +
+      `<div class="heatmap-cells">${cells.join("")}</div>` +
+      `</div>`;
+    el.historyHeatmap.querySelectorAll(".heatmap-cell[data-date]").forEach((cell) => {
+      cell.addEventListener("click", () => {
+        state.historySelectedDate = cell.dataset.date;
+        renderHistoryView();
+      });
+    });
+  }
+
+  function renderHistoryArticles(deckGroups) {
+    if (!el.historyArticles) return;
+    const group = deckGroups.find((g) => g.deck === state.historySelectedDeck);
+    if (!group) {
+      el.historyArticles.innerHTML = `<div class="empty">${tr("historyNoDeck")}</div>`;
+      return;
+    }
+    let items = group.articles;
+    if (state.historySelectedDate) {
+      items = items.filter((item) => dateKeyFromGenerated(item.generated_at) === state.historySelectedDate);
+    }
+    if (!items.length) {
+      el.historyArticles.innerHTML = `<div class="empty">${tr("historyNoDate")}</div>`;
+      return;
+    }
+    items.sort((a, b) => String(b.generated_at || "").localeCompare(String(a.generated_at || "")));
+    el.historyArticles.innerHTML = items
+      .map((item) => {
+        return `
+          <div class="history-item" data-path="${escapeHtml(item.path)}">
+            <div class="history-item-title">${escapeHtml(item.filename || item.deck)}</div>
+            <div class="history-item-meta">
+              ${escapeHtml(item.generated_at || "")}
+              ${item.card_count ? ` · ${escapeHtml(item.card_count)} ${tr("historyCards")}` : ""}
+            </div>
+          </div>
+        `;
+      })
+      .join("");
+    el.historyArticles.querySelectorAll(".history-item").forEach((item) => {
+      item.addEventListener("click", () => {
+        send("loadArticle", { path: item.dataset.path });
+      });
+    });
+  }
+
+  function renderHistoryView() {
+    const deckGroups = groupHistoryByDeck(state.historyArticles);
+    renderHistoryDecks(deckGroups);
+    renderHistoryHeatmap(deckGroups);
+    renderHistoryArticles(deckGroups);
   }
 
   function closeHistoryPanel() {
@@ -1185,29 +1368,12 @@
   }
 
   function renderArticleHistory(articles) {
-    if (!el.historyList) return;
-    if (!articles.length) {
-      el.historyList.innerHTML = `<div class="empty">${tr("historyEmpty")}</div>`;
-      return;
+    state.historyArticles = articles || [];
+    if (!state.historySelectedDeck && state.historyArticles.length) {
+      const groups = groupHistoryByDeck(state.historyArticles);
+      if (groups.length) state.historySelectedDeck = groups[0].deck;
     }
-    el.historyList.innerHTML = articles
-      .map((item) => {
-        return `
-          <div class="history-item" data-path="${escapeHtml(item.path)}">
-            <div class="history-item-title">${escapeHtml(item.deck || item.filename)}</div>
-            <div class="history-item-meta">
-              ${escapeHtml(item.generated_at || "")}
-              ${item.card_count ? ` · ${escapeHtml(item.card_count)} ${tr("historyCards")}` : ""}
-            </div>
-          </div>
-        `;
-      })
-      .join("");
-    el.historyList.querySelectorAll(".history-item").forEach((item) => {
-      item.addEventListener("click", () => {
-        send("loadArticle", { path: item.dataset.path });
-      });
-    });
+    renderHistoryView();
   }
 
   if (el.historyButton) {
