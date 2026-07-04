@@ -479,7 +479,10 @@
     el.uiLanguageSelect.value = state.uiLanguage;
     if (el.returnToSelectionButton) el.returnToSelectionButton.textContent = tr("returnToSelection");
     if (el.historyHeading) el.historyHeading.textContent = tr("historyTitle");
-    if (el.historyButton) el.historyButton.title = tr("historyTitle");
+    if (el.historyButton) {
+      el.historyButton.textContent = tr("historyTitle");
+      el.historyButton.title = tr("historyTitle");
+    }
     if (el.historyCloseButton) el.historyCloseButton.title = tr("historyClose");
     if (el.writingModeHorizontal) el.writingModeHorizontal.textContent = tr("writingHorizontal");
    if (el.writingModeVertical) el.writingModeVertical.textContent = tr("writingVertical");
@@ -1350,19 +1353,21 @@
       return;
     }
     items.sort((a, b) => String(b.generated_at || "").localeCompare(String(a.generated_at || "")));
-    el.historyArticles.innerHTML = items
-      .map((item) => {
-        return `
-          <div class="history-item" data-path="${escapeHtml(item.path)}">
-            <div class="history-item-title">${escapeHtml(item.filename || item.deck)}</div>
-            <div class="history-item-meta">
-              ${escapeHtml(item.generated_at || "")}
-              ${item.card_count ? ` · ${escapeHtml(item.card_count)} ${tr("historyCards")}` : ""}
+    el.historyArticles.innerHTML =
+      `<div class="history-section-label">${tr("historyArticlesHeading")}</div>` +
+      items
+        .map((item) => {
+          return `
+            <div class="history-item" data-path="${escapeHtml(item.path)}">
+              <div class="history-item-title">${escapeHtml(item.filename || item.deck)}</div>
+              <div class="history-item-meta">
+                ${escapeHtml(item.generated_at || "")}
+                ${item.card_count ? ` · ${escapeHtml(item.card_count)} ${tr("historyCards")}` : ""}
+              </div>
             </div>
-          </div>
-        `;
-      })
-      .join("");
+          `;
+        })
+        .join("");
     el.historyArticles.querySelectorAll(".history-item").forEach((item) => {
       item.addEventListener("click", () => {
         send("loadArticle", { path: item.dataset.path });

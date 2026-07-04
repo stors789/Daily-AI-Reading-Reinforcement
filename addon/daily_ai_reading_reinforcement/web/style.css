@@ -822,10 +822,18 @@ h2 {
 }
 
 .history-articles {
-  flex: 1 1 0;
-  max-height: 200px;
+  max-height: 260px;
   overflow: auto;
   padding: 10px;
+}
+
+.history-section-label {
+  color: var(--muted);
+  font-size: 11px;
+  font-weight: 600;
+  letter-spacing: 0.04em;
+  margin-bottom: 6px;
+  text-transform: uppercase;
 }
 
 .history-item {
