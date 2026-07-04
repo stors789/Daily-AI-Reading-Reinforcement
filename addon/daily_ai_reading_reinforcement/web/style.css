@@ -1083,7 +1083,7 @@ h2 {
   writing-mode: vertical-rl;
   text-orientation: mixed;
   height: auto;
-  max-height: 72em;
+  max-height: 54em; /* 27 chars × 2.0 line-height */
   /* No vertical scrollbar — overflow creates new columns to the left */
   overflow-y: hidden;
   overflow-x: auto;
