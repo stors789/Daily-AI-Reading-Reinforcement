@@ -999,6 +999,10 @@ h2 {
   display: none !important;
 }
 
+.reading-mode .status {
+  display: none;
+}
+
 /* Writing Mode Toggle */
 .writing-mode-buttons {
   display: flex;
