@@ -1076,3 +1076,8 @@ h2 {
 .vertical-rl .review-notes {
   writing-mode: horizontal-tb;
 }
+
+.vertical-rl .reading-document {
+  margin-left: auto;
+  margin-right: 0;
+}
