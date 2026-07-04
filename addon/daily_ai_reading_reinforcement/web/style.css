@@ -1132,15 +1132,16 @@ h2 {
 }
 
 .vertical-rl .para-translation {
-  writing-mode: horizontal-tb;
-  background: rgba(47, 111, 115, 0.08);
-  border-left: 0;
+  /* Inherit vertical-rl from parent — translation text is vertical */
+  background: rgba(47, 111, 115, 0.1);
   border-right: 2px solid var(--accent);
   border-radius: 4px 0 0 4px;
-  font-size: 13px;
-  max-width: 300px;
-  margin: 0 8px 0 0;
-  padding: 10px 12px;
+  color: var(--muted);
+  font-size: 15px;
+  line-height: 2.0;
+  letter-spacing: 0.04em;
+  margin: 0;
+  padding: 8px 12px;
 }
 
 /* Reset the toggle button in vertical mode — keep it inline but subtle */
