@@ -93,6 +93,7 @@
     saveApiSettingsButton: document.getElementById("saveApiSettingsButton"),
     status: document.getElementById("status"),
     articleOutput: document.getElementById("articleOutput"),
+    readingHeader: document.getElementById("readingHeader"),
     articleScroll: document.getElementById("articleScroll"),
     notesPanel: document.getElementById("notesPanel"),
     readingTabs: document.getElementById("readingTabs"),
@@ -616,6 +617,7 @@
     updateGenerateButton();
     renderArticleCardDestination();
     renderFields();
+    if (el.readingHeader) el.readingHeader.innerHTML = "";
     if (el.articleScroll) el.articleScroll.innerHTML = "";
     if (el.notesPanel) el.notesPanel.innerHTML = "";
     el.savedPaths.innerHTML = "";
@@ -1028,13 +1030,15 @@
     const articleCardErrorLine = payload.articleCardError
       ? `<div class="save-warning">${tr("articleCardFailed")}${escapeHtml(payload.articleCardError)}</div>`
       : "";
+    el.readingHeader.innerHTML = `
+      <header class="reading-header">
+        <div class="reading-kicker">${tr("sourceDeck")} · ${escapeHtml(payload.deckName || "")}</div>
+        <h1>${escapeHtml(parsed.title)}</h1>
+        <div class="reading-meta">${tr("generatedAt")} · ${escapeHtml(generatedAt)}</div>
+      </header>
+    `;
     el.articleScroll.innerHTML = `
       <div class="reading-document">
-        <header class="reading-header">
-          <div class="reading-kicker">${tr("sourceDeck")} · ${escapeHtml(payload.deckName || "")}</div>
-          <h1>${escapeHtml(parsed.title)}</h1>
-          <div class="reading-meta">${tr("generatedAt")} · ${escapeHtml(generatedAt)}</div>
-        </header>
         <section class="reading-body">
           ${renderParagraphs(parsed.mainArticle)}
         </section>
@@ -1448,6 +1452,7 @@
       setStatus("chooseCard", true);
       return;
     }
+    if (el.readingHeader) el.readingHeader.innerHTML = "";
     if (el.articleScroll) el.articleScroll.innerHTML = "";
     if (el.notesPanel) el.notesPanel.innerHTML = "";
     el.savedPaths.innerHTML = "";
