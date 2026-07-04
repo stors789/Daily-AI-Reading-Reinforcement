@@ -1067,10 +1067,6 @@ h2 {
 .vertical-rl .reading-body {
   writing-mode: vertical-rl;
   text-orientation: mixed;
-  overflow-x: auto;
-  overflow-y: hidden;
-  max-height: none;
-  height: calc(70vh - 100px);
   padding: 20px 10px;
   line-height: 2.0;
   letter-spacing: 0.04em;
@@ -1087,4 +1083,5 @@ h2 {
 .vertical-rl .reading-document {
   margin-left: auto;
   margin-right: 0;
+  max-width: none;
 }
