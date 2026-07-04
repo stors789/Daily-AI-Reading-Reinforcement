@@ -140,7 +140,7 @@
       reviewNotes: "复习笔记",
       sourceTerms: "来源词条",
       fallbackTitle: "阅读文章",
-      selectDeckShort: "",
+      selectDeckShort: "请选择卡组",
       candidateCards: "张候选卡",
       selectedCards: "已选",
       selectFailedCards: "失败",
@@ -229,7 +229,7 @@
       reviewNotes: "Review notes",
       sourceTerms: "Source terms",
       fallbackTitle: "Reading Article",
-      selectDeckShort: "",
+      selectDeckShort: "Choose a deck",
       candidateCards: "candidate cards",
       selectedCards: "selected",
       selectFailedCards: "Failed",
@@ -318,7 +318,7 @@
       reviewNotes: "復習メモ",
       sourceTerms: "元の語句",
       fallbackTitle: "読解文章",
-      selectDeckShort: "",
+      selectDeckShort: "デッキを選択",
       candidateCards: "候補カード",
       selectedCards: "選択中",
       selectFailedCards: "失敗",
@@ -371,11 +371,12 @@
     },
   };
 
-  function tr(key) {
-    return (I18N[state.uiLanguage] && I18N[state.uiLanguage][key])
-      || I18N.en[key]
-      || key;
-  }
+ function tr(key) {
+    const lang = I18N[state.uiLanguage];
+    if (lang && Object.prototype.hasOwnProperty.call(lang, key)) return lang[key];
+    if (Object.prototype.hasOwnProperty.call(I18N.en, key)) return I18N.en[key];
+    return key;
+ }
 
   function renderStatus() {
     let msg = tr(state.statusData.key);
