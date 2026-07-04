@@ -601,19 +601,12 @@ h2 {
   max-width: 820px;
 }
 
-/* Separated header container — hidden until reading mode */
-.reading-header-container {
-  display: none;
-}
-
-.reading-mode .reading-header-container {
-  display: block;
-  padding: 28px 38px 0;
-}
-
-.reading-mode .reading-header-container .reading-header {
-  margin: 0 auto;
-  max-width: 820px;
+/* Reading header: sticky inside article-scroll so it stays visible while scrolling */
+.reading-mode .reading-header {
+  background: var(--surface);
+  position: sticky;
+  top: 0;
+  z-index: 1;
 }
 
 .reading-header {
@@ -929,9 +922,6 @@ h2 {
   .reading-mode .article-scroll {
     flex: 1 1 0;
     padding: 20px 18px 32px;
-  }
-  .reading-mode .reading-header-container {
-    padding: 20px 18px 0;
   }
   .reading-mode .notes-panel {
     border-left: 0;
