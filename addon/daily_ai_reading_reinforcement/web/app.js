@@ -94,6 +94,7 @@
     status: document.getElementById("status"),
     articleOutput: document.getElementById("articleOutput"),
     articleScroll: document.getElementById("articleScroll"),
+    readingHeader: document.getElementById("readingHeader"),
     notesPanel: document.getElementById("notesPanel"),
     readingTabs: document.getElementById("readingTabs"),
     readingTabArticle: document.getElementById("readingTabArticle"),
@@ -618,6 +619,10 @@
     renderFields();
 
     if (el.articleScroll) el.articleScroll.innerHTML = "";
+    if (el.readingHeader) {
+      el.readingHeader.innerHTML = "";
+      el.readingHeader.hidden = true;
+    }
     if (el.notesPanel) el.notesPanel.innerHTML = "";
     el.savedPaths.innerHTML = "";
     setReadingMode(false);
@@ -986,16 +991,16 @@
     return segments
       .filter((seg) => seg.paragraph)
       .map((seg, idx) => {
+        const bodyHtml = escapeHtml(seg.paragraph).replace(/\n/g, "<br>");
         if (!seg.translation) {
-          return `<p class="reading-para">${escapeHtml(seg.paragraph).replace(/\n/g, "<br>")}</p>`;
+          return `<div class="reading-para-group"><p class="reading-para">${bodyHtml}</p></div>`;
         }
         const tId = `trans-${idx}`;
-        const bodyHtml = escapeHtml(seg.paragraph).replace(/\n/g, "<br>");
         const toggleHtml = `<button class="para-translate-toggle" type="button" ` +
           `onclick="(function(b){var el=document.getElementById('${tId}');var show=el.style.display==='none';el.style.display=show?'block':'none';b.classList.toggle('open',show);})(this)" ` +
           `title="${tr("toggleTranslation")}" aria-expanded="false">${escapeHtml(tr("translateButtonShort"))}</button>`;
-        const translationHtml = `<span class="para-translation" id="${tId}" style="display:none;">${escapeHtml(seg.translation)}</span>`;
-        return `<p class="reading-para">${bodyHtml} ${toggleHtml}${translationHtml}</p>`;
+        const translationHtml = `<div class="para-translation" id="${tId}" style="display:none;">${escapeHtml(seg.translation)}</div>`;
+        return `<div class="reading-para-group"><p class="reading-para">${bodyHtml} ${toggleHtml}</p>${translationHtml}</div>`;
       })
       .join("");
   }
@@ -1029,13 +1034,16 @@
     const articleCardErrorLine = payload.articleCardError
       ? `<div class="save-warning">${tr("articleCardFailed")}${escapeHtml(payload.articleCardError)}</div>`
       : "";
+    if (el.readingHeader) {
+      el.readingHeader.innerHTML = `
+        <div class="reading-kicker">${tr("sourceDeck")} · ${escapeHtml(payload.deckName || "")}</div>
+        <h1>${escapeHtml(parsed.title)}</h1>
+        <div class="reading-meta">${tr("generatedAt")} · ${escapeHtml(generatedAt)}</div>
+      `;
+      el.readingHeader.hidden = false;
+    }
     el.articleScroll.innerHTML = `
       <div class="reading-document">
-        <header class="reading-header">
-          <div class="reading-kicker">${tr("sourceDeck")} · ${escapeHtml(payload.deckName || "")}</div>
-          <h1>${escapeHtml(parsed.title)}</h1>
-          <div class="reading-meta">${tr("generatedAt")} · ${escapeHtml(generatedAt)}</div>
-        </header>
         <section class="reading-body">
           ${renderParagraphs(parsed.mainArticle)}
         </section>
@@ -1068,6 +1076,10 @@
       state.writingMode = "horizontal";
       state.readingTab = "article";
       if (el.articleOutput) el.articleOutput.classList.remove("vertical-rl", "view-article", "view-notes");
+    if (el.readingHeader) {
+      el.readingHeader.innerHTML = "";
+      el.readingHeader.hidden = true;
+    }
       if (el.writingModeHorizontal) el.writingModeHorizontal.classList.add("active");
       if (el.writingModeVertical) el.writingModeVertical.classList.remove("active");
     }
@@ -1451,6 +1463,10 @@
     }
 
     if (el.articleScroll) el.articleScroll.innerHTML = "";
+    if (el.readingHeader) {
+      el.readingHeader.innerHTML = "";
+      el.readingHeader.hidden = true;
+    }
     if (el.notesPanel) el.notesPanel.innerHTML = "";
     el.savedPaths.innerHTML = "";
     setReadingMode(false);

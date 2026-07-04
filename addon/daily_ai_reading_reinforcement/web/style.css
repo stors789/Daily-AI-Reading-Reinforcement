@@ -582,18 +582,7 @@ h2 {
   padding-left: 5px;
 }
 
-.para-translation {
-  background: rgba(47, 111, 115, 0.05);
-  border-left: 2px solid var(--accent);
-  border-radius: 0 4px 4px 0;
-  color: var(--muted);
-  display: block;
-  font-size: 0.82em;
-  line-height: 1.65;
-  margin: 0.45em 0 0;
-  overflow-wrap: anywhere;
-  padding: 2px 10px;
-}
+
 
 .reading-document {
   margin: 0 auto;
@@ -1111,4 +1100,49 @@ h2 {
 
 .vertical-rl .reading-document {
   max-width: none;
+}
+
+/* ---- Paragraph + Translation group ---- */
+.reading-para-group {
+  /* In horizontal mode: children stack vertically (para on top, translation below).
+     In vertical-rl mode: children flow right-to-left (para on right, translation to its left). */
+}
+
+/* Translation block shared styles */
+.para-translation {
+  background: rgba(47, 111, 115, 0.06);
+  border-left: 2px solid var(--accent);
+  border-radius: 0 4px 4px 0;
+  color: var(--muted);
+  display: block;
+  font-size: 0.82em;
+  line-height: 1.65;
+  margin: 0.45em 0 0;
+  overflow-wrap: anywhere;
+  padding: 6px 10px;
+}
+
+/* Vertical writing mode: translation expands to the LEFT of the paragraph,
+   pushing unread content leftward without disturbing the right-side text. */
+.vertical-rl .reading-para-group {
+  /* In vertical-rl, child blocks flow right-to-left.
+     The <p> appears on the right, the translation <div> appears to its left. */
+}
+
+.vertical-rl .para-translation {
+  writing-mode: horizontal-tb;
+  background: rgba(47, 111, 115, 0.08);
+  border-left: 0;
+  border-right: 2px solid var(--accent);
+  border-radius: 4px 0 0 4px;
+  font-size: 13px;
+  max-width: 300px;
+  margin: 0 8px 0 0;
+  padding: 10px 12px;
+}
+
+/* Reset the toggle button in vertical mode — keep it inline but subtle */
+.vertical-rl .para-translate-toggle {
+  margin-left: 0;
+  font-size: 0.65em;
 }
