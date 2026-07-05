@@ -1,11 +1,7 @@
 from __future__ import annotations
 
-import html
 import json
-import re
 import time
-import urllib.error
-import urllib.request
 from dataclasses import dataclass, replace
 from pathlib import Path
 from typing import Any
@@ -20,6 +16,38 @@ from aqt import deckbrowser
 from aqt.qt import QAction, QDialog, QTimer, QVBoxLayout
 from aqt.utils import showWarning
 from aqt.webview import AnkiWebView
+
+from .core.article import (
+    list_saved_articles,
+    load_saved_article,
+    parse_article_frontmatter,
+    save_article,
+)
+from .core.config import DEFAULT_CONFIG, PROVIDER_PROFILES
+from .core.llm import fetch_openai_compatible_models, generate_article
+from .core.prompt import build_prompt
+from .core.rendering import (
+    extract_article_block,
+    parse_article_response,
+    parse_review_notes,
+    render_article_fragment_html,
+    render_article_html,
+    render_paragraph_html,
+    render_review_notes_html,
+)
+from .core.utils import (
+    card_id_set,
+    clamp_word_count,
+    clean_base_url,
+    clean_max_tokens,
+    clean_max_words,
+    clean_provider_id,
+    clean_temperature,
+    clean_text,
+    slugify,
+    word_range_bounds,
+)
+
 
 
 ADDON_PACKAGE = __name__
@@ -37,97 +65,6 @@ ARTICLE_FIELDS = [
     "Markdown Path",
     "HTML Path",
 ]
-
-PROVIDER_PROFILES = [
-    {
-        "id": "openai",
-        "name": "OpenAI",
-        "base_url": "https://api.openai.com/v1",
-        "chat_completions_path": "/chat/completions",
-        "default_model": "gpt-4o-mini",
-        "model": "gpt-4o-mini",
-        "docs_url": "https://platform.openai.com/docs/api-reference/chat",
-        "verified_at": "2026-07-01",
-        "auth_notes": "Bearer token with sk-...",
-        "compatibility_notes": "Official OpenAI API.",
-    },
-    {
-        "id": "deepseek",
-        "name": "DeepSeek",
-        "base_url": "https://api.deepseek.com",
-        "chat_completions_path": "/chat/completions",
-        "default_model": "deepseek-v4-flash",
-        "model": "deepseek-v4-flash",
-        "docs_url": "https://platform.deepseek.com/api-docs/",
-        "verified_at": "2026-07-01",
-        "auth_notes": "Bearer token.",
-        "compatibility_notes": "OpenAI-compatible chat completions. Legacy deepseek-chat is documented as deprecated on 2026-07-24.",
-    },
-    {
-        "id": "qwen",
-        "name": "Qwen DashScope",
-        "base_url": "https://dashscope.aliyuncs.com/compatible-mode/v1",
-        "chat_completions_path": "/chat/completions",
-        "default_model": "qwen-plus",
-        "model": "qwen-plus",
-        "docs_url": "https://help.aliyun.com/zh/model-studio/compatibility-of-openai-with-dashscope",
-        "verified_at": "2026-07-01",
-        "auth_notes": "Bearer token from DashScope console.",
-        "compatibility_notes": "OpenAI-compatible chat completions. Official docs recommend workspace-specific regional base URLs where available; the legacy dashscope.aliyuncs.com endpoint remains usable.",
-    },
-    {
-        "id": "openrouter",
-        "name": "OpenRouter",
-        "base_url": "https://openrouter.ai/api/v1",
-        "chat_completions_path": "/chat/completions",
-        "default_model": "openai/gpt-4o-mini",
-        "model": "openai/gpt-4o-mini",
-        "docs_url": "https://openrouter.ai/docs/api-reference/chat-completion",
-        "verified_at": "2026-07-01",
-        "auth_notes": "Bearer token.",
-        "compatibility_notes": "OpenAI-compatible chat completions through /api/v1/chat/completions.",
-    },
-    {
-        "id": "custom",
-        "name": "Custom compatible API",
-        "base_url": "",
-        "chat_completions_path": "/chat/completions",
-        "default_model": "",
-        "model": "",
-        "docs_url": "",
-        "verified_at": "",
-        "auth_notes": "Provide appropriate credentials.",
-        "compatibility_notes": "Assumes standard OpenAI chat completions endpoint (/chat/completions).",
-    },
-]
-
-
-DEFAULT_CONFIG = {
-    "api_key": "",
-    "base_url": "https://api.openai.com/v1",
-    "model": "gpt-4.1-mini",
-    "selected_provider_profile": "openai",
-    "temperature": 0.7,
-    "max_tokens": 30000,
-    "prompt_template": "",
-    "deck_field_config": {},
-    "last_selected_deck_id": "",
-    "collapsed_deck_groups": [],
-    "ui_language": "zh",
-    "prompt_presets": [
-        {
-            "id": "default",
-            "name": "Default",
-            "reader_native_language": "",
-            "article_language": "",
-            "difficulty": "",
-            "max_words": "",
-            "instructions": "",
-            "prompt_template": "",
-        }
-    ],
-    "selected_prompt_preset_id": "default",
-}
 
 
 @dataclass
@@ -816,83 +753,7 @@ def first_meaningful_field(fields: dict[str, str]) -> str:
     return ""
 
 
-def clean_text(value: Any) -> str:
-    text = html.unescape(str(value or ""))
-    text = re.sub(r"<[^>]+>", " ", text)
-    text = re.sub(r"\s+", " ", text)
-    return text.strip()
-
-
-def clean_max_words(value: Any) -> str:
-    text = clean_text(value)
-    if not text:
-        return ""
-    numbers = [int(match) for match in re.findall(r"\d+", text)]
-    if not numbers:
-        return ""
-    first = clamp_word_count(numbers[0])
-    if len(numbers) == 1:
-        return str(first)
-    second = clamp_word_count(numbers[1])
-    low, high = sorted((first, second))
-    if low == high:
-        return str(high)
-    return f"{low}-{high}"
-
-
-def clamp_word_count(value: int) -> int:
-    return max(50, min(10000, int(value)))
-
-
-def word_range_bounds(value: Any) -> tuple[int, int] | None:
-    cleaned = clean_max_words(value)
-    if not cleaned:
-        return None
-    numbers = [int(match) for match in re.findall(r"\d+", cleaned)]
-    if not numbers:
-        return None
-    if len(numbers) == 1:
-        return (numbers[0], numbers[0])
-    low, high = sorted((numbers[0], numbers[1]))
-    return (low, high)
-
-
-def card_id_set(value: Any) -> set[int]:
-    if not isinstance(value, list):
-        return set()
-    ids: set[int] = set()
-    for item in value:
-        try:
-            ids.add(int(item))
-        except (TypeError, ValueError):
-            continue
     return ids
-
-
-def clean_provider_id(value: Any) -> str:
-    provider_id = clean_text(value)
-    valid_ids = {profile["id"] for profile in PROVIDER_PROFILES}
-    return provider_id if provider_id in valid_ids else "custom"
-
-
-def clean_base_url(value: Any) -> str:
-    return str(value or "").strip().rstrip("/")
-
-
-def clean_temperature(value: Any) -> float:
-    try:
-        number = float(value)
-    except (TypeError, ValueError):
-        number = float(DEFAULT_CONFIG["temperature"])
-    return max(0.0, min(2.0, number))
-
-
-def clean_max_tokens(value: Any) -> int:
-    try:
-        number = int(float(value))
-    except (TypeError, ValueError):
-        number = int(DEFAULT_CONFIG["max_tokens"])
-    return max(128, min(32000, number))
 
 
 def api_settings_payload(config: dict[str, Any]) -> dict[str, Any]:
@@ -982,282 +843,6 @@ def prompt_preset_by_id(config: dict[str, Any], preset_id: str) -> dict[str, str
         if preset["id"] == selected_id:
             return preset
     return presets[0]
-
-
-def build_prompt(
-    config: dict[str, Any],
-    deck_name_value: str,
-    cards: list[CandidateCard],
-    selected_fields: list[str],
-    preset: dict[str, str],
-) -> str:
-    ui_lang = writing_language_for_ui(str(config.get("ui_language") or "zh"))
-    reader_native_language = str(
-        preset.get("reader_native_language") or ui_lang or "English"
-    )
-    article_language = str(
-        preset.get("article_language") or "the language being learned"
-    )
-    difficulty = str(preset.get("difficulty") or "appropriate for the learner")
-    max_words = str(preset.get("max_words") or "")
-    bounds = word_range_bounds(max_words)
-    if bounds and bounds[0] != bounds[1]:
-        length_instruction = (
-            f"Write between about {bounds[0]} and {bounds[1]} words or characters."
-        )
-    elif bounds:
-        length_instruction = f"Write about {bounds[0]} words or characters."
-    else:
-        length_instruction = "No fixed length limit."
-    instructions = str(preset.get("instructions") or "No extra formatting instructions.")
-    card_lines = []
-    for index, card in enumerate(cards[:80], start=1):
-        labels = []
-        if card.is_new:
-            labels.append("new")
-        if card.is_failed:
-            labels.append("failed")
-        label = ", ".join(labels) if labels else "studied"
-        field_context = "; ".join(
-            f"{name}: {card.fields.get(name)}"
-            for name in selected_fields
-            if card.fields.get(name)
-        )
-        if field_context:
-            card_lines.append(f"{index}. ({label}) {field_context}")
-        else:
-            card_lines.append(f"{index}. ({label})")
-
-    default_prompt = (
-        "You are generating a reading reinforcement text for a language learner.\n\n"
-        "Inputs:\n"
-        "- Reader native language: {reader_native_language}\n"
-        "- Article language: {article_language}\n"
-        "- Difficulty: {difficulty}\n"
-        "- Length limit: {length_instruction}\n"
-        "- Formatting requirements: {instructions}\n\n"
-        "Use the provided card fields as source material.\n\n"
-        "Output format:\n"
-        "[ARTICLE_TITLE]\n"
-        "A short title in the article language.\n\n"
-        "[MAIN_ARTICLE]\n"
-        "The main article. Use only the article language.\n"
-        "IMPORTANT: After EACH paragraph, add a new line starting with [T] followed by a "
-        "translation of that paragraph in the reader native language ({reader_native_language}). "
-        "Example:\n"
-        "First paragraph text in article language.\n"
-        "[T] Translation of first paragraph in reader native language.\n\n"
-        "Second paragraph text in article language.\n"
-        "[T] Translation of second paragraph in reader native language.\n\n"
-        "[REVIEW_NOTES]\n"
-        "One note per important source term. Use this line format:\n"
-        "- term :: explanation\n\n"
-        "Constraints:\n"
-        "- Return exactly the three bracketed blocks above.\n"
-        "- Do not output Markdown headings.\n"
-        "- Do not output HTML.\n"
-        "- Follow the requested article language even if source fields contain other languages.\n"
-        "- Do not use the reader native language in [MAIN_ARTICLE] except in [T] translation lines.\n"
-        "- Use the reader native language for explanations in [REVIEW_NOTES].\n"
-        "- Every paragraph in [MAIN_ARTICLE] must be followed by a [T] translation line.\n"
-        "- Follow the length limit.\n"
-        "- Preserve source terms accurately when they are the learning targets.\n"
-        "- Do not add sections outside the blocks above.\n\n"
-        "Cards:\n{cards}\n"
-    )
-    template = str(
-        preset.get("prompt_template") or config.get("prompt_template") or default_prompt
-    )
-    return template.format(
-        reader_native_language=reader_native_language,
-        article_language=article_language,
-        difficulty=difficulty,
-        max_words=max_words,
-        length_instruction=length_instruction,
-        instructions=instructions,
-        deck_name=deck_name_value,
-        cards="\n".join(card_lines),
-    )
-
-
-def writing_language_for_ui(ui_language: str) -> str:
-    return {
-        "zh": "中文",
-        "en": "English",
-        "ja": "日本語",
-    }.get(ui_language, "中文")
-
-
-def max_tokens_for_request(config: dict[str, Any], preset: dict[str, str]) -> int:
-    return int(config.get("max_tokens") or DEFAULT_CONFIG["max_tokens"])
-
-
-def fetch_openai_compatible_models(base_url: str, api_key: str) -> list[str]:
-    url = f"{base_url.rstrip('/')}/models"
-    request = urllib.request.Request(
-        url,
-        headers={
-            "Authorization": f"Bearer {api_key}",
-            "Content-Type": "application/json",
-            "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36",
-        },
-        method="GET",
-    )
-    try:
-        with urllib.request.urlopen(request, timeout=30) as response:
-            response_payload = json.loads(response.read().decode("utf-8"))
-    except urllib.error.HTTPError as exc:
-        body = exc.read().decode("utf-8", errors="replace")
-        raise RuntimeError(f"Model list request failed with HTTP {exc.code}: {body}") from exc
-    except urllib.error.URLError as exc:
-        raise RuntimeError(f"Model list request failed: {exc.reason}") from exc
-
-    raw_models = response_payload.get("data") if isinstance(response_payload, dict) else response_payload
-    models: list[str] = []
-    if isinstance(raw_models, list):
-        for item in raw_models:
-            if isinstance(item, dict):
-                model_id = clean_text(item.get("id"))
-            else:
-                model_id = clean_text(item)
-            if model_id:
-                models.append(model_id)
-    return sorted(set(models), key=str.lower)
-
-
-def generate_article(
-    config: dict[str, Any],
-    deck_name_value: str,
-    cards: list[CandidateCard],
-    selected_fields: list[str],
-    preset: dict[str, str],
-) -> str:
-    provider_id = clean_provider_id(config.get("selected_provider_profile"))
-    provider = next((p for p in PROVIDER_PROFILES if p["id"] == provider_id), PROVIDER_PROFILES[-1])
-    base_url = str(config.get("base_url") or provider.get("base_url") or DEFAULT_CONFIG["base_url"]).rstrip("/")
-    chat_path = provider.get("chat_completions_path", "/chat/completions")
-    url = f"{base_url}{chat_path}"
-    prompt = build_prompt(config, deck_name_value, cards, selected_fields, preset)
-    request_payload = {
-        "model": config.get("model") or provider.get("model") or DEFAULT_CONFIG["model"],
-        "messages": [
-            {
-                "role": "system",
-                "content": "Follow the requested output format and language boundaries exactly.",
-            },
-            {"role": "user", "content": prompt},
-        ],
-        "temperature": float(config.get("temperature") or DEFAULT_CONFIG["temperature"]),
-        "max_tokens": max_tokens_for_request(config, preset),
-    }
-    data = json.dumps(request_payload).encode("utf-8")
-    request = urllib.request.Request(
-        url,
-        data=data,
-        headers={
-            "Authorization": f"Bearer {config['api_key']}",
-            "Content-Type": "application/json",
-            "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36",
-        },
-        method="POST",
-    )
-
-    try:
-        with urllib.request.urlopen(request, timeout=90) as response:
-            response_payload = json.loads(response.read().decode("utf-8"))
-    except urllib.error.HTTPError as exc:
-        body = exc.read().decode("utf-8", errors="replace")
-        raise RuntimeError(f"AI request failed with HTTP {exc.code}: {body}") from exc
-    except urllib.error.URLError as exc:
-        raise RuntimeError(f"AI request failed: {exc.reason}") from exc
-
-    try:
-        return response_payload["choices"][0]["message"]["content"].strip()
-    except (KeyError, IndexError, TypeError) as exc:
-        raise RuntimeError("AI response did not contain a chat completion message.") from exc
-
-
-def save_article(
-    deck_name_value: str, cards: list[CandidateCard], article: str
-) -> dict[str, Path]:
-    ARTICLES_DIR.mkdir(parents=True, exist_ok=True)
-    date_part = time.strftime("%Y-%m-%d")
-    time_part = time.strftime("%H%M%S")
-    slug = slugify(deck_name_value)
-    basename = f"{date_part}-{slug}-{time_part}"
-    markdown_path = ARTICLES_DIR / f"{basename}.md"
-    html_path = ARTICLES_DIR / f"{basename}.html"
-
-    metadata = [
-        "---",
-        f"deck: {deck_name_value}",
-        f"generated_at: {time.strftime('%Y-%m-%d %H:%M:%S')}",
-        f"card_count: {len(cards)}",
-        "---",
-        "",
-    ]
-    markdown_path.write_text("\n".join(metadata) + article + "\n", encoding="utf-8")
-    html_path.write_text(render_article_html(deck_name_value, cards, article), encoding="utf-8")
-    return {"markdown": markdown_path, "html": html_path}
-
-
-def list_saved_articles() -> list[dict[str, str]]:
-    if not ARTICLES_DIR.is_dir():
-        return []
-    articles = []
-    for md_file in sorted(ARTICLES_DIR.glob("*.md"), reverse=True):
-        try:
-            text = md_file.read_text(encoding="utf-8")
-        except Exception:
-            continue
-        meta = parse_article_frontmatter(text)
-        articles.append({
-            "path": str(md_file),
-            "filename": md_file.name,
-            "deck": meta.get("deck", ""),
-            "generated_at": meta.get("generated_at", ""),
-            "card_count": meta.get("card_count", ""),
-        })
-    return articles
-
-
-def parse_article_frontmatter(text: str) -> dict[str, str]:
-    meta: dict[str, str] = {}
-    if not text.startswith("---"):
-        return meta
-    end = text.find("---", 3)
-    if end == -1:
-        return meta
-    for line in text[3:end].strip().splitlines():
-        if ":" in line:
-            key, _, value = line.partition(":")
-            meta[key.strip()] = value.strip()
-    return meta
-
-
-def load_saved_article(path: str) -> dict[str, Any]:
-    article_path = Path(path)
-    if not article_path.is_file():
-        raise RuntimeError(f"Article file not found: {path}")
-    if not str(article_path).startswith(str(ARTICLES_DIR)):
-        raise RuntimeError("Access denied: path outside articles directory.")
-    text = article_path.read_text(encoding="utf-8")
-    meta = parse_article_frontmatter(text)
-    # Strip frontmatter to get article body
-    body = text
-    if text.startswith("---"):
-        end = text.find("---", 3)
-        if end != -1:
-            body = text[end + 3:].strip()
-    html_path = article_path.with_suffix(".html")
-    return {
-        "path": str(article_path),
-        "deck": meta.get("deck", ""),
-        "generated_at": meta.get("generated_at", ""),
-        "card_count": meta.get("card_count", ""),
-        "article": body,
-        "htmlPath": str(html_path) if html_path.is_file() else "",
-    }
 
 
 def create_article_card(
@@ -1423,191 +1008,6 @@ def add_note_to_deck(note: Any, deck_id: int) -> None:
     except Exception:
         pass
     mw.col.addNote(note)
-
-
-def extract_article_block(raw: str, start_marker: str, end_marker: str = "") -> str:
-    start = raw.find(start_marker)
-    if start == -1:
-        return ""
-    content_start = start + len(start_marker)
-    end = raw.find(end_marker, content_start) if end_marker else -1
-    return raw[content_start : len(raw) if end == -1 else end].strip()
-
-
-def parse_article_response(article: str) -> dict[str, Any]:
-    raw = str(article or "").strip()
-    title = extract_article_block(raw, "[ARTICLE_TITLE]", "[MAIN_ARTICLE]")
-    main_article = extract_article_block(raw, "[MAIN_ARTICLE]", "[REVIEW_NOTES]")
-    review_raw = extract_article_block(raw, "[REVIEW_NOTES]")
-    if not title and not main_article and not review_raw:
-        return {
-            "title": "Reading Article",
-            "main_article": raw,
-            "review_notes": [],
-        }
-    return {
-        "title": title or "Reading Article",
-        "main_article": main_article or raw,
-        "review_notes": parse_review_notes(review_raw),
-    }
-
-
-def parse_review_notes(review_raw: str) -> list[dict[str, str]]:
-    notes = []
-    for raw_line in str(review_raw or "").splitlines():
-        line = re.sub(r"^[-*]\s*", "", raw_line.strip())
-        if not line:
-            continue
-        if "::" in line:
-            term, note = line.split("::", 1)
-        elif "：" in line:
-            term, note = line.split("：", 1)
-        elif ":" in line:
-            term, note = line.split(":", 1)
-        else:
-            term, note = "", line
-        notes.append({"term": term.strip(), "note": note.strip()})
-    return notes
-
-
-def render_paragraph_html(text: str) -> str:
-    return "".join(
-        f"<p>{html.escape(block.strip()).replace(chr(10), '<br>')}</p>"
-        for block in str(text or "").split("\n\n")
-        if block.strip()
-    )
-
-
-def render_review_notes_html(notes: list[dict[str, str]]) -> str:
-    if not notes:
-        return ""
-    rows = []
-    for note in notes:
-        term = html.escape(note.get("term", ""))
-        body = html.escape(note.get("note", ""))
-        rows.append(
-            f"{f'<dt>{term}</dt>' if term else ''}<dd>{body}</dd>"
-        )
-    return f"""
-    <section class="review-notes">
-      <h2>Review Notes</h2>
-      <dl>{''.join(rows)}</dl>
-    </section>
-"""
-
-
-def render_article_fragment_html(article: str) -> str:
-    parsed = parse_article_response(article)
-    return f"""
-<section class="reading-body">
-  {render_paragraph_html(parsed["main_article"])}
-</section>
-{render_review_notes_html(parsed["review_notes"])}
-"""
-
-
-def render_article_html(deck_name_value: str, cards: list[CandidateCard], article: str) -> str:
-    parsed = parse_article_response(article)
-    article_title = html.escape(parsed["title"])
-    article_body = render_paragraph_html(parsed["main_article"])
-    review_notes = render_review_notes_html(parsed["review_notes"])
-    terms = "\n".join(
-        f"<li>{html.escape(card.term)}</li>" for card in cards[:40] if card.term
-    )
-    return f"""<!doctype html>
-<html lang="en">
-<head>
-  <meta charset="utf-8">
-  <meta name="viewport" content="width=device-width, initial-scale=1">
-  <title>{html.escape(deck_name_value)} Reading Reinforcement</title>
-  <style>
-    body {{
-      margin: 0;
-      background: #f6f2ea;
-      color: #24211d;
-      font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
-      line-height: 1.7;
-    }}
-    main {{
-      max-width: 820px;
-      margin: 0 auto;
-      padding: 48px 24px 64px;
-    }}
-    h1 {{
-      margin: 0 0 12px;
-      font-size: 34px;
-      letter-spacing: 0;
-      line-height: 1.25;
-    }}
-    .meta {{
-      color: #6c6256;
-      margin-bottom: 32px;
-    }}
-    article {{
-      background: #fffdf8;
-      border: 1px solid #ded4c6;
-      border-radius: 8px;
-      padding: 32px;
-      box-shadow: 0 18px 50px rgba(43, 34, 24, 0.08);
-    }}
-    .reading-body {{
-      font-size: 18px;
-      line-height: 1.9;
-    }}
-    .reading-body p {{
-      margin: 0 0 1.05em;
-    }}
-    .review-notes {{
-      background: #f8f4ed;
-      border: 1px solid #ded4c6;
-      border-radius: 8px;
-      margin-top: 28px;
-      padding: 18px;
-    }}
-    .review-notes h2 {{
-      font-size: 18px;
-      margin: 0 0 14px;
-    }}
-    .review-notes dl {{
-      display: grid;
-      gap: 10px 14px;
-      grid-template-columns: minmax(80px, max-content) minmax(0, 1fr);
-      margin: 0;
-    }}
-    .review-notes dt {{
-      color: #1f5558;
-      font-weight: 800;
-    }}
-    .review-notes dd {{
-      margin: 0;
-    }}
-    .terms {{
-      margin-top: 24px;
-      color: #4e453d;
-    }}
-  </style>
-</head>
-<body>
-  <main>
-    <h1>{article_title}</h1>
-    <div class="meta">{html.escape(deck_name_value)} · Generated {time.strftime('%Y-%m-%d %H:%M:%S')} from {len(cards)} studied cards.</div>
-    <article>
-      <section class="reading-body">{article_body}</section>
-      {review_notes}
-    </article>
-    <section class="terms">
-      <h2>Source Terms</h2>
-      <ul>{terms}</ul>
-    </section>
-  </main>
-</body>
-</html>
-"""
-
-
-def slugify(value: str) -> str:
-    slug = re.sub(r"[^A-Za-z0-9._-]+", "-", value.strip()).strip("-")
-    return slug[:80] or "deck"
 
 
 def open_dialog() -> None:
