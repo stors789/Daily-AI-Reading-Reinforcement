@@ -11,6 +11,7 @@ from desktop_mock.real_momo_provider import (
     parse_study_records_response,
     parse_today_items_response,
     parse_vocabulary_query_response,
+    unwrap_api_response,
 )
 
 
@@ -74,6 +75,11 @@ class TestRealMoMoDeckProvider(unittest.TestCase):
         self.assertEqual(req.full_url, "https://open.maimemo.com/open/api/v1/study/get_today_items")
         self.assertEqual(req.method, "POST")
         self.assertEqual(json.loads(req.data), {"is_finished": True, "is_new": False, "limit": 10})
+        
+        self.opener.requests.clear()
+        self.provider.get_today_items_raw(limit=5)
+        req = self.opener.requests[0]
+        self.assertEqual(json.loads(req.data), {"limit": 5})
 
     def test_query_study_records_raw(self):
         self.provider.query_study_records_raw(next_study_date="2026-07-05", as_count=True, limit=20)
@@ -81,6 +87,11 @@ class TestRealMoMoDeckProvider(unittest.TestCase):
         self.assertEqual(req.full_url, "https://open.maimemo.com/open/api/v1/study/query_study_records")
         self.assertEqual(req.method, "POST")
         self.assertEqual(json.loads(req.data), {"next_study_date": "2026-07-05", "as_count": True, "limit": 20})
+        
+        self.opener.requests.clear()
+        self.provider.query_study_records_raw(limit=5)
+        req = self.opener.requests[0]
+        self.assertEqual(json.loads(req.data), {"limit": 5})
 
     def test_get_markji_decks_raw(self):
         self.provider.get_markji_decks_raw()
@@ -115,6 +126,31 @@ class TestRealMoMoDeckProvider(unittest.TestCase):
 
     # --- Parsing Tests ---
 
+    def test_unwrap_api_response(self):
+        # Non-envelope
+        self.assertEqual(unwrap_api_response({"x": 1}), {"x": 1})
+        self.assertEqual(unwrap_api_response([]), [])
+        
+        # Envelope success
+        self.assertEqual(
+            unwrap_api_response({"success": True, "data": {"x": 1}, "errors": {}}),
+            {"x": 1}
+        )
+        self.assertEqual(
+            unwrap_api_response({"success": True, "errors": {}}),
+            {}
+        )
+        
+        # Envelope error
+        with self.assertRaisesRegex(MoMoAPIError, "MoMo API error: 400 - Bad Req"):
+            unwrap_api_response({
+                "success": False,
+                "errors": [{"code": "400", "message": "Bad Req"}]
+            })
+            
+        with self.assertRaisesRegex(MoMoAPIError, "MoMo API returned errors"):
+            unwrap_api_response({"success": False, "errors": []})
+
     def test_parse_study_progress_response(self):
         self.assertEqual(parse_study_progress_response({}), {})
         self.assertEqual(parse_study_progress_response([]), {})
@@ -122,12 +158,22 @@ class TestRealMoMoDeckProvider(unittest.TestCase):
             parse_study_progress_response({"progress": {"finished": 1, "total": 2, "study_time": 3, "extra": 4}}),
             {"finished": 1, "total": 2, "study_time": 3}
         )
+        # Envelope
+        self.assertEqual(
+            parse_study_progress_response({"success": True, "errors": {}, "data": {"progress": {"total": 5}}}),
+            {"total": 5}
+        )
 
     def test_parse_today_items_response(self):
         self.assertEqual(parse_today_items_response({}), [])
         self.assertEqual(
             parse_today_items_response({"today_items": [{"voc_id": 1}]}),
             [{"voc_id": 1}]
+        )
+        # Envelope
+        self.assertEqual(
+            parse_today_items_response({"success": True, "errors": {}, "data": {"today_items": [{"voc_id": 2}]}}),
+            [{"voc_id": 2}]
         )
 
     def test_parse_study_records_response(self):
@@ -171,12 +217,87 @@ class TestRealMoMoDeckProvider(unittest.TestCase):
 
         self.assertEqual(decks[1]["totalCount"], 0)
 
+    def test_get_today_decks_fallback(self):
+        self.opener.status = 403
+        decks = self.provider.get_today_decks()
+        self.assertEqual(len(decks), 1)
+        self.assertEqual(decks[0]["id"], "momo_today")
+        self.assertEqual(decks[0]["totalCount"], 0) # without progress
+        self.assertEqual(decks[0]["newCount"], 0)
+        self.assertEqual(decks[0]["failedCount"], 0)
+
+        # with progress fallback
+        self.opener.requests.clear()
+        
+        def fake_opener(req, timeout):
+            if "markji" in req.full_url:
+                raise urllib.error.HTTPError(req.full_url, 403, "Forbidden", {}, None)
+            
+            mock_resp = MagicMock()
+            mock_resp.read.return_value = json.dumps({"progress": {"total": 42}}).encode("utf-8")
+            mock_context = MagicMock()
+            mock_context.__enter__.return_value = mock_resp
+            return mock_context
+            
+        self.provider._opener = fake_opener
+        decks = self.provider.get_today_decks()
+        self.assertEqual(decks[0]["totalCount"], 42)
+
     def test_get_deck_cards_skeleton(self):
         res = self.provider.get_deck_cards("d1")
         self.assertEqual(res["deckId"], "d1")
         self.assertEqual(res["cards"], [])
-        self.assertEqual(res["fields"], [])
-        self.assertEqual(res["selectedFields"], [])
+        self.assertEqual(res["fields"], ["term"])
+        self.assertEqual(res["selectedFields"], ["term"])
+
+    def test_get_deck_cards_momo_today(self):
+        # We need to simulate two endpoints: get_today_items and query_study_records
+        def fake_opener(req, timeout):
+            mock_resp = MagicMock()
+            if "get_today_items" in req.full_url:
+                mock_resp.read.return_value = json.dumps({
+                    "today_items": [
+                        {"voc_id": 1, "voc_spelling": "apple", "is_new": True, "is_finished": True, "first_response": "FORGET"},
+                        {"voc_id": 2, "voc_spelling": "banana", "is_new": False, "is_finished": False, "first_response": "UNKNOWN"},
+                        {"voc_id": 3, "voc_spelling": "cherry", "is_new": False, "is_finished": True, "first_response": "RECOGNIZE"},
+                    ]
+                }).encode("utf-8")
+            elif "query_study_records" in req.full_url:
+                mock_resp.read.return_value = json.dumps({
+                    "records": [
+                        {"voc_id": 1, "study_count": 5},
+                        {"voc_id": 2, "study_count": 1},
+                    ]
+                }).encode("utf-8")
+            else:
+                mock_resp.read.return_value = b"{}"
+
+            mock_context = MagicMock()
+            mock_context.__enter__.return_value = mock_resp
+            return mock_context
+
+        self.provider._opener = fake_opener
+        res = self.provider.get_deck_cards("momo_today")
+        self.assertEqual(res["deckId"], "momo_today")
+        cards = res["cards"]
+        self.assertEqual(len(cards), 3)
+        
+        # apple: is_failed because first_response == FORGET
+        self.assertEqual(cards[0]["term"], "apple")
+        self.assertTrue(cards[0]["is_failed"])
+        self.assertTrue(cards[0]["is_new"])
+        self.assertEqual(cards[0]["review_count"], 5)
+        
+        # banana: is_failed because is_finished == False
+        self.assertEqual(cards[1]["term"], "banana")
+        self.assertTrue(cards[1]["is_failed"])
+        self.assertFalse(cards[1]["is_new"])
+        self.assertEqual(cards[1]["review_count"], 1)
+
+        # cherry: is_failed = False
+        self.assertEqual(cards[2]["term"], "cherry")
+        self.assertFalse(cards[2]["is_failed"])
+        self.assertEqual(cards[2]["review_count"], 0)
 
 if __name__ == "__main__":
     unittest.main()

@@ -25,6 +25,32 @@ class MoMoAPIError(RuntimeError):
     pass
 
 
+def unwrap_api_response(data: Any) -> Any:
+    """Unwrap MoMo API response envelope.
+    
+    If the data is an envelope containing 'success' and 'errors':
+    - Returns data["data"] (or {}) if success is True.
+    - Raises MoMoAPIError if success is False.
+    - If it's not an envelope, returns data unchanged.
+    """
+    if isinstance(data, dict) and "success" in data and "errors" in data:
+        if data.get("success") is True:
+            return data.get("data", {})
+        else:
+            errors = data.get("errors")
+            err_msg = "MoMo API returned errors"
+            if isinstance(errors, list) and len(errors) > 0 and isinstance(errors[0], dict):
+                code = errors[0].get("code", "UNKNOWN")
+                msg = errors[0].get("message", "No message")
+                err_msg = f"MoMo API error: {code} - {msg}"
+            elif isinstance(errors, dict):
+                code = errors.get("code", "UNKNOWN")
+                msg = errors.get("message", "No message")
+                err_msg = f"MoMo API error: {code} - {msg}"
+            raise MoMoAPIError(err_msg)
+    return data
+
+
 def _as_dict(value: Any) -> dict[str, Any]:
     """Coerce value to a dict; non-dicts become empty dicts."""
     return value if isinstance(value, dict) else {}
@@ -32,7 +58,7 @@ def _as_dict(value: Any) -> dict[str, Any]:
 
 def parse_study_progress_response(data: Any) -> dict[str, Any]:
     """Parse POST /study/get_study_progress response."""
-    body = _as_dict(data)
+    body = _as_dict(unwrap_api_response(data))
     progress = _as_dict(body.get("progress"))
     out: dict[str, Any] = {}
     for key in ("finished", "total", "study_time"):
@@ -43,7 +69,7 @@ def parse_study_progress_response(data: Any) -> dict[str, Any]:
 
 def parse_today_items_response(data: Any) -> list[dict[str, Any]]:
     """Parse POST /study/get_today_items response."""
-    body = _as_dict(data)
+    body = _as_dict(unwrap_api_response(data))
     items = body.get("today_items")
     if not isinstance(items, list):
         return []
@@ -52,7 +78,7 @@ def parse_today_items_response(data: Any) -> list[dict[str, Any]]:
 
 def parse_study_records_response(data: Any) -> dict[str, Any]:
     """Parse POST /study/query_study_records response."""
-    body = _as_dict(data)
+    body = _as_dict(unwrap_api_response(data))
     records = body.get("records")
     if not isinstance(records, list):
         records = []
@@ -65,7 +91,7 @@ def parse_study_records_response(data: Any) -> dict[str, Any]:
 
 def parse_markji_deck_list_response(data: Any) -> list[dict[str, Any]]:
     """Parse GET /markji/decks response."""
-    body = _as_dict(data)
+    body = _as_dict(unwrap_api_response(data))
     decks = body.get("decks")
     if not isinstance(decks, list):
         return []
@@ -74,7 +100,7 @@ def parse_markji_deck_list_response(data: Any) -> list[dict[str, Any]]:
 
 def parse_vocabulary_query_response(data: Any) -> list[dict[str, Any]]:
     """Parse POST /vocabulary/query response."""
-    body = _as_dict(data)
+    body = _as_dict(unwrap_api_response(data))
     voc = body.get("voc")
     if not isinstance(voc, list):
         return []
@@ -177,9 +203,32 @@ class RealMoMoDeckProvider:
 
     def get_today_decks(self) -> list[dict[str, Any]]:
         """Return deck rows mapped from Markji decks."""
-        raw_data = self.get_markji_decks_raw()
-        decks = parse_markji_deck_list_response(raw_data)
+        try:
+            raw_data = self.get_markji_decks_raw()
+            decks = parse_markji_deck_list_response(raw_data)
+        except MoMoAPIError:
+            # Fallback for markji 403
+            decks = None
         
+        if decks is None:
+            # Try to get study progress for totalCount fallback
+            total_count = 0
+            try:
+                prog_raw = self.get_study_progress_raw()
+                prog = parse_study_progress_response(prog_raw)
+                total_count = prog.get("total", 0)
+            except MoMoAPIError:
+                pass
+            
+            return [{
+                "id": "momo_today",
+                "name": "MoMo Today",
+                "newCount": 0,
+                "failedCount": 0,
+                "totalCount": total_count,
+                "isGroup": False,
+            }]
+
         result = []
         for deck in decks:
             result.append({
@@ -193,15 +242,56 @@ class RealMoMoDeckProvider:
         return result
 
     def get_deck_cards(self, deck_id: str) -> dict[str, Any]:
-        """Return skeleton deck cards.
+        """Return skeleton deck cards or study-based cards.
         
         Strategy A: Conservative skeleton.
-        Does not yet make N+1 requests to Markji endpoints to fetch real cards.
-        TODO: Needs real token verification for Markji chapters/cards strategy.
+        If deck_id is 'momo_today' (fallback deck), uses today_items
+        and query_study_records_raw to populate cards.
         """
+        if deck_id == "momo_today":
+            raw_items = self.get_today_items_raw(limit=5000)
+            items = parse_today_items_response(raw_items)
+            
+            raw_records = self.query_study_records_raw(limit=5000)
+            records_data = parse_study_records_response(raw_records)
+            records = {r.get("voc_id"): r for r in records_data.get("records", []) if "voc_id" in r}
+            
+            cards = []
+            for item in items:
+                voc_id = item.get("voc_id")
+                if voc_id is None:
+                    continue
+                voc_spelling = item.get("voc_spelling", str(voc_id))
+                is_new = bool(item.get("is_new"))
+                first_response = item.get("first_response")
+                is_finished = item.get("is_finished")
+                
+                is_failed = first_response == "FORGET" or is_finished is False
+                
+                review_count = 0
+                if voc_id in records:
+                    review_count = records[voc_id].get("study_count", 0)
+                
+                cards.append({
+                    "cid": str(voc_id),
+                    "nid": "",
+                    "term": voc_spelling,
+                    "fields": {"term": voc_spelling},
+                    "is_new": is_new,
+                    "is_failed": is_failed,
+                    "review_count": review_count,
+                })
+            
+            return {
+                "deckId": deck_id,
+                "cards": cards,
+                "fields": ["term"],
+                "selectedFields": ["term"],
+            }
+
         return {
             "deckId": deck_id,
             "cards": [],
-            "fields": [],
-            "selectedFields": [],
+            "fields": ["term"],
+            "selectedFields": ["term"],
         }

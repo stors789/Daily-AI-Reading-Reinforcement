@@ -20,8 +20,7 @@ Hosted at <https://open.maimemo.com/#/>.
 - How to get a token:
   1. In the MoMo app: 我的 -> 更多设置 -> 实验功能 -> 开放 API
   2. Or open <https://open.maimemo.com/open/api/v1/tokens/openapi>
-- The probe reads it from `MOMO_TOKEN`. `MOMO_COOKIE` is reserved for a
-  future cookie-based scheme and currently unused by the Open API.
+- The probe reads it from `MOMO_TOKEN`. `Maimemo_key` is also supported as a backward-compatible alias, but `MOMO_TOKEN` is the primary and recommended name. `MOMO_COOKIE` is reserved for a future cookie-based scheme and currently unused by the Open API.
 - Rate limits: 10s/20, 60s/40, 5h/2000.
 - Security scheme in the spec: `user` (oauth2 type, but in practice a
   static bearer token placed in the `Authorization` header).
