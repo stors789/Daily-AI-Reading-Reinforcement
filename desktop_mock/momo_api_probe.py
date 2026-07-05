@@ -55,6 +55,7 @@ CREDENTIAL_ENVS: tuple[str, ...] = (
     "MOMO_COOKIE",  # reserved -- the Open API uses a bearer token, not
                     # cookies, but the var is kept so a future auth scheme
                     # can be probed without changing the test surface.
+    "Maimemo_key",  # Alternative token variable
 )
 
 # ---------------------------------------------------------------------------
@@ -162,7 +163,7 @@ def build_request_headers(creds: dict[str, str]) -> dict[str, str]:
         "User-Agent": "dairr-momo-probe/0.1 (manual investigation)",
         "Accept": "application/json",
     }
-    token = creds.get("MOMO_TOKEN", "")
+    token = creds.get("MOMO_TOKEN", "") or creds.get("Maimemo_key", "")
     if token:
         headers["Authorization"] = f"Bearer {token}"
     cookie = creds.get("MOMO_COOKIE", "")
@@ -174,6 +175,29 @@ def build_request_headers(creds: dict[str, str]) -> dict[str, str]:
 # ---------------------------------------------------------------------------
 # Response parsers (pure -- safe to test, no network)
 # ---------------------------------------------------------------------------
+def summarize_shape(data: Any, max_items: int = 3) -> Any:
+    """Summarize the shape of a JSON response, redacting all actual values."""
+    if isinstance(data, dict):
+        return {k: summarize_shape(v, max_items) for k, v in data.items()}
+    elif isinstance(data, list):
+        summary: dict[str, Any] = {"_count": len(data)}
+        if data:
+            summary["_items"] = [summarize_shape(item, max_items) for item in data[:max_items]]
+        return summary
+    elif isinstance(data, str):
+        return "<redacted str>"
+    elif isinstance(data, bool):
+        return "bool"
+    elif isinstance(data, int):
+        return "int"
+    elif isinstance(data, float):
+        return "float"
+    elif data is None:
+        return "null"
+    else:
+        return type(data).__name__
+
+
 def _as_dict(value: Any) -> dict[str, Any]:
     """Coerce *value* to a dict; non-dicts become ``{}``."""
     return value if isinstance(value, dict) else {}
@@ -424,7 +448,7 @@ def _report_mapping(raw: dict[str, Any], fn) -> None:
         print(f"    {field}: {info['status']} {tail}".rstrip())
 
 
-def run_real_probe() -> int:
+def run_real_probe(args: argparse.Namespace) -> int:
     """Run the real probe against confirmed endpoints."""
     creds = load_credentials()
     if not has_credentials(creds):
@@ -450,6 +474,12 @@ def run_real_probe() -> int:
         if not (result["ok"] and result["data"] is not None):
             continue
         data = result["data"]
+        
+        if args.shape_only:
+            shape = summarize_shape(data, max_items=args.limit)
+            print(f"[probe] raw shape: {json.dumps(shape, indent=2, ensure_ascii=False)}")
+            continue
+
         if spec["key"] == "study_progress":
             parsed = parse_study_progress_response(data)
             print(f"[probe] study progress: {parsed}")
@@ -493,10 +523,21 @@ def main(argv: list[str] | None = None) -> int:
         action="store_true",
         help="print the probe plan without making any network request",
     )
+    parser.add_argument(
+        "--shape-only",
+        action="store_true",
+        help="only print the sanitized shape of the response",
+    )
+    parser.add_argument(
+        "--limit",
+        type=int,
+        default=3,
+        help="max number of list items to summarize in shape-only mode",
+    )
     args = parser.parse_args(argv)
     if args.dry_run:
         return run_dry_run()
-    return run_real_probe()
+    return run_real_probe(args)
 
 
 if __name__ == "__main__":

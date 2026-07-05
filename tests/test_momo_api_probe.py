@@ -282,6 +282,37 @@ class TestCardMappingReport(unittest.TestCase):
         self.assertEqual(report["is_new"]["status"], "defaulted")
 
 
+class TestSummarizeShape(unittest.TestCase):
+    def test_summarize_shape_redacts_strings(self) -> None:
+        self.assertEqual(_probe.summarize_shape("secret"), "<redacted str>")
+
+    def test_summarize_shape_primitives(self) -> None:
+        self.assertEqual(_probe.summarize_shape(True), "bool")
+        self.assertEqual(_probe.summarize_shape(False), "bool")
+        self.assertEqual(_probe.summarize_shape(42), "int")
+        self.assertEqual(_probe.summarize_shape(3.14), "float")
+        self.assertEqual(_probe.summarize_shape(None), "null")
+
+    def test_summarize_shape_dict(self) -> None:
+        data = {"a": 1, "b": "str", "c": {"d": True}}
+        expected = {"a": "int", "b": "<redacted str>", "c": {"d": "bool"}}
+        self.assertEqual(_probe.summarize_shape(data), expected)
+
+    def test_summarize_shape_list(self) -> None:
+        data = [{"id": 1}, {"id": 2}, {"id": 3}, {"id": 4}]
+        expected = {
+            "_count": 4,
+            "_items": [
+                {"id": "int"},
+                {"id": "int"}
+            ]
+        }
+        self.assertEqual(_probe.summarize_shape(data, max_items=2), expected)
+
+    def test_summarize_shape_empty_list(self) -> None:
+        self.assertEqual(_probe.summarize_shape([]), {"_count": 0})
+
+
 class TestNoRealCredentialsInCode(unittest.TestCase):
     """Guardrail: the probe source must not hardcode real credentials."""
 

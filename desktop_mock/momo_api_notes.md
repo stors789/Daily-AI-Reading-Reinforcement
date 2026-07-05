@@ -148,24 +148,24 @@ the deck list, and the frontend's "today's review cards" concept maps to
 1. **Per-deck new/failed counts.** `study_progress` returns global
    finished/total, not per deck. Is there an undocumented per-deck
    endpoint, or must we compute it from `today_items` + `vocabulary`?
-   - Unconfirmed.
+   - Still unconfirmed after real-token probe.
 2. **Bulk card listing.** The spec only exposes
    `GET /decks/{deck}/cards/{card}` (single card) and chapter
    `card_ids` lists. Is there a `GET /decks/{deck}/cards` bulk endpoint?
-   - Unconfirmed.
+   - Still unconfirmed after real-token probe.
 3. **isGroup semantics.** Should `isGroup` follow `parent_id is None`
    (root deck = group) or `chapter_count > 0`?
-   - Unconfirmed.
+   - Still unconfirmed after real-token probe. (The markji endpoints returned 403 Forbidden).
 4. **is_failed derivation.** Best source is `first_response == FORGET`
    vs `is_finished == false`. Needs real response samples.
-   - Unconfirmed.
+   - We observed `first_response: str` and `is_finished: bool` in `today_items`. The exact logic is still unconfirmed after real-token probe.
 5. **Token refresh / expiry.** The spec lists no refresh flow. Are
    tokens long-lived static strings? Assumed yes.
-   - Unconfirmed.
+   - Still unconfirmed after real-token probe.
 6. **Public beta stability.** Study endpoints are tagged 公测 (public
    beta) and "may change at any time". The provider should degrade
    gracefully when they return errors.
-   - Acknowledged risk.
+   - Acknowledged risk. Study endpoints currently return 200 OK.
 
 ## Probe usage
 ```bash
@@ -186,3 +186,10 @@ No credentials are written to disk or logged in full.
 - Uses `get_markji_decks_raw` mapping for `get_today_decks`, returning 0 for `newCount` and `failedCount` and false for `isGroup` (conservative strategy without arbitrary aliases).
 - `get_deck_cards` implemented using Strategy A (returns empty skeleton), deferring actual card fetching pending real token network verification.
 - Not integrated into UI flows; callers must explicitly construct with a real token.
+
+### Real Token Probe Status
+Probe successfully ran against the real API.
+- Study endpoints (`get_study_progress`, `get_today_items`, `query_study_records`, `vocabulary/query`) returned 200 OK.
+- Responses are wrapped in `{"data": {...}, "success": true, "errors": []}`.
+- Markji endpoint (`/markji/decks`) returned 403 Forbidden.
+
