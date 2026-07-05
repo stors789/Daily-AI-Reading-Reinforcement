@@ -19,6 +19,7 @@ from aqt.webview import AnkiWebView
 
 from .anki_config_store import AnkiConfigStore
 from .anki_deck_provider import AnkiDeckProvider
+from .anki_card_saver import AnkiCardSaver
 from .core.article import (
     list_saved_articles,
     load_saved_article,
@@ -434,7 +435,7 @@ window.addEventListener("error", function (event) {
                 cards = [card for card in cards if card.cid in selected_ids]
 
         def task() -> dict[str, Any]:
-            return create_article_card(
+            return CARD_SAVER.save_article_card(
                 payload["name"],
                 cards,
                 article,
@@ -885,6 +886,8 @@ def create_article_card(
         "date": values["Date"],
     }
 
+
+CARD_SAVER = AnkiCardSaver(create_article_card)
 
 def article_deck_name(source_deck_name: str) -> str:
     source = clean_text(source_deck_name).replace("::", "::")
