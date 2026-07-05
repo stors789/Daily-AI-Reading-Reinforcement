@@ -8,6 +8,7 @@ import importlib.util
 import sys
 import unittest
 from pathlib import Path
+from unittest.mock import patch
 
 _mock_dir = Path(__file__).resolve().parent.parent / "desktop_mock"
 if str(_mock_dir) not in sys.path:
@@ -84,9 +85,20 @@ class TestMockMoMoDeckProvider(unittest.TestCase):
         self.assertEqual(result["cards"], [])
 
     def test_provider_does_not_trigger_network_calls(self) -> None:
-        self.provider.get_today_decks()
-        self.provider.get_deck_cards("deck-japanese")
-        self.provider.get_deck_cards("nonexistent")
+        with patch("socket.create_connection") as mock_sock_conn, \
+             patch("socket.socket") as mock_socket, \
+             patch("urllib.request.urlopen") as mock_urlopen, \
+             patch("http.client.HTTPConnection") as mock_http_conn, \
+             patch("http.client.HTTPSConnection") as mock_https_conn:
+            self.provider.get_today_decks()
+            self.provider.get_deck_cards("deck-japanese")
+            self.provider.get_deck_cards("nonexistent")
+
+        mock_sock_conn.assert_not_called()
+        mock_socket.assert_not_called()
+        mock_urlopen.assert_not_called()
+        mock_http_conn.assert_not_called()
+        mock_https_conn.assert_not_called()
 
 
 class TestProviderIntegrationWithPayloadBuilders(unittest.TestCase):
