@@ -180,3 +180,9 @@ The probe prints masked credentials (first 4 / last 4 chars), the
 endpoint URLs it hits, parsed counts, and a per-field mapping report
 (direct / defaulted / missing) for up to 3 sample decks and today items.
 No credentials are written to disk or logged in full.
+
+## Phase 10 Updates
+- Added `RealMoMoDeckProvider` as a pure skeleton.
+- Uses `get_markji_decks_raw` mapping for `get_today_decks`, returning 0 for `newCount` and `failedCount` and false for `isGroup` (conservative strategy without arbitrary aliases).
+- `get_deck_cards` implemented using Strategy A (returns empty skeleton), deferring actual card fetching pending real token network verification.
+- Not integrated into UI flows; callers must explicitly construct with a real token.
