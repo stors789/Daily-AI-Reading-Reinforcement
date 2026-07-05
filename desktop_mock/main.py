@@ -7,7 +7,7 @@
 # match the real addon's event payloads.
 #
 # Run:  python3 desktop_mock/main.py
-# Open: http://127.0.0.1:8765
+# Open: http://127.0.0.1:8755
 
 from __future__ import annotations
 

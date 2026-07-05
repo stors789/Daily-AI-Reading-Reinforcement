@@ -16,7 +16,7 @@ It does NOT touch:
 python3 desktop_mock/main.py
 ```
 
-Then open <http://127.0.0.1:8765> in a browser.
+Then open <http://127.0.0.1:8755> in a browser.
 
 ## How it works
 
@@ -60,6 +60,3 @@ python3 -m unittest tests.test_desktop_mock -v
 
 Tests cover `handle_action()` for `load`, unknown actions, `generate` (no
 network), and the mock state shape.
-Then open <http://127.0.0.1:8755> in a browser.
-- `main.py` is a stdlib `http.server` (port 8755, chosen to avoid clashing with
-  AnkiConnect's default 8765).
