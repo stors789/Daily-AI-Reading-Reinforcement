@@ -192,3 +192,5 @@ Probe successfully ran against the real API.
 - Responses are wrapped in `{"data": {...}, "success": true, "errors": []}`.
 - Markji endpoint (`/markji/decks`) returned 403 Forbidden.
 
+### Phase 14/15 Updates
+Real-token smoke found that POST /api/v1/study/get_today_items with limit=5000 returns HTTP 400. Calling without limit succeeds. RealMoMoDeckProvider therefore does not send a default limit for today_items.

@@ -249,10 +249,10 @@ class RealMoMoDeckProvider:
         and query_study_records_raw to populate cards.
         """
         if deck_id == "momo_today":
-            raw_items = self.get_today_items_raw(limit=5000)
+            raw_items = self.get_today_items_raw()
             items = parse_today_items_response(raw_items)
             
-            raw_records = self.query_study_records_raw(limit=5000)
+            raw_records = self.query_study_records_raw()
             records_data = parse_study_records_response(raw_records)
             records = {r.get("voc_id"): r for r in records_data.get("records", []) if "voc_id" in r}
             

@@ -81,6 +81,11 @@ class TestRealMoMoDeckProvider(unittest.TestCase):
         req = self.opener.requests[0]
         self.assertEqual(json.loads(req.data), {"limit": 5})
 
+        self.opener.requests.clear()
+        self.provider.get_today_items_raw()
+        req = self.opener.requests[0]
+        self.assertEqual(json.loads(req.data), {})
+
     def test_query_study_records_raw(self):
         self.provider.query_study_records_raw(next_study_date="2026-07-05", as_count=True, limit=20)
         req = self.opener.requests[0]
@@ -252,7 +257,9 @@ class TestRealMoMoDeckProvider(unittest.TestCase):
 
     def test_get_deck_cards_momo_today(self):
         # We need to simulate two endpoints: get_today_items and query_study_records
+        requests_seen = []
         def fake_opener(req, timeout):
+            requests_seen.append(req)
             mock_resp = MagicMock()
             if "get_today_items" in req.full_url:
                 mock_resp.read.return_value = json.dumps({
@@ -298,6 +305,11 @@ class TestRealMoMoDeckProvider(unittest.TestCase):
         self.assertEqual(cards[2]["term"], "cherry")
         self.assertFalse(cards[2]["is_failed"])
         self.assertEqual(cards[2]["review_count"], 0)
+
+        # Ensure no limit is sent by default in the high-level call
+        for req in requests_seen:
+            body = json.loads(req.data) if req.data else {}
+            self.assertNotIn("limit", body)
 
 if __name__ == "__main__":
     unittest.main()
