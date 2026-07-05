@@ -25,6 +25,13 @@ class MoMoAPIError(RuntimeError):
     pass
 
 
+class MoMoProviderDataError(MoMoAPIError):
+    """Raised when data fetching or mapping fails at a specific stage."""
+    def __init__(self, stage: str):
+        super().__init__(f"provider_stage_failed:{stage}")
+        self.stage = stage
+
+
 def unwrap_api_response(data: Any) -> Any:
     """Unwrap MoMo API response envelope.
     
@@ -133,6 +140,7 @@ class RealMoMoDeckProvider:
         headers = {
             "Authorization": f"Bearer {self._token}",
             "Accept": "application/json",
+            "User-Agent": "dairr-momo-provider/0.1",
         }
         
         data = None
@@ -249,38 +257,59 @@ class RealMoMoDeckProvider:
         and query_study_records_raw to populate cards.
         """
         if deck_id == "momo_today":
-            raw_items = self.get_today_items_raw()
-            items = parse_today_items_response(raw_items)
+            try:
+                raw_items = self.get_today_items_raw()
+            except MoMoAPIError as exc:
+                raise MoMoProviderDataError("today_items_request") from exc
+                
+            try:
+                items = parse_today_items_response(raw_items)
+            except MoMoAPIError as exc:
+                raise MoMoProviderDataError("today_items_parse") from exc
+
+            if not items:
+                return {
+                    "deckId": deck_id,
+                    "cards": [],
+                    "fields": ["term"],
+                    "selectedFields": ["term"],
+                }
             
-            raw_records = self.query_study_records_raw()
-            records_data = parse_study_records_response(raw_records)
-            records = {r.get("voc_id"): r for r in records_data.get("records", []) if "voc_id" in r}
+            try:
+                raw_records = self.query_study_records_raw()
+                records_data = parse_study_records_response(raw_records)
+                records = {r.get("voc_id"): r for r in records_data.get("records", []) if "voc_id" in r}
+            except MoMoAPIError:
+                records = {}
             
-            cards = []
-            for item in items:
-                voc_id = item.get("voc_id")
-                if voc_id is None:
-                    continue
-                voc_spelling = item.get("voc_spelling", str(voc_id))
-                is_new = bool(item.get("is_new"))
-                first_response = item.get("first_response")
-                is_finished = item.get("is_finished")
-                
-                is_failed = first_response == "FORGET" or is_finished is False
-                
-                review_count = 0
-                if voc_id in records:
-                    review_count = records[voc_id].get("study_count", 0)
-                
-                cards.append({
-                    "cid": str(voc_id),
-                    "nid": "",
-                    "term": voc_spelling,
-                    "fields": {"term": voc_spelling},
-                    "is_new": is_new,
-                    "is_failed": is_failed,
-                    "review_count": review_count,
-                })
+            try:
+                cards = []
+                for item in items:
+                    voc_id = item.get("voc_id")
+                    if voc_id is None:
+                        continue
+                    voc_spelling = item.get("voc_spelling", str(voc_id))
+                    is_new = bool(item.get("is_new"))
+                    first_response = item.get("first_response")
+                    is_finished = item.get("is_finished")
+                    
+                    is_failed = first_response == "FORGET" or is_finished is False
+                    
+                    review_count = 0
+                    if voc_id in records:
+                        review_count = records[voc_id].get("study_count", 0)
+                    
+                    cards.append({
+                        "cid": str(voc_id),
+                        "nid": "",
+                        "term": voc_spelling,
+                        "fields": {"term": voc_spelling},
+                        "is_new": is_new,
+                        "is_failed": is_failed,
+                        "review_count": review_count,
+                    })
+            except Exception as exc:
+                raise MoMoProviderDataError("card_mapping") from exc
             
             return {
                 "deckId": deck_id,

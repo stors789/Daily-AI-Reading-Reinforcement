@@ -311,5 +311,93 @@ class TestRealMoMoDeckProvider(unittest.TestCase):
             body = json.loads(req.data) if req.data else {}
             self.assertNotIn("limit", body)
 
+    def test_get_deck_cards_momo_today_empty(self):
+        def fake_opener(req, timeout):
+            mock_resp = MagicMock()
+            if "get_today_items" in req.full_url:
+                mock_resp.read.return_value = json.dumps({"today_items": []}).encode("utf-8")
+            elif "query_study_records" in req.full_url:
+                mock_resp.read.return_value = json.dumps({"records": []}).encode("utf-8")
+            else:
+                mock_resp.read.return_value = b"{}"
+            mock_context = MagicMock()
+            mock_context.__enter__.return_value = mock_resp
+            return mock_context
+
+        self.provider._opener = fake_opener
+        res = self.provider.get_deck_cards("momo_today")
+        self.assertEqual(res["deckId"], "momo_today")
+        self.assertEqual(res["cards"], [])
+        self.assertEqual(res["fields"], ["term"])
+        self.assertEqual(res["selectedFields"], ["term"])
+
+    def test_get_deck_cards_today_items_request_error(self):
+        def fake_opener(req, timeout):
+            if "get_today_items" in req.full_url:
+                raise urllib.error.HTTPError(req.full_url, 500, "Internal Server Error", {}, None)
+            mock_resp = MagicMock()
+            mock_resp.read.return_value = b"{}"
+            mock_context = MagicMock()
+            mock_context.__enter__.return_value = mock_resp
+            return mock_context
+            
+        self.provider._opener = fake_opener
+        from desktop_mock.real_momo_provider import MoMoProviderDataError
+        with self.assertRaises(MoMoProviderDataError) as cm:
+            self.provider.get_deck_cards("momo_today")
+        self.assertEqual(cm.exception.stage, "today_items_request")
+        self.assertNotIn("Internal Server Error", str(cm.exception))
+
+    def test_get_deck_cards_study_records_error_fallback(self):
+        def fake_opener(req, timeout):
+            if "get_today_items" in req.full_url:
+                mock_resp = MagicMock()
+                mock_resp.read.return_value = json.dumps({
+                    "today_items": [{"voc_id": 1, "voc_spelling": "apple"}]
+                }).encode("utf-8")
+                mock_context = MagicMock()
+                mock_context.__enter__.return_value = mock_resp
+                return mock_context
+            elif "query_study_records" in req.full_url:
+                raise urllib.error.HTTPError(req.full_url, 500, "Internal Server Error", {}, None)
+            
+            mock_resp = MagicMock()
+            mock_resp.read.return_value = b"{}"
+            mock_context = MagicMock()
+            mock_context.__enter__.return_value = mock_resp
+            return mock_context
+
+        self.provider._opener = fake_opener
+        res = self.provider.get_deck_cards("momo_today")
+        # Should not raise, should fallback to review_count=0
+        self.assertEqual(len(res["cards"]), 1)
+        self.assertEqual(res["cards"][0]["term"], "apple")
+        self.assertEqual(res["cards"][0]["review_count"], 0)
+
+    def test_get_deck_cards_study_records_parse_error_fallback(self):
+        def fake_opener(req, timeout):
+            mock_resp = MagicMock()
+            if "get_today_items" in req.full_url:
+                mock_resp.read.return_value = json.dumps({
+                    "today_items": [{"voc_id": 1, "voc_spelling": "apple"}]
+                }).encode("utf-8")
+            elif "query_study_records" in req.full_url:
+                # invalid json to trigger parse error
+                mock_resp.read.return_value = b"invalid json"
+            else:
+                mock_resp.read.return_value = b"{}"
+                
+            mock_context = MagicMock()
+            mock_context.__enter__.return_value = mock_resp
+            return mock_context
+
+        self.provider._opener = fake_opener
+        res = self.provider.get_deck_cards("momo_today")
+        # Should not raise, should fallback to review_count=0
+        self.assertEqual(len(res["cards"]), 1)
+        self.assertEqual(res["cards"][0]["term"], "apple")
+        self.assertEqual(res["cards"][0]["review_count"], 0)
+
 if __name__ == "__main__":
     unittest.main()
+

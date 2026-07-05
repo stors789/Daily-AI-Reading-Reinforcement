@@ -96,8 +96,14 @@ def handle_action(action: str, payload: dict[str, Any]) -> dict[str, Any]:
             return {"event": "deckCards", "payload": build_deck_cards_payload(deck_id, cards_data=cards_data)}
         except Exception as exc:
             err_type = type(exc).__name__
-            sys.stderr.write(f"[mock] Provider error on selectDeck: {err_type}\n")
-            return {"event": "error", "payload": {"message": "Failed to load deck cards from provider."}}
+            stage = getattr(exc, "stage", None)
+            if stage:
+                msg = f"Failed to load deck cards from provider. Stage: {stage}"
+                sys.stderr.write(f"[mock] Provider error on selectDeck: {err_type} stage={stage} cause={repr(exc.__cause__)}\n")
+            else:
+                msg = "Failed to load deck cards from provider."
+                sys.stderr.write(f"[mock] Provider error on selectDeck: {err_type} cause={repr(exc.__cause__)}\n")
+            return {"event": "error", "payload": {"message": msg}}
 
     if action == "generate":
         deck_id = str((payload or {}).get("deckId") or "")

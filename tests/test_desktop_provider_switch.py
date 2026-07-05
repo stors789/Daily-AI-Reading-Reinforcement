@@ -96,6 +96,16 @@ class TestHandleActionWithFakeProvider(unittest.TestCase):
         self.assertNotIn("secret", result["payload"]["message"])
         self.assertIn("Failed to load deck cards", result["payload"]["message"])
 
+    def test_select_deck_error_with_stage_returns_safe_error_event(self):
+        err = Exception("Super secret token 123 failed")
+        err.stage = "today_items_request"
+        self.fake_provider.get_deck_cards.side_effect = err
+        result = _main.handle_action("selectDeck", {"deckId": "test_deck"})
+        self.assertEqual(result["event"], "error")
+        # Should not leak the exception message to the payload
+        self.assertNotIn("secret", result["payload"]["message"])
+        self.assertEqual("Failed to load deck cards from provider. Stage: today_items_request", result["payload"]["message"])
+
 
 if __name__ == "__main__":
     unittest.main()
