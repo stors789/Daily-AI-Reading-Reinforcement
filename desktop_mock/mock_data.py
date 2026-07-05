@@ -223,21 +223,27 @@ that the shared web UI renders the article, review notes, and saved paths.
 """
 
 
-def build_state_payload(last_selected_deck_id: str = "") -> dict[str, Any]:
+def build_state_payload(
+    last_selected_deck_id: str = "",
+    decks: list[dict[str, Any]] | None = None,
+) -> dict[str, Any]:
     """Mimic the addon's _send_state() payload using mock data only."""
     config = dict(DEFAULT_CONFIG)
     config["last_selected_deck_id"] = last_selected_deck_id
-    decks = [
-        {
-            "id": deck["id"],
-            "name": deck["name"],
-            "newCount": deck["new_count"],
-            "failedCount": deck["failed_count"],
-            "totalCount": deck["total_count"],
-            "isGroup": bool(deck["is_group"]),
-        }
-        for deck in sorted(MOCK_DECKS.values(), key=lambda d: d["name"].lower())
-    ]
+    if decks is None:
+        decks = [
+            {
+                "id": deck["id"],
+                "name": deck["name"],
+                "newCount": deck["new_count"],
+                "failedCount": deck["failed_count"],
+                "totalCount": deck["total_count"],
+                "isGroup": bool(deck["is_group"]),
+            }
+            for deck in sorted(
+                MOCK_DECKS.values(), key=lambda d: d["name"].lower()
+            )
+        ]
     return {
         "decks": decks,
         "dayStart": 1751606400,
@@ -253,7 +259,19 @@ def build_state_payload(last_selected_deck_id: str = "") -> dict[str, Any]:
     }
 
 
-def build_deck_cards_payload(deck_id: str) -> dict[str, Any]:
+def build_deck_cards_payload(
+    deck_id: str = "",
+    cards_data: dict[str, Any] | None = None,
+) -> dict[str, Any]:
+    if cards_data is not None:
+        cards = cards_data.get("cards") or []
+        fields = _deck_field_names(cards)
+        return {
+            "deckId": cards_data.get("deckId", deck_id),
+            "cards": cards,
+            "fields": fields,
+            "selectedFields": list(fields),
+        }
     deck = MOCK_DECKS.get(deck_id)
     if not deck:
         return {

@@ -20,6 +20,13 @@ Then open <http://127.0.0.1:8755> in a browser.
 
 ## How it works
 
+- `momo_provider.py` contains `MockMoMoDeckProvider`, a mock-first deck/card
+  provider shell. It returns static mock data (2 decks, 3 cards each) through
+  `get_today_decks()` and `get_deck_cards()`. This is NOT live MoMo (墨墨)
+  data — no account, cookie, token, or network access is needed. The real
+  MoMo API will be wired in during a later phase; the provider interface
+  (`get_today_decks` / `get_deck_cards`) is designed to stay the same.
+
 - `main.py` is a stdlib `http.server`.
 - `GET /` returns the shared `web/index.html` with `web/style.css` inlined as a
   `<style>` tag and `web/app.js` inlined as a `<script>` -- exactly the shape the
@@ -58,5 +65,11 @@ state stays aligned with the real addon.
 python3 -m unittest tests.test_desktop_mock -v
 ```
 
-Tests cover `handle_action()` for `load`, unknown actions, `generate` (no
-network), and the mock state shape.
+```bash
+python3 -m unittest tests.test_momo_provider -v
+```
+
+`test_desktop_mock` covers `handle_action()` for `load`, unknown actions,
+`generate` (no network), and the mock state shape. `test_momo_provider` covers
+the provider contract (deck rows, card fields, unknown-deck handling, no
+network) and the integration with `mock_data.py` payload builders.

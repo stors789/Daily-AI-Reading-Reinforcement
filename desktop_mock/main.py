@@ -25,6 +25,7 @@ from mock_data import (
     build_loaded_article_payload,
     build_state_payload,
 )
+from momo_provider import MockMoMoDeckProvider
 
 REPO_ROOT = Path(__file__).resolve().parent.parent
 WEB_DIR = REPO_ROOT / "addon" / "daily_ai_reading_reinforcement" / "web"
@@ -32,6 +33,10 @@ HOST = "127.0.0.1"
 # 8765 is AnkiConnect's default port; pick a distinct one to avoid clashes
 # when Anki is running alongside the mock.
 PORT = 8755
+
+
+# Single provider instance used by handle_action() for load / selectDeck.
+DECK_PROVIDER = MockMoMoDeckProvider()
 
 
 # Actions the mock understands. Anything else returns an error event so the
@@ -53,11 +58,13 @@ def handle_action(action: str, payload: dict[str, Any]) -> dict[str, Any]:
     """
     if action == "load":
         last_selected = str((payload or {}).get("lastSelectedDeckId") or "")
-        return {"event": "state", "payload": build_state_payload(last_selected)}
+        decks = DECK_PROVIDER.get_today_decks()
+        return {"event": "state", "payload": build_state_payload(last_selected, decks=decks)}
 
     if action == "selectDeck":
         deck_id = str((payload or {}).get("deckId") or "")
-        return {"event": "deckCards", "payload": build_deck_cards_payload(deck_id)}
+        cards_data = DECK_PROVIDER.get_deck_cards(deck_id)
+        return {"event": "deckCards", "payload": build_deck_cards_payload(deck_id, cards_data=cards_data)}
 
     if action == "generate":
         deck_id = str((payload or {}).get("deckId") or "")

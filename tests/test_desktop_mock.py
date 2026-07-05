@@ -122,5 +122,23 @@ class TestMockDataShape(unittest.TestCase):
                 self.assertIn(key, deck, f"deck row missing {key}")
 
 
+class TestProviderIntegration(unittest.TestCase):
+    """Verify handle_action routes through the provider correctly."""
+
+    def test_load_passes_decks_from_provider(self) -> None:
+        result = _main.handle_action("load", {})
+        payload = result["payload"]
+        self.assertEqual(len(payload["decks"]), 2)
+        names = [d["name"] for d in payload["decks"]]
+        self.assertEqual(names, sorted(names, key=str.lower))
+
+    def test_select_deck_passes_cards_from_provider(self) -> None:
+        result = _main.handle_action("selectDeck", {"deckId": "deck-japanese"})
+        payload = result["payload"]
+        self.assertEqual(payload["deckId"], "deck-japanese")
+        self.assertEqual(len(payload["cards"]), 3)
+
+
 if __name__ == "__main__":
     unittest.main()
+
