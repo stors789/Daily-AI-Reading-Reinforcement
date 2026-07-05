@@ -521,10 +521,18 @@
       return;
     }
     bridgeWaitStarted = true;
+    var warned = false;
     const tick = () => {
       if (bridgeReady()) {
         flushBridgeQueue();
         return;
+      }
+      if (!warned) {
+        console.warn(
+          "DAIRR bridge is not available:",
+          bridgeQueue.map(function (q) { return q.action; })
+        );
+        warned = true;
       }
       window.setTimeout(tick, 50);
     };
@@ -532,7 +540,15 @@
   }
 
   function send(action, payload = {}) {
-    bridgeQueue.push({ action, payload });
+    if (
+      window.__DAIRR_BRIDGE__ &&
+      typeof window.__DAIRR_BRIDGE__.send === "function"
+    ) {
+      window.__DAIRR_BRIDGE__.send(action, payload);
+      return;
+    }
+
+    bridgeQueue.push({ action: action, payload: payload });
     flushBridgeQueue();
     waitForBridge();
   }
