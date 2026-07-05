@@ -73,3 +73,26 @@ python3 -m unittest tests.test_momo_provider -v
 `generate` (no network), and the mock state shape. `test_momo_provider` covers
 the provider contract (deck rows, card fields, unknown-deck handling, no
 network) and the integration with `mock_data.py` payload builders.
+## Phase 9 -- MoMo API probe script
+
+`momo_api_probe.py` is a *standalone manual investigation* tool for the real
+MoMo (墨墨) Open API at <https://open.maimemo.com/>. It is NOT imported by
+`main.py`, the mock provider, the Anki addon, or any UI path, and it never
+runs at import time.
+
+- `--dry-run` prints the endpoint plan and masked-credential preview without
+  any network call.
+- A real run reads `MOMO_TOKEN` (bearer token) from the environment, hits the
+  confirmed study / markji / vocabulary endpoints, and prints a per-field
+  mapping report (direct / defaulted / missing) against the frontend contract.
+- No credentials are stored, hardcoded, or printed in full; only the first 4
+  and last 4 characters are shown.
+- Findings are recorded in `momo_api_notes.md`.
+
+```bash
+python3 desktop_mock/momo_api_probe.py --dry-run
+MOMO_TOKEN="..." python3 desktop_mock/momo_api_probe.py
+```
+
+Tests: `python3 -m unittest tests.test_momo_api_probe -v` (pure functions only,
+no network).
