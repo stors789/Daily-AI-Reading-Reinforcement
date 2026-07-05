@@ -17,6 +17,8 @@ from aqt.qt import QAction, QDialog, QTimer, QVBoxLayout
 from aqt.utils import showWarning
 from aqt.webview import AnkiWebView
 
+from .anki_config_store import AnkiConfigStore
+from .anki_deck_provider import AnkiDeckProvider
 from .core.article import (
     list_saved_articles,
     load_saved_article,
@@ -27,9 +29,6 @@ from .core.config import DEFAULT_CONFIG, PROVIDER_PROFILES
 from .core.llm import fetch_openai_compatible_models, generate_article
 from .core.prompt import build_prompt
 from .core.rendering import (
-    extract_article_block,
-    parse_article_response,
-    parse_review_notes,
     render_article_fragment_html,
     render_article_html,
     render_paragraph_html,
@@ -51,9 +50,9 @@ from .core.utils import (
 
 
 ADDON_PACKAGE = __name__
+CONFIG_STORE = AnkiConfigStore(ADDON_PACKAGE)
 ADDON_DIR = Path(__file__).resolve().parent
 WEB_DIR = ADDON_DIR / "web"
-ARTICLES_DIR = ADDON_DIR / "user_files" / "articles"
 ARTICLE_PARENT_DECK = "Daily AI Reading Reinforcement"
 ARTICLE_NOTE_TYPE = "Daily AI Reading Reinforcement Article"
 ARTICLE_FIELDS = [
@@ -181,7 +180,7 @@ window.addEventListener("error", function (event) {
             self._emit("error", {"message": "No Anki collection is open."})
             return
 
-        self.deck_payloads = collect_today_decks()
+        self.deck_payloads = DECK_PROVIDER.get_today_decks()
         config = load_config()
         decks = [
             {
@@ -225,7 +224,7 @@ window.addEventListener("error", function (event) {
             return
         config = load_config()
         config["last_selected_deck_id"] = deck_id
-        mw.addonManager.writeConfig(ADDON_PACKAGE, config)
+        CONFIG_STORE.save(config)
         fields = deck_field_names(payload["cards"])
         selected_fields = selected_fields_for_deck(deck_id, fields)
         self._emit(
@@ -281,7 +280,7 @@ window.addEventListener("error", function (event) {
         deck_field_config = dict(config.get("deck_field_config") or {})
         deck_field_config[deck_id] = selected_fields
         config["deck_field_config"] = deck_field_config
-        mw.addonManager.writeConfig(ADDON_PACKAGE, config)
+        CONFIG_STORE.save(config)
         self._emit(
             "fieldConfigSaved",
             {"deckId": deck_id, "selectedFields": selected_fields},
@@ -313,7 +312,7 @@ window.addEventListener("error", function (event) {
 
         config["prompt_presets"] = presets
         config["selected_prompt_preset_id"] = preset_id
-        mw.addonManager.writeConfig(ADDON_PACKAGE, config)
+        CONFIG_STORE.save(config)
         self._emit(
             "promptPresets",
             {
@@ -335,7 +334,7 @@ window.addEventListener("error", function (event) {
         ]
         config["prompt_presets"] = presets
         config["selected_prompt_preset_id"] = "default"
-        mw.addonManager.writeConfig(ADDON_PACKAGE, config)
+        CONFIG_STORE.save(config)
         self._emit(
             "promptPresets",
             {
@@ -352,14 +351,14 @@ window.addEventListener("error", function (event) {
         if preset_id not in valid_ids:
             preset_id = "default"
         config["selected_prompt_preset_id"] = preset_id
-        mw.addonManager.writeConfig(ADDON_PACKAGE, config)
+        CONFIG_STORE.save(config)
 
     def _save_ui_language(self, ui_language: str) -> None:
         if ui_language not in {"zh", "en", "ja"}:
             ui_language = "zh"
         config = load_config()
         config["ui_language"] = ui_language
-        mw.addonManager.writeConfig(ADDON_PACKAGE, config)
+        CONFIG_STORE.save(config)
 
     def _save_api_settings(self, settings: dict[str, Any]) -> None:
         provider_id = clean_provider_id(settings.get("providerId"))
@@ -388,7 +387,7 @@ window.addEventListener("error", function (event) {
         config["model"] = model
         config["temperature"] = temperature
         config["max_tokens"] = max_tokens
-        mw.addonManager.writeConfig(ADDON_PACKAGE, config)
+        CONFIG_STORE.save(config)
         self._emit(
             "apiSettingsSaved",
             {
@@ -399,7 +398,7 @@ window.addEventListener("error", function (event) {
 
     def _save_article_card_settings(self, settings: dict[str, Any]) -> None:
         config = load_config()
-        mw.addonManager.writeConfig(ADDON_PACKAGE, config)
+        CONFIG_STORE.save(config)
         self._emit(
             "articleCardSettingsSaved",
             {
@@ -413,7 +412,7 @@ window.addEventListener("error", function (event) {
         config["collapsed_deck_groups"] = [
             clean_text(group) for group in collapsed_groups if clean_text(group)
         ]
-        mw.addonManager.writeConfig(ADDON_PACKAGE, config)
+        CONFIG_STORE.save(config)
 
     def _save_article_card(
         self,
@@ -665,6 +664,7 @@ def collect_today_decks() -> dict[str, dict[str, Any]]:
         deck.pop("_cards_by_note", None)
     return decks
 
+DECK_PROVIDER = AnkiDeckProvider(collect_today_decks)
 
 def refresh_deck_counts(deck: dict[str, Any]) -> None:
     deck["total_count"] = len(deck["cards"])
@@ -753,7 +753,6 @@ def first_meaningful_field(fields: dict[str, str]) -> str:
     return ""
 
 
-    return ids
 
 
 def api_settings_payload(config: dict[str, Any]) -> dict[str, Any]:
@@ -788,7 +787,7 @@ def article_card_settings_payload(config: dict[str, Any]) -> dict[str, Any]:
 
 def load_config() -> dict[str, Any]:
     config = DEFAULT_CONFIG.copy()
-    loaded = mw.addonManager.getConfig(ADDON_PACKAGE) or {}
+    loaded = CONFIG_STORE.load() or {}
     config.update(loaded)
     return config
 
