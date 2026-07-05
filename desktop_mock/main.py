@@ -12,11 +12,12 @@
 from __future__ import annotations
 
 import json
+import os
 import sys
 from functools import lru_cache
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 from pathlib import Path
-from typing import Any
+from typing import Any, Mapping
 
 from mock_data import (
     build_article_list_payload,
@@ -26,6 +27,7 @@ from mock_data import (
     build_state_payload,
 )
 from momo_provider import MockMoMoDeckProvider
+from real_momo_provider import RealMoMoDeckProvider
 
 REPO_ROOT = Path(__file__).resolve().parent.parent
 WEB_DIR = REPO_ROOT / "addon" / "daily_ai_reading_reinforcement" / "web"
@@ -35,8 +37,29 @@ HOST = "127.0.0.1"
 PORT = 8755
 
 
+def build_deck_provider(environ: Mapping[str, str] | None = None) -> Any:
+    if environ is None:
+        environ = os.environ
+    provider_type = environ.get("DAIRR_DESKTOP_PROVIDER", "mock")
+    if provider_type == "real_momo":
+        token = environ.get("MOMO_TOKEN") or environ.get("Maimemo_key")
+        if not token:
+            raise ValueError("MOMO_TOKEN is missing. Cannot start real_momo provider.")
+        print("Using RealMoMoDeckProvider (MOMO_TOKEN present)")
+        return RealMoMoDeckProvider(token=token)
+    elif provider_type == "mock":
+        print("Using MockMoMoDeckProvider")
+        return MockMoMoDeckProvider()
+    else:
+        raise ValueError(f"Unknown DAIRR_DESKTOP_PROVIDER: {provider_type}")
+
+
 # Single provider instance used by handle_action() for load / selectDeck.
-DECK_PROVIDER = MockMoMoDeckProvider()
+try:
+    DECK_PROVIDER = build_deck_provider()
+except Exception as e:
+    print(f"Failed to initialize deck provider: {e}")
+    sys.exit(1)
 
 
 # Actions the mock understands. Anything else returns an error event so the
@@ -58,13 +81,23 @@ def handle_action(action: str, payload: dict[str, Any]) -> dict[str, Any]:
     """
     if action == "load":
         last_selected = str((payload or {}).get("lastSelectedDeckId") or "")
-        decks = DECK_PROVIDER.get_today_decks()
-        return {"event": "state", "payload": build_state_payload(last_selected, decks=decks)}
+        try:
+            decks = DECK_PROVIDER.get_today_decks()
+            return {"event": "state", "payload": build_state_payload(last_selected, decks=decks)}
+        except Exception as exc:
+            err_type = type(exc).__name__
+            sys.stderr.write(f"[mock] Provider error on load: {err_type}\n")
+            return {"event": "error", "payload": {"message": "Failed to load decks from provider."}}
 
     if action == "selectDeck":
         deck_id = str((payload or {}).get("deckId") or "")
-        cards_data = DECK_PROVIDER.get_deck_cards(deck_id)
-        return {"event": "deckCards", "payload": build_deck_cards_payload(deck_id, cards_data=cards_data)}
+        try:
+            cards_data = DECK_PROVIDER.get_deck_cards(deck_id)
+            return {"event": "deckCards", "payload": build_deck_cards_payload(deck_id, cards_data=cards_data)}
+        except Exception as exc:
+            err_type = type(exc).__name__
+            sys.stderr.write(f"[mock] Provider error on selectDeck: {err_type}\n")
+            return {"event": "error", "payload": {"message": "Failed to load deck cards from provider."}}
 
     if action == "generate":
         deck_id = str((payload or {}).get("deckId") or "")

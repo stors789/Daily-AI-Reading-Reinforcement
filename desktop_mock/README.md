@@ -38,6 +38,25 @@ Then open <http://127.0.0.1:8755> in a browser.
 - `POST /api/bridge` dispatches to `handle_action()` in `main.py`, which returns
   mock `{event, payload}` envelopes built from `mock_data.py`.
 
+## Provider mode
+
+Default:
+
+```bash
+python3 desktop_mock/main.py
+```
+
+uses mock data.
+
+Real MoMo provider, manual opt-in:
+
+```bash
+DAIRR_DESKTOP_PROVIDER=real_momo MOMO_TOKEN="..." python3 desktop_mock/main.py
+```
+
+Token is read only from the environment and is never saved.
+`Maimemo_key` is supported only as a legacy alias; prefer `MOMO_TOKEN`.
+
 ## Supported mock actions
 
 | action        | event returned  | notes                                   |
