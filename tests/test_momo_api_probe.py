@@ -330,3 +330,42 @@ class TestNoRealCredentialsInCode(unittest.TestCase):
 
 if __name__ == "__main__":
     unittest.main()
+
+class TestStudyRecordsParams(unittest.TestCase):
+    def test_default_probe_study_records_false(self):
+        args = type("Args", (), {"probe_study_records": False})()
+        endpoints = _probe._get_endpoints(args)
+        study_records = next(e for e in endpoints if e["key"] == "study_records")
+        self.assertEqual(study_records["body"], "{}")
+
+    def test_probe_study_records_empty(self):
+        args = type("Args", (), {"probe_study_records": True})()
+        endpoints = _probe._get_endpoints(args)
+        study_records = next(e for e in endpoints if e["key"] == "study_records")
+        self.assertEqual(study_records["body"], "{}")
+
+    def test_probe_study_records_with_args(self):
+        args = type("Args", (), {
+            "probe_study_records": True,
+            "study_records_limit": 10,
+            "study_records_as_count": "true",
+            "study_records_next_date": "2026-07-06"
+        })()
+        endpoints = _probe._get_endpoints(args)
+        study_records = next(e for e in endpoints if e["key"] == "study_records")
+        import json
+        body = json.loads(study_records["body"])
+        self.assertEqual(body["limit"], 10)
+        self.assertEqual(body["as_count"], True)
+        self.assertEqual(body["next_study_date"], "2026-07-06")
+
+    def test_probe_study_records_as_count_false(self):
+        args = type("Args", (), {
+            "probe_study_records": True,
+            "study_records_as_count": "false"
+        })()
+        endpoints = _probe._get_endpoints(args)
+        study_records = next(e for e in endpoints if e["key"] == "study_records")
+        import json
+        body = json.loads(study_records["body"])
+        self.assertEqual(body["as_count"], False)

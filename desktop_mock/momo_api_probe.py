@@ -399,7 +399,28 @@ def _probe_endpoint(
 # ---------------------------------------------------------------------------
 # Dry-run (no network)
 # ---------------------------------------------------------------------------
-def run_dry_run() -> int:
+def _get_endpoints(args: argparse.Namespace) -> list[dict[str, str]]:
+    endpoints = []
+    for spec in CANDIDATE_ENDPOINTS:
+        spec_copy = dict(spec)
+        if spec_copy["key"] == "study_records" and getattr(args, "probe_study_records", False):
+            body: dict[str, Any] = {}
+            if getattr(args, "study_records_limit", None) is not None:
+                body["limit"] = args.study_records_limit
+            as_count = getattr(args, "study_records_as_count", None)
+            if as_count == "true":
+                body["as_count"] = True
+            elif as_count == "false":
+                body["as_count"] = False
+            next_date = getattr(args, "study_records_next_date", None)
+            if next_date is not None:
+                body["next_study_date"] = next_date
+            spec_copy["body"] = json.dumps(body)
+        endpoints.append(spec_copy)
+    return endpoints
+
+
+def run_dry_run(args: argparse.Namespace) -> int:
     """Print the probe plan without making any network call."""
     creds = load_credentials()
     print("== dry-run: no network will be performed ==")
@@ -416,7 +437,7 @@ def run_dry_run() -> int:
     print()
     print(f"Base URL: {BASE_URL}")
     print("Endpoints that would be requested:")
-    for spec in CANDIDATE_ENDPOINTS:
+    for spec in _get_endpoints(args):
         print(f"  - {spec['key']:18} {spec['method']:4} {spec['path']}")
         print(f"      purpose: {spec['purpose']}")
         if spec.get("body"):
@@ -469,7 +490,7 @@ def run_real_probe(args: argparse.Namespace) -> int:
 
     headers = build_request_headers(creds)
 
-    for spec in CANDIDATE_ENDPOINTS:
+    for spec in _get_endpoints(args):
         result = _probe_endpoint(spec, headers)
         if not (result["ok"] and result["data"] is not None):
             continue
@@ -534,9 +555,32 @@ def main(argv: list[str] | None = None) -> int:
         default=3,
         help="max number of list items to summarize in shape-only mode",
     )
+    parser.add_argument(
+        "--probe-study-records",
+        action="store_true",
+        help="enable custom parameters for query_study_records",
+    )
+    parser.add_argument(
+        "--study-records-limit",
+        type=int,
+        default=None,
+        help="limit for query_study_records",
+    )
+    parser.add_argument(
+        "--study-records-as-count",
+        choices=["true", "false"],
+        default=None,
+        help="as_count for query_study_records",
+    )
+    parser.add_argument(
+        "--study-records-next-date",
+        type=str,
+        default=None,
+        help="next_study_date for query_study_records (e.g. YYYY-MM-DD)",
+    )
     args = parser.parse_args(argv)
     if args.dry_run:
-        return run_dry_run()
+        return run_dry_run(args)
     return run_real_probe(args)
 
 

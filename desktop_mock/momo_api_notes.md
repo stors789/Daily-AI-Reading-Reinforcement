@@ -215,3 +215,19 @@ Real-token smoke found that POST /api/v1/study/get_today_items with limit=5000 r
 - Default selected field remains `["term"]`. New fields (`status`, `source`, `review_count_status`) are in the `fields` dict for future UI use but not in `selectedFields`.
 - `source` is always `"MoMo Today"` (constant).
 - No real words, tags, dates, or full responses are stored or logged.
+
+## Phase 17 study_records parameter probe
+
+### Goal
+Find a safe request shape for `query_study_records`.
+
+### Results
+Not yet verified with real token.
+
+### Mapping decision
+- `review_count` can/cannot be derived from `study_count`.
+- Join key is `voc_id` if available.
+- If study_records is unavailable, keep `review_count_status=unavailable`.
+
+### Open questions
+- Needs real probe to confirm exact payload requirements and behavior for `limit` and `as_count`.
