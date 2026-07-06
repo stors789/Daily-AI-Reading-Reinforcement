@@ -29,6 +29,8 @@ from .core.article import (
 from .core.config import DEFAULT_CONFIG, PROVIDER_PROFILES
 from .core.llm import fetch_openai_compatible_models, generate_article
 from .core.prompt import build_prompt
+from .core.article_generator import run_article_generation
+from .anki_adapters import AnkiConfigAdapter, AnkiDeckAdapter
 from .core.rendering import (
     render_article_fragment_html,
     render_article_html,
@@ -54,6 +56,8 @@ ADDON_PACKAGE = __name__
 CONFIG_STORE = AnkiConfigStore(ADDON_PACKAGE)
 ADDON_DIR = Path(__file__).resolve().parent
 WEB_DIR = ADDON_DIR / "web"
+ANKI_CONFIG_ADAPTER = AnkiConfigAdapter(ADDON_PACKAGE)
+ANKI_DECK_ADAPTER: AnkiDeckAdapter | None = None  # set after CARD_SAVER is created
 ARTICLE_PARENT_DECK = "Daily AI Reading Reinforcement"
 ARTICLE_NOTE_TYPE = "Daily AI Reading Reinforcement Article"
 ARTICLE_FIELDS = [
@@ -494,25 +498,16 @@ window.addEventListener("error", function (event) {
 
         self._emit("generating", {"message": "Generating article..."})
 
+        deck_name = payload["name"]
+
         def task() -> dict[str, Any]:
-            article = generate_article(
-                config,
-                payload["name"],
-                cards,
-                selected_fields,
-                preset,
+            result = run_article_generation(
+                ANKI_CONFIG_ADAPTER,
+                ANKI_DECK_ADAPTER,  # type: ignore[arg-type]
+                deck_name, cards, selected_fields, preset,
             )
-            if not article.strip():
-                raise RuntimeError("The AI response was empty.")
-            saved = save_article(payload["name"], cards, article)
-            return {
-                "deckId": deck_id,
-                "deckName": payload["name"],
-                "article": article,
-                "markdownPath": str(saved["markdown"]),
-                "htmlPath": str(saved["html"]),
-                "articleCard": None,
-            }
+            result["deckId"] = deck_id
+            return result
 
         def on_done(future: Any) -> None:
             try:
@@ -888,6 +883,9 @@ def create_article_card(
 
 
 CARD_SAVER = AnkiCardSaver(create_article_card)
+# Now that CARD_SAVER exists, instantiate the AnkiDeckAdapter.
+ANKI_DECK_ADAPTER = AnkiDeckAdapter(CARD_SAVER)
+
 
 def article_deck_name(source_deck_name: str) -> str:
     source = clean_text(source_deck_name).replace("::", "::")
