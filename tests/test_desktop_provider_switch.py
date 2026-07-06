@@ -39,7 +39,6 @@ class TestProviderFactory(unittest.TestCase):
         })
         self.assertIsInstance(provider, RealMoMoDeckProvider)
         self.assertEqual(provider._token, "abc123secret")
-        self.assertIsNone(provider._enrichment_source)
 
     def test_real_momo_with_maimemo_key_returns_real(self):
         provider = _main.build_deck_provider({
@@ -59,24 +58,6 @@ class TestProviderFactory(unittest.TestCase):
             _main.build_deck_provider({"DAIRR_DESKTOP_PROVIDER": "unknown_provider"})
         self.assertIn("Unknown DAIRR_DESKTOP_PROVIDER", str(cm.exception))
 
-    def test_mock_enrichment_passed_to_real_momo(self):
-        provider = _main.build_deck_provider({
-            "DAIRR_DESKTOP_PROVIDER": "real_momo",
-            "MOMO_TOKEN": "abc123secret",
-            "DAIRR_DESKTOP_ENRICHMENT": "mock"
-        })
-        self.assertIsInstance(provider, RealMoMoDeckProvider)
-        self.assertIsNotNone(provider._enrichment_source)
-        self.assertEqual(provider._enrichment_source.__class__.__name__, "MockEnrichmentSource")
-
-    def test_anki_local_enrichment_without_collection_raises_error(self):
-        with self.assertRaises(ValueError) as cm:
-            _main.build_deck_provider({
-                "DAIRR_DESKTOP_ENRICHMENT": "anki_local"
-            })
-        self.assertIn("requires a collection", str(cm.exception))
-        self.assertNotIn("/", str(cm.exception))
-        self.assertNotIn("secret", str(cm.exception))
 
 
 class TestHandleActionWithFakeProvider(unittest.TestCase):

@@ -44,8 +44,6 @@ from .core.utils import (
     clean_provider_id,
     clean_temperature,
     clean_text,
-    clean_enable_anki_local_enrichment,
-    clean_anki_local_enrichment_max_matches_per_term,
     slugify,
     word_range_bounds,
 )
@@ -390,12 +388,6 @@ window.addEventListener("error", function (event) {
         config["model"] = model
         config["temperature"] = temperature
         config["max_tokens"] = max_tokens
-        
-        config["enable_anki_local_enrichment"] = clean_enable_anki_local_enrichment(settings.get("enableAnkiLocalEnrichment"))
-        config["anki_local_enrichment_max_matches_per_term"] = clean_anki_local_enrichment_max_matches_per_term(
-            settings.get("ankiLocalEnrichmentMaxMatchesPerTerm")
-        )
-        
         CONFIG_STORE.save(config)
         self._emit(
             "apiSettingsSaved",
@@ -772,10 +764,6 @@ def api_settings_payload(config: dict[str, Any]) -> dict[str, Any]:
         "temperature": clean_temperature(config.get("temperature")),
         "maxTokens": clean_max_tokens(config.get("max_tokens")),
         "hasApiKey": bool(str(config.get("api_key") or "").strip()),
-        "enableAnkiLocalEnrichment": clean_enable_anki_local_enrichment(config.get("enable_anki_local_enrichment")),
-        "ankiLocalEnrichmentMaxMatchesPerTerm": clean_anki_local_enrichment_max_matches_per_term(
-            config.get("anki_local_enrichment_max_matches_per_term")
-        ),
     }
 
 

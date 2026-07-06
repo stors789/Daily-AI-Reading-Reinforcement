@@ -19,7 +19,6 @@ import urllib.error
 import urllib.request
 from typing import Any, Callable
 
-from desktop_mock.enrichment import EnrichmentSource
 
 
 class MoMoAPIError(RuntimeError):
@@ -129,7 +128,6 @@ class RealMoMoDeckProvider:
         base_url: str = "https://open.maimemo.com/open",
         timeout: float = 10.0,
         opener: Callable[..., Any] | None = None,
-        enrichment_source: EnrichmentSource | None = None,
     ) -> None:
         if not token:
             raise ValueError("MoMo token is required.")
@@ -137,7 +135,6 @@ class RealMoMoDeckProvider:
         self._base_url = base_url.rstrip("/")
         self._timeout = timeout
         self._opener = opener or urllib.request.urlopen
-        self._enrichment_source = enrichment_source
 
     def _request(self, method: str, path: str, body: dict[str, Any] | None = None) -> Any:
         url = self._base_url + path
@@ -271,9 +268,7 @@ class RealMoMoDeckProvider:
             except MoMoAPIError as exc:
                 raise MoMoProviderDataError("today_items_parse") from exc
 
-            enrichment_fields = ["phonetic", "audio_url", "interpretation", "phrase", "phrase_translation", "enrichment_source", "enrichment_status"]
-            base_fields = ["term", "status", "source", "review_count_status"]
-            deck_fields = base_fields + enrichment_fields if self._enrichment_source is not None else base_fields
+            deck_fields = ["term", "status", "source", "review_count_status"]
 
             if not items:
                 return {
@@ -293,15 +288,6 @@ class RealMoMoDeckProvider:
                 records = {}
             
             try:
-                # Batch enrich words if source is available
-                enriched_data = {}
-                enrich_error = False
-                if self._enrichment_source is not None:
-                    terms_to_enrich = [item.get("voc_spelling", str(item.get("voc_id"))) for item in items if item.get("voc_id") is not None]
-                    try:
-                        enriched_data = self._enrichment_source.enrich_words(terms_to_enrich)
-                    except Exception:
-                        enrich_error = True
 
                 cards = []
                 for item in items:
@@ -341,23 +327,6 @@ class RealMoMoDeckProvider:
                         "source": "MoMo Today",
                         "review_count_status": review_count_status,
                     }
-                    
-                    if self._enrichment_source is not None:
-                        if enrich_error:
-                            card_fields["enrichment_status"] = "unavailable"
-                        else:
-                            enr = enriched_data.get(voc_spelling)
-                            if enr is not None:
-                                card_fields["enrichment_status"] = "available"
-                                card_fields["phonetic"] = enr.phonetic or ""
-                                card_fields["audio_url"] = enr.audio_url or ""
-                                card_fields["interpretation"] = enr.interpretation or ""
-                                card_fields["phrase"] = enr.phrase or ""
-                                card_fields["phrase_translation"] = enr.phrase_translation or ""
-                                card_fields["enrichment_source"] = enr.source or ""
-                            else:
-                                card_fields["enrichment_status"] = "missing"
-                    
                     cards.append({
                         "cid": str(voc_id),
                         "nid": "",

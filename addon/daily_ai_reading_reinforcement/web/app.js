@@ -82,16 +82,12 @@
     temperatureLabel: document.getElementById("temperatureLabel"),
     maxTokensLabel: document.getElementById("maxTokensLabel"),
     clearApiKeyLabel: document.getElementById("clearApiKeyLabel"),
-    enableAnkiEnrichmentLabel: document.getElementById("enableAnkiEnrichmentLabel"),
-    ankiEnrichmentMaxMatchesLabel: document.getElementById("ankiEnrichmentMaxMatchesLabel"),
     articleCardDeckHint: document.getElementById("articleCardDeckHint"),
     baseUrlInput: document.getElementById("baseUrlInput"),
     modelInput: document.getElementById("modelInput"),
     apiKeyInput: document.getElementById("apiKeyInput"),
     temperatureInput: document.getElementById("temperatureInput"),
     maxTokensInput: document.getElementById("maxTokensInput"),
-    enableAnkiEnrichmentInput: document.getElementById("enableAnkiEnrichmentInput"),
-    ankiEnrichmentMaxMatchesInput: document.getElementById("ankiEnrichmentMaxMatchesInput"),
     clearApiKeyInput: document.getElementById("clearApiKeyInput"),
     apiKeyStatus: document.getElementById("apiKeyStatus"),
     saveApiSettingsButton: document.getElementById("saveApiSettingsButton"),
@@ -184,8 +180,6 @@
       apiKey: "API key",
       temperature: "温度",
       maxTokens: "最大 tokens",
-      enableAnkiEnrichment: "启用 Anki 本地丰富",
-      ankiEnrichmentMaxMatches: "每个单词的最大本地匹配数",
       fetchModels: "获取模型",
       chooseModel: "选择模型",
       fetchingModels: "正在获取模型...",
@@ -286,8 +280,6 @@
       apiKey: "API key",
       temperature: "Temperature",
       maxTokens: "Max tokens",
-      enableAnkiEnrichment: "Enable local Anki enrichment",
-      ankiEnrichmentMaxMatches: "Max local matches per term",
       fetchModels: "Fetch models",
       chooseModel: "Choose a model",
       fetchingModels: "Fetching models...",
@@ -388,8 +380,6 @@
       apiKey: "API key",
       temperature: "温度",
       maxTokens: "最大 tokens",
-      enableAnkiEnrichment: "Anki ローカルリッチ化を有効化",
-      ankiEnrichmentMaxMatches: "語句ごとの最大ローカルマッチ数",
       fetchModels: "モデル取得",
       chooseModel: "モデルを選択",
       fetchingModels: "モデルを取得中...",
@@ -478,8 +468,6 @@
     el.apiKeyLabel.textContent = tr("apiKey");
     el.temperatureLabel.textContent = tr("temperature");
     el.maxTokensLabel.textContent = tr("maxTokens");
-    el.enableAnkiEnrichmentLabel.textContent = tr("enableAnkiEnrichment");
-    el.ankiEnrichmentMaxMatchesLabel.textContent = tr("ankiEnrichmentMaxMatches");
     el.fetchModelsButton.textContent = tr("fetchModels");
     el.clearApiKeyLabel.textContent = tr("clearApiKey");
     if (el.regenerateButton) el.regenerateButton.textContent = tr("regenerate");
@@ -878,8 +866,6 @@
     el.modelInput.value = state.apiSettings.model || "";
     el.temperatureInput.value = state.apiSettings.temperature;
     el.maxTokensInput.value = state.apiSettings.maxTokens;
-    el.enableAnkiEnrichmentInput.checked = !!state.apiSettings.enableAnkiLocalEnrichment;
-    el.ankiEnrichmentMaxMatchesInput.value = state.apiSettings.ankiLocalEnrichmentMaxMatchesPerTerm || 3;
     el.apiKeyInput.value = "";
     el.clearApiKeyInput.checked = false;
     el.clearApiKeyInput.disabled = !state.apiSettings.hasApiKey;
@@ -1706,8 +1692,6 @@
         clearApiKey: el.clearApiKeyInput.checked,
         temperature: el.temperatureInput.value,
         maxTokens: el.maxTokensInput.value,
-        enableAnkiLocalEnrichment: el.enableAnkiEnrichmentInput.checked,
-        ankiLocalEnrichmentMaxMatchesPerTerm: el.ankiEnrichmentMaxMatchesInput.value,
       },
     });
   });

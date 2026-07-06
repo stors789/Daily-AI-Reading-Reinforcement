@@ -259,7 +259,7 @@ class TestRealMoMoDeckProvider(unittest.TestCase):
         self.assertEqual(res["selectedFields"], ["term"])
 
     def test_get_deck_cards_momo_today(self):
-        """Phase 16: full card mapping with enriched fields and conservative is_failed."""
+        """Phase 16: full card mapping and conservative is_failed."""
         requests_seen = []
         def fake_opener(req, timeout):
             requests_seen.append(req)
@@ -329,7 +329,7 @@ class TestRealMoMoDeckProvider(unittest.TestCase):
             self.assertNotIn("limit", body)
 
     def test_get_deck_cards_momo_today_empty(self):
-        """Empty today_items still returns enriched fields list."""
+        """Empty today_items still returns base fields list."""
         def fake_opener(req, timeout):
             mock_resp = MagicMock()
             if "get_today_items" in req.full_url:
@@ -582,88 +582,9 @@ class TestRealMoMoDeckProvider(unittest.TestCase):
         self.provider._opener = fake_opener
         res = self.provider.get_deck_cards("momo_today")
         for card in res["cards"]:
-            self.assertIn("term", card["fields"])
-            self.assertEqual(card["fields"]["term"], card["term"])
+           self.assertIn("term", card["fields"])
+           self.assertEqual(card["fields"]["term"], card["term"])
 
-    def test_get_deck_cards_with_enrichment_source(self):
-        """Enrichment source adds fields when terms hit."""
-        from desktop_mock.enrichment import MockEnrichmentSource, WordEnrichment
-        
-        enrichment_source = MockEnrichmentSource({
-            "apple": WordEnrichment(phonetic="/æpl/", interpretation="n. 苹果", source="mock_dict")
-        })
-        self.provider._enrichment_source = enrichment_source
-        
-        def fake_opener(req, timeout):
-            mock_resp = MagicMock()
-            if "get_today_items" in req.full_url:
-                mock_resp.read.return_value = json.dumps({
-                    "today_items": [
-                        {"voc_id": 1, "voc_spelling": "apple"},
-                        {"voc_id": 2, "voc_spelling": "banana"},
-                    ]
-                }).encode("utf-8")
-            elif "query_study_records" in req.full_url:
-                mock_resp.read.return_value = json.dumps({"records": []}).encode("utf-8")
-            else:
-                mock_resp.read.return_value = b"{}"
-            mock_context = MagicMock()
-            mock_context.__enter__.return_value = mock_resp
-            return mock_context
-
-        self.provider._opener = fake_opener
-        res = self.provider.get_deck_cards("momo_today")
-        
-        cards = res["cards"]
-        self.assertEqual(len(cards), 2)
-        
-        # Apple hit
-        self.assertEqual(cards[0]["term"], "apple")
-        self.assertEqual(cards[0]["fields"]["enrichment_status"], "available")
-        self.assertEqual(cards[0]["fields"]["phonetic"], "/æpl/")
-        self.assertEqual(cards[0]["fields"]["interpretation"], "n. 苹果")
-        self.assertEqual(cards[0]["fields"]["enrichment_source"], "mock_dict")
-        
-        # Banana miss
-        self.assertEqual(cards[1]["term"], "banana")
-        self.assertEqual(cards[1]["fields"]["enrichment_status"], "missing")
-        self.assertNotIn("phonetic", cards[1]["fields"])
-        
-        # Top-level fields
-        for field in ["phonetic", "audio_url", "interpretation", "phrase", "phrase_translation", "enrichment_source", "enrichment_status"]:
-            self.assertIn(field, res["fields"])
-            
-        self.assertEqual(res["selectedFields"], ["term"])
-
-    def test_get_deck_cards_enrichment_source_exception(self):
-        """When enrichment_source raises an exception, cards are still returned with status unavailable."""
-        class ErrorEnrichmentSource:
-            def enrich_words(self, terms):
-                raise RuntimeError("network timeout")
-                
-        self.provider._enrichment_source = ErrorEnrichmentSource()
-        
-        def fake_opener(req, timeout):
-            mock_resp = MagicMock()
-            if "get_today_items" in req.full_url:
-                mock_resp.read.return_value = json.dumps({
-                    "today_items": [{"voc_id": 1, "voc_spelling": "apple"}]
-                }).encode("utf-8")
-            elif "query_study_records" in req.full_url:
-                mock_resp.read.return_value = json.dumps({"records": []}).encode("utf-8")
-            else:
-                mock_resp.read.return_value = b"{}"
-            mock_context = MagicMock()
-            mock_context.__enter__.return_value = mock_resp
-            return mock_context
-
-        self.provider._opener = fake_opener
-        res = self.provider.get_deck_cards("momo_today")
-        
-        cards = res["cards"]
-        self.assertEqual(len(cards), 1)
-        self.assertEqual(cards[0]["fields"]["enrichment_status"], "unavailable")
-        self.assertNotIn("phonetic", cards[0]["fields"])
 
 
 if __name__ == "__main__":
