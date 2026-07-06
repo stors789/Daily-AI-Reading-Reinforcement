@@ -323,10 +323,12 @@ class TestRealMoMoDeckProvider(unittest.TestCase):
         self.assertIn("review_count_status", res["fields"])
         self.assertEqual(res["selectedFields"], ["term"])
 
-        # Ensure no limit is sent by default in the high-level call
         for req in requests_seen:
             body = json.loads(req.data) if req.data else {}
-            self.assertNotIn("limit", body)
+            if "get_today_items" in req.full_url:
+                self.assertEqual(body.get("limit"), 500)
+            elif "query_study_records" in req.full_url:
+                self.assertNotIn("limit", body)
 
     def test_get_deck_cards_momo_today_empty(self):
         """Empty today_items still returns base fields list."""

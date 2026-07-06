@@ -29,6 +29,17 @@ from mock_data import (
 from momo_provider import MockMoMoDeckProvider
 from real_momo_provider import RealMoMoDeckProvider
 
+# Desktop adapters and real generation pipeline
+try:
+    from desktop_adapters import (
+        DesktopConfigAdapter,
+        DesktopDeckAdapter,
+        DesktopEnvironmentAdapter,
+    )
+    _DESKTOP_ADAPTERS_AVAILABLE = True
+except Exception:
+    _DESKTOP_ADAPTERS_AVAILABLE = False
+
 REPO_ROOT = Path(__file__).resolve().parent.parent
 WEB_DIR = REPO_ROOT / "addon" / "daily_ai_reading_reinforcement" / "web"
 HOST = "127.0.0.1"
@@ -88,6 +99,91 @@ def safe_exception_summary(exc: BaseException | None) -> str:
     return type(exc).__name__
 
 
+
+def handle_generate_real(deck_id: str, payload: dict[str, Any]) -> dict[str, Any]:
+    """Run the real article generation pipeline using Desktop adapters.
+
+    Falls back to the mock payload if:
+    - Desktop adapters cannot be imported
+    - The API key is missing
+    - The LLM call or article save fails
+
+    Returns an {event, payload} envelope matching the addon contract.
+    """
+    if not _DESKTOP_ADAPTERS_AVAILABLE:
+        return _mock_generate(deck_id)
+
+    config_adapter = DesktopConfigAdapter()
+    deck_adapter = DesktopDeckAdapter()
+    env_adapter = DesktopEnvironmentAdapter()
+
+    # Build card-like objects from the provider's cards
+    try:
+        cards_data = DECK_PROVIDER.get_deck_cards(deck_id)
+        deck_name = cards_data.get("name", "Desktop Deck")
+        cards = cards_data.get("cards", [])
+    except Exception:
+        return _mock_generate(deck_id)
+
+    if not cards:
+        return {"event": "error", "payload": {"message": "No cards available for generation."}}
+
+    # Read config and preset from the Desktop config
+    config = config_adapter.load() or {}
+    preset_id = str(payload.get("presetId") or "")
+    
+    presets = config.get("prompt_presets", [])
+    preset = next((p for p in presets if str(p.get("id")) == preset_id), None)
+    if not preset:
+        selected_id = str(config.get("selected_prompt_preset_id") or "")
+        preset = next((p for p in presets if str(p.get("id")) == selected_id), None)
+    if not preset and presets:
+        preset = presets[0]
+    if not preset:
+        preset = {}
+
+    selected_fields = cards_data.get("selectedFields", cards_data.get("fields", []))
+
+    # Convert card dicts to stub objects so core logic can access them via attribute
+    class StubCard:
+        def __init__(self, d):
+            self.cid = d.get("cid")
+            self.nid = d.get("nid")
+            self.term = d.get("term")
+            self.is_new = d.get("is_new")
+            self.is_failed = d.get("is_failed")
+            self.fields = d.get("fields", {})
+
+    selected_card_ids = payload.get("cardIds")
+    raw_cards = cards_data.get("cards", [])
+    if selected_card_ids is not None:
+        selected_ids_set = set(str(cid) for cid in selected_card_ids)
+        raw_cards = [c for c in raw_cards if str(c.get("cid")) in selected_ids_set]
+        
+    cards = [StubCard(c) for c in raw_cards if isinstance(c, dict)]
+
+    # Use the core_article_generator already imported by desktop_adapters.
+    try:
+        from desktop_adapters import _core_article_generator
+        run_article_generation = _core_article_generator.run_article_generation
+    except Exception as exc:
+        sys.stderr.write(f"[mock] Failed to load article_generator: {exc}. Falling back to mock.\n")
+        return _mock_generate(deck_id)
+
+    try:
+        result = run_article_generation(
+            config_adapter, deck_adapter, deck_name, cards, selected_fields, preset,
+        )
+        return {"event": "article", "payload": result}
+    except Exception as exc:
+        sys.stderr.write(f"[mock] Real generation failed: {exc}. Falling back to mock.\n")
+        return _mock_generate(deck_id)
+
+
+def _mock_generate(deck_id: str) -> dict[str, Any]:
+    """Return the mock article payload (kept for backward compatibility)."""
+    return {"event": "article", "payload": build_article_payload(deck_id)}
+
 def handle_action(action: str, payload: dict[str, Any]) -> dict[str, Any]:
     """Dispatch one bridge action and return an {event, payload} envelope.
 
@@ -122,8 +218,8 @@ def handle_action(action: str, payload: dict[str, Any]) -> dict[str, Any]:
             return {"event": "error", "payload": {"message": msg}}
 
     if action == "generate":
-        deck_id = str((payload or {}).get("deckId") or "")
-        return {"event": "article", "payload": build_article_payload(deck_id)}
+        # delegate to real handler which falls back to mock on failure
+        return handle_generate_real(str((payload or {}).get("deckId") or ""), payload)
 
     if action == "listArticles":
         return {"event": "articleList", "payload": build_article_list_payload()}
@@ -131,6 +227,155 @@ def handle_action(action: str, payload: dict[str, Any]) -> dict[str, Any]:
     if action == "loadArticle":
         path = str((payload or {}).get("path") or "")
         return {"event": "articleLoaded", "payload": build_loaded_article_payload(path)}
+
+    if action == "fetchModels":
+        if _DESKTOP_ADAPTERS_AVAILABLE:
+            try:
+                from desktop_adapters import _import_core
+                _llm = _import_core("llm")
+                _utils = _import_core("utils")
+                config_adapter = DesktopConfigAdapter()
+                config = config_adapter.load() or {}
+                
+                settings = payload.get("settings") or {}
+                api_key = str(settings.get("apiKey") or config.get("api_key") or "").strip()
+                base_url = _utils.clean_base_url(settings.get("baseUrl") or config.get("base_url"))
+                
+                if not api_key:
+                    return {"event": "error", "payload": {"message": "Enter or save an API key before fetching models."}}
+                if not base_url:
+                    return {"event": "error", "payload": {"message": "Enter an API base URL before fetching models."}}
+                
+                models = _llm.fetch_openai_compatible_models(base_url, api_key)
+                if not models:
+                    return {"event": "error", "payload": {"message": "No models were returned by this provider."}}
+                return {"event": "modelsFetched", "payload": {"models": models}}
+            except Exception as exc:
+                return {"event": "error", "payload": {"message": str(exc)}}
+        else:
+            return {"event": "modelsFetched", "payload": {"models": ["mock-model-1", "mock-model-2"]}}
+
+    if _DESKTOP_ADAPTERS_AVAILABLE:
+        config_adapter = DesktopConfigAdapter()
+        config = config_adapter.load() or {}
+
+        if action == "getConfig":
+            return {"event": "configLoaded", "payload": config}
+        if action == "saveApiSettings":
+            settings = payload.get("settings") or {}
+            try:
+                from desktop_adapters import _import_core
+                _utils = _import_core("utils")
+                provider_id = _utils.clean_provider_id(settings.get("providerId"))
+                base_url = _utils.clean_base_url(settings.get("baseUrl"))
+                model = _utils.clean_text(settings.get("model"))
+                temperature = _utils.clean_temperature(settings.get("temperature"))
+                max_tokens = _utils.clean_max_tokens(settings.get("maxTokens"))
+            except Exception:
+                provider_id = str(settings.get("providerId") or "").strip()
+                base_url = str(settings.get("baseUrl") or "").strip().rstrip("/")
+                model = str(settings.get("model") or "").strip()
+                try:
+                    temperature = float(settings.get("temperature"))
+                except (TypeError, ValueError):
+                    temperature = 0.7
+                try:
+                    max_tokens = int(settings.get("maxTokens"))
+                except (TypeError, ValueError):
+                    max_tokens = 0
+
+            if not base_url:
+                return {"event": "error", "payload": {"message": "Enter an API base URL."}}
+            if not model:
+                return {"event": "error", "payload": {"message": "Enter a model name."}}
+
+            api_key = str(settings.get("apiKey") or "").strip()
+            clear_api_key = bool(settings.get("clearApiKey"))
+            if api_key:
+                config["api_key"] = api_key
+            elif clear_api_key:
+                config["api_key"] = ""
+
+            config["selected_provider_profile"] = provider_id
+            config["base_url"] = base_url
+            config["model"] = model
+            config["temperature"] = temperature
+            config["max_tokens"] = max_tokens
+
+            config_adapter.save(config)
+
+            try:
+                from mock_data import _api_settings_payload
+                api_settings_resp = _api_settings_payload(config)
+            except Exception:
+                api_settings_resp = config
+
+            return {"event": "apiSettingsSaved", "payload": {"apiSettings": api_settings_resp, "message": "API settings saved."}}
+        if action == "savePromptPreset":
+            preset = payload.get("preset") or {}
+            try:
+                from desktop_adapters import _import_core
+                import uuid
+                _utils = _import_core("utils")
+                preset_id = str(preset.get("id") or f"preset-{uuid.uuid4().hex[:10]}")
+                clean_preset = {
+                    "id": preset_id,
+                    "name": _utils.clean_text(preset.get("name")) or "Untitled",
+                    "reader_native_language": _utils.clean_text(preset.get("reader_native_language")),
+                    "article_language": _utils.clean_text(preset.get("article_language")),
+                    "difficulty": _utils.clean_text(preset.get("difficulty")),
+                    "max_words": _utils.clean_max_words(preset.get("max_words")),
+                    "instructions": _utils.clean_text(preset.get("instructions")),
+                    "prompt_template": str(preset.get("prompt_template") or ""),
+                }
+            except Exception:
+                import uuid
+                preset_id = str(preset.get("id") or f"preset-{uuid.uuid4().hex[:10]}")
+                clean_preset = preset
+                clean_preset["id"] = preset_id
+
+            presets = config.get("prompt_presets", [])
+            replaced = False
+            for i, p in enumerate(presets):
+                if p.get("id") == preset_id:
+                    presets[i] = clean_preset
+                    replaced = True
+                    break
+            if not replaced:
+                presets.append(clean_preset)
+                
+            config["prompt_presets"] = presets
+            config["selected_prompt_preset_id"] = preset_id
+            config_adapter.save(config)
+            
+            return {"event": "promptPresets", "payload": {
+                "promptPresets": presets,
+                "selectedPromptPresetId": preset_id,
+                "message": "Prompt preset saved."
+            }}
+        if action == "selectPromptPreset":
+            preset_id = str(payload.get("presetId", ""))
+            config["selected_prompt_preset_id"] = preset_id
+            config_adapter.save(config)
+            # The real addon emits no event for this, so we return a noop
+            return {"event": "noop", "payload": {}}
+        if action == "deletePromptPreset":
+            preset_id = str(payload.get("presetId", ""))
+            presets = [p for p in config.get("prompt_presets", []) if p.get("id") != preset_id]
+            config["prompt_presets"] = presets
+            if config.get("selected_prompt_preset_id") == preset_id:
+                config["selected_prompt_preset_id"] = "default"
+            config_adapter.save(config)
+            return {"event": "promptPresets", "payload": {
+                "promptPresets": presets,
+                "selectedPromptPresetId": config.get("selected_prompt_preset_id") or "default",
+                "message": "Prompt preset deleted."
+            }}
+        if action == "saveUiLanguage":
+            ui_lang = str(payload.get("uiLanguage", ""))
+            config["ui_language"] = ui_lang
+            config_adapter.save(config)
+            return {"event": "uiLanguageSaved", "payload": config}
 
     return {"event": "error", "payload": {"message": f"Unknown command: {action}"}}
 

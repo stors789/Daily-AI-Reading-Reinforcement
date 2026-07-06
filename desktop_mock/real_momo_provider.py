@@ -259,7 +259,7 @@ class RealMoMoDeckProvider:
         """
         if deck_id == "momo_today":
             try:
-                raw_items = self.get_today_items_raw()
+                raw_items = self.get_today_items_raw(limit=500)
             except MoMoAPIError as exc:
                 raise MoMoProviderDataError("today_items_request") from exc
                 
