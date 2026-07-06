@@ -194,3 +194,24 @@ Probe successfully ran against the real API.
 
 ### Phase 14/15 Updates
 Real-token smoke found that POST /api/v1/study/get_today_items with limit=5000 returns HTTP 400. Calling without limit succeeds. RealMoMoDeckProvider therefore does not send a default limit for today_items.
+
+### Phase 15.5 real UI smoke:
+- Markji decks still returned 403, so MoMo Today fallback was used.
+- get_today_items without default limit succeeded.
+- UI rendered 50 today cards.
+- study_records remained non-blocking; when it failed, review_count fell back to 0.
+- No token, full response, or private vocabulary values were recorded.
+
+### Phase 16: Card field mapping & display quality
+
+**Mapping decisions:**
+- `is_finished=false` is treated as `status=unfinished`, **not** as `is_failed=true`.
+  Previously `is_failed` was `first_response == "FORGET" or is_finished is False`, which was overly aggressive — "not yet finished" does not equal "failed".
+- `is_failed=true` is now reserved exclusively for `first_response == "FORGET"`.
+- `status` field is derived as: `new` (if `is_new`), `finished` (if `is_finished is True`), `unfinished` (if `is_finished is False`), `unknown` (otherwise).
+- `review_count=0` may mean "data unavailable" when `study_records` request fails; the new `review_count_status` field disambiguates:
+  - `"available"` — `study_records` succeeded; `review_count` reflects the real `study_count` (which may legitimately be 0).
+  - `"unavailable"` — `study_records` request failed; `review_count` is a fallback 0.
+- Default selected field remains `["term"]`. New fields (`status`, `source`, `review_count_status`) are in the `fields` dict for future UI use but not in `selectedFields`.
+- `source` is always `"MoMo Today"` (constant).
+- No real words, tags, dates, or full responses are stored or logged.

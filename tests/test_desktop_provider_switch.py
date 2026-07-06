@@ -88,23 +88,33 @@ class TestHandleActionWithFakeProvider(unittest.TestCase):
         self.assertEqual(result["event"], "deckCards")
         self.assertEqual(result["payload"]["deckId"], "test_deck")
 
-    def test_select_deck_error_returns_safe_error_event(self):
-        self.fake_provider.get_deck_cards.side_effect = Exception("Super secret token 123 failed")
+    @patch('sys.stderr')
+    def test_select_deck_error_returns_safe_error_event(self, mock_stderr):
+        err = Exception("Super secret token 123 failed")
+        err.__cause__ = Exception("Inner secret")
+        self.fake_provider.get_deck_cards.side_effect = err
         result = _main.handle_action("selectDeck", {"deckId": "test_deck"})
         self.assertEqual(result["event"], "error")
         # Should not leak the exception message to the payload
         self.assertNotIn("secret", result["payload"]["message"])
         self.assertIn("Failed to load deck cards", result["payload"]["message"])
+        mock_stderr.write.assert_called_with("[mock] Provider error on selectDeck: Exception cause=Exception\n")
 
-    def test_select_deck_error_with_stage_returns_safe_error_event(self):
+    @patch('sys.stderr')
+    def test_select_deck_error_with_stage_returns_safe_error_event(self, mock_stderr):
         err = Exception("Super secret token 123 failed")
         err.stage = "today_items_request"
+        class DummyHTTPError(Exception):
+            def __init__(self, code):
+                self.code = code
+        err.__cause__ = DummyHTTPError(401)
         self.fake_provider.get_deck_cards.side_effect = err
         result = _main.handle_action("selectDeck", {"deckId": "test_deck"})
         self.assertEqual(result["event"], "error")
         # Should not leak the exception message to the payload
         self.assertNotIn("secret", result["payload"]["message"])
         self.assertEqual("Failed to load deck cards from provider. Stage: today_items_request", result["payload"]["message"])
+        mock_stderr.write.assert_called_with("[mock] Provider error on selectDeck: Exception stage=today_items_request cause=DummyHTTPError(code=401)\n")
 
 
 if __name__ == "__main__":

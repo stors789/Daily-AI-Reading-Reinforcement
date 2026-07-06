@@ -271,14 +271,16 @@ class RealMoMoDeckProvider:
                 return {
                     "deckId": deck_id,
                     "cards": [],
-                    "fields": ["term"],
+                    "fields": ["term", "status", "source", "review_count_status"],
                     "selectedFields": ["term"],
                 }
             
+            records_available = False
             try:
                 raw_records = self.query_study_records_raw()
                 records_data = parse_study_records_response(raw_records)
                 records = {r.get("voc_id"): r for r in records_data.get("records", []) if "voc_id" in r}
+                records_available = True
             except MoMoAPIError:
                 records = {}
             
@@ -292,35 +294,55 @@ class RealMoMoDeckProvider:
                     is_new = bool(item.get("is_new"))
                     first_response = item.get("first_response")
                     is_finished = item.get("is_finished")
-                    
-                    is_failed = first_response == "FORGET" or is_finished is False
-                    
+
+                    # Phase 16: is_failed reserved for FORGET only;
+                    # is_finished=False maps to status="unfinished" instead.
+                    is_failed = first_response == "FORGET"
+
+                    # Derive status from study item state.
+                    if is_new:
+                        status = "new"
+                    elif is_finished is True:
+                        status = "finished"
+                    elif is_finished is False:
+                        status = "unfinished"
+                    else:
+                        status = "unknown"
+
                     review_count = 0
-                    if voc_id in records:
-                        review_count = records[voc_id].get("study_count", 0)
-                    
+                    review_count_status = "unavailable"
+                    if records_available:
+                        review_count_status = "available"
+                        if voc_id in records:
+                            review_count = records[voc_id].get("study_count", 0)
+
                     cards.append({
                         "cid": str(voc_id),
                         "nid": "",
                         "term": voc_spelling,
-                        "fields": {"term": voc_spelling},
+                        "fields": {
+                            "term": voc_spelling,
+                            "status": status,
+                            "source": "MoMo Today",
+                            "review_count_status": review_count_status,
+                        },
                         "is_new": is_new,
                         "is_failed": is_failed,
                         "review_count": review_count,
                     })
             except Exception as exc:
                 raise MoMoProviderDataError("card_mapping") from exc
-            
+
             return {
                 "deckId": deck_id,
                 "cards": cards,
-                "fields": ["term"],
+                "fields": ["term", "status", "source", "review_count_status"],
                 "selectedFields": ["term"],
             }
 
         return {
             "deckId": deck_id,
             "cards": [],
-            "fields": ["term"],
+            "fields": ["term", "status", "source", "review_count_status"],
             "selectedFields": ["term"],
         }

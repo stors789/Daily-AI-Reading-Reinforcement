@@ -73,6 +73,19 @@ SUPPORTED_ACTIONS = {
 }
 
 
+def safe_exception_summary(exc: BaseException | None) -> str:
+    if exc is None:
+        return "-"
+    # For urllib.error.HTTPError, include only status code and class name.
+    code = getattr(exc, "code", None)
+    if code is not None:
+        return f"{type(exc).__name__}(code={code})"
+    reason = getattr(exc, "reason", None)
+    if reason is not None:
+        return f"{type(exc).__name__}"
+    return type(exc).__name__
+
+
 def handle_action(action: str, payload: dict[str, Any]) -> dict[str, Any]:
     """Dispatch one bridge action and return an {event, payload} envelope.
 
@@ -97,12 +110,13 @@ def handle_action(action: str, payload: dict[str, Any]) -> dict[str, Any]:
         except Exception as exc:
             err_type = type(exc).__name__
             stage = getattr(exc, "stage", None)
+            cause_summary = safe_exception_summary(getattr(exc, "__cause__", None))
             if stage:
                 msg = f"Failed to load deck cards from provider. Stage: {stage}"
-                sys.stderr.write(f"[mock] Provider error on selectDeck: {err_type} stage={stage} cause={repr(exc.__cause__)}\n")
+                sys.stderr.write(f"[mock] Provider error on selectDeck: {err_type} stage={stage} cause={cause_summary}\n")
             else:
                 msg = "Failed to load deck cards from provider."
-                sys.stderr.write(f"[mock] Provider error on selectDeck: {err_type} cause={repr(exc.__cause__)}\n")
+                sys.stderr.write(f"[mock] Provider error on selectDeck: {err_type} cause={cause_summary}\n")
             return {"event": "error", "payload": {"message": msg}}
 
     if action == "generate":

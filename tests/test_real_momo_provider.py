@@ -252,11 +252,14 @@ class TestRealMoMoDeckProvider(unittest.TestCase):
         res = self.provider.get_deck_cards("d1")
         self.assertEqual(res["deckId"], "d1")
         self.assertEqual(res["cards"], [])
-        self.assertEqual(res["fields"], ["term"])
+        self.assertIn("term", res["fields"])
+        self.assertIn("status", res["fields"])
+        self.assertIn("source", res["fields"])
+        self.assertIn("review_count_status", res["fields"])
         self.assertEqual(res["selectedFields"], ["term"])
 
     def test_get_deck_cards_momo_today(self):
-        # We need to simulate two endpoints: get_today_items and query_study_records
+        """Phase 16: full card mapping with enriched fields and conservative is_failed."""
         requests_seen = []
         def fake_opener(req, timeout):
             requests_seen.append(req)
@@ -289,22 +292,36 @@ class TestRealMoMoDeckProvider(unittest.TestCase):
         cards = res["cards"]
         self.assertEqual(len(cards), 3)
         
-        # apple: is_failed because first_response == FORGET
+        # apple: is_failed because first_response == FORGET; status "new" (is_new=True)
         self.assertEqual(cards[0]["term"], "apple")
         self.assertTrue(cards[0]["is_failed"])
         self.assertTrue(cards[0]["is_new"])
         self.assertEqual(cards[0]["review_count"], 5)
+        self.assertEqual(cards[0]["fields"]["status"], "new")
+        self.assertEqual(cards[0]["fields"]["source"], "MoMo Today")
+        self.assertEqual(cards[0]["fields"]["review_count_status"], "available")
         
-        # banana: is_failed because is_finished == False
+        # banana: is_finished=False => status "unfinished", NOT is_failed
         self.assertEqual(cards[1]["term"], "banana")
-        self.assertTrue(cards[1]["is_failed"])
+        self.assertFalse(cards[1]["is_failed"])  # Phase 16: no longer failed
         self.assertFalse(cards[1]["is_new"])
         self.assertEqual(cards[1]["review_count"], 1)
+        self.assertEqual(cards[1]["fields"]["status"], "unfinished")
+        self.assertEqual(cards[1]["fields"]["review_count_status"], "available")
 
-        # cherry: is_failed = False
+        # cherry: is_failed = False, status "finished"
         self.assertEqual(cards[2]["term"], "cherry")
         self.assertFalse(cards[2]["is_failed"])
         self.assertEqual(cards[2]["review_count"], 0)
+        self.assertEqual(cards[2]["fields"]["status"], "finished")
+        self.assertEqual(cards[2]["fields"]["review_count_status"], "available")
+
+        # Verify fields list
+        self.assertIn("term", res["fields"])
+        self.assertIn("status", res["fields"])
+        self.assertIn("source", res["fields"])
+        self.assertIn("review_count_status", res["fields"])
+        self.assertEqual(res["selectedFields"], ["term"])
 
         # Ensure no limit is sent by default in the high-level call
         for req in requests_seen:
@@ -312,6 +329,7 @@ class TestRealMoMoDeckProvider(unittest.TestCase):
             self.assertNotIn("limit", body)
 
     def test_get_deck_cards_momo_today_empty(self):
+        """Empty today_items still returns enriched fields list."""
         def fake_opener(req, timeout):
             mock_resp = MagicMock()
             if "get_today_items" in req.full_url:
@@ -328,7 +346,10 @@ class TestRealMoMoDeckProvider(unittest.TestCase):
         res = self.provider.get_deck_cards("momo_today")
         self.assertEqual(res["deckId"], "momo_today")
         self.assertEqual(res["cards"], [])
-        self.assertEqual(res["fields"], ["term"])
+        self.assertIn("term", res["fields"])
+        self.assertIn("status", res["fields"])
+        self.assertIn("source", res["fields"])
+        self.assertIn("review_count_status", res["fields"])
         self.assertEqual(res["selectedFields"], ["term"])
 
     def test_get_deck_cards_today_items_request_error(self):
@@ -349,6 +370,7 @@ class TestRealMoMoDeckProvider(unittest.TestCase):
         self.assertNotIn("Internal Server Error", str(cm.exception))
 
     def test_get_deck_cards_study_records_error_fallback(self):
+        """When study_records fails, cards still return but review_count_status is unavailable."""
         def fake_opener(req, timeout):
             if "get_today_items" in req.full_url:
                 mock_resp = MagicMock()
@@ -373,8 +395,10 @@ class TestRealMoMoDeckProvider(unittest.TestCase):
         self.assertEqual(len(res["cards"]), 1)
         self.assertEqual(res["cards"][0]["term"], "apple")
         self.assertEqual(res["cards"][0]["review_count"], 0)
+        self.assertEqual(res["cards"][0]["fields"]["review_count_status"], "unavailable")
 
     def test_get_deck_cards_study_records_parse_error_fallback(self):
+        """When study_records returns invalid JSON, review_count_status is unavailable."""
         def fake_opener(req, timeout):
             mock_resp = MagicMock()
             if "get_today_items" in req.full_url:
@@ -397,7 +421,170 @@ class TestRealMoMoDeckProvider(unittest.TestCase):
         self.assertEqual(len(res["cards"]), 1)
         self.assertEqual(res["cards"][0]["term"], "apple")
         self.assertEqual(res["cards"][0]["review_count"], 0)
+        self.assertEqual(res["cards"][0]["fields"]["review_count_status"], "unavailable")
+
+    # --- Phase 16: Additional field/status coverage ---
+
+    def test_is_failed_only_on_forget(self):
+        """is_failed is True only when first_response == FORGET, not when is_finished == False."""
+        def fake_opener(req, timeout):
+            mock_resp = MagicMock()
+            if "get_today_items" in req.full_url:
+                mock_resp.read.return_value = json.dumps({
+                    "today_items": [
+                        # FORGET => is_failed=True
+                        {"voc_id": 10, "voc_spelling": "w1", "is_new": False, "is_finished": False, "first_response": "FORGET"},
+                        # unfinished, non-FORGET => is_failed=False
+                        {"voc_id": 20, "voc_spelling": "w2", "is_new": False, "is_finished": False, "first_response": "VAGUE"},
+                        # finished, non-FORGET => is_failed=False
+                        {"voc_id": 30, "voc_spelling": "w3", "is_new": False, "is_finished": True, "first_response": "FAMILIAR"},
+                        # no first_response, is_finished=None => is_failed=False
+                        {"voc_id": 40, "voc_spelling": "w4", "is_new": False},
+                    ]
+                }).encode("utf-8")
+            elif "query_study_records" in req.full_url:
+                mock_resp.read.return_value = json.dumps({"records": []}).encode("utf-8")
+            else:
+                mock_resp.read.return_value = b"{}"
+            mock_context = MagicMock()
+            mock_context.__enter__.return_value = mock_resp
+            return mock_context
+
+        self.provider._opener = fake_opener
+        res = self.provider.get_deck_cards("momo_today")
+        cards = res["cards"]
+        self.assertEqual(len(cards), 4)
+
+        self.assertTrue(cards[0]["is_failed"])   # FORGET
+        self.assertFalse(cards[1]["is_failed"])   # VAGUE, unfinished
+        self.assertFalse(cards[2]["is_failed"])   # FAMILIAR, finished
+        self.assertFalse(cards[3]["is_failed"])   # no first_response
+
+    def test_status_derivation(self):
+        """status field is correctly derived from is_new and is_finished."""
+        def fake_opener(req, timeout):
+            mock_resp = MagicMock()
+            if "get_today_items" in req.full_url:
+                mock_resp.read.return_value = json.dumps({
+                    "today_items": [
+                        {"voc_id": 1, "voc_spelling": "w_new", "is_new": True, "is_finished": False},
+                        {"voc_id": 2, "voc_spelling": "w_finished", "is_new": False, "is_finished": True},
+                        {"voc_id": 3, "voc_spelling": "w_unfinished", "is_new": False, "is_finished": False},
+                        {"voc_id": 4, "voc_spelling": "w_unknown", "is_new": False},
+                    ]
+                }).encode("utf-8")
+            elif "query_study_records" in req.full_url:
+                mock_resp.read.return_value = json.dumps({"records": []}).encode("utf-8")
+            else:
+                mock_resp.read.return_value = b"{}"
+            mock_context = MagicMock()
+            mock_context.__enter__.return_value = mock_resp
+            return mock_context
+
+        self.provider._opener = fake_opener
+        res = self.provider.get_deck_cards("momo_today")
+        cards = res["cards"]
+
+        self.assertEqual(cards[0]["fields"]["status"], "new")
+        self.assertEqual(cards[1]["fields"]["status"], "finished")
+        self.assertEqual(cards[2]["fields"]["status"], "unfinished")
+        self.assertEqual(cards[3]["fields"]["status"], "unknown")
+
+    def test_source_field_always_momo_today(self):
+        """Every card's fields['source'] is always 'MoMo Today'."""
+        def fake_opener(req, timeout):
+            mock_resp = MagicMock()
+            if "get_today_items" in req.full_url:
+                mock_resp.read.return_value = json.dumps({
+                    "today_items": [
+                        {"voc_id": 1, "voc_spelling": "w1"},
+                        {"voc_id": 2, "voc_spelling": "w2"},
+                    ]
+                }).encode("utf-8")
+            elif "query_study_records" in req.full_url:
+                mock_resp.read.return_value = json.dumps({"records": []}).encode("utf-8")
+            else:
+                mock_resp.read.return_value = b"{}"
+            mock_context = MagicMock()
+            mock_context.__enter__.return_value = mock_resp
+            return mock_context
+
+        self.provider._opener = fake_opener
+        res = self.provider.get_deck_cards("momo_today")
+        for card in res["cards"]:
+            self.assertEqual(card["fields"]["source"], "MoMo Today")
+
+    def test_review_count_status_available_when_records_succeed(self):
+        """When study_records succeeds, review_count_status is 'available'."""
+        def fake_opener(req, timeout):
+            mock_resp = MagicMock()
+            if "get_today_items" in req.full_url:
+                mock_resp.read.return_value = json.dumps({
+                    "today_items": [{"voc_id": 1, "voc_spelling": "w1"}]
+                }).encode("utf-8")
+            elif "query_study_records" in req.full_url:
+                mock_resp.read.return_value = json.dumps({
+                    "records": [{"voc_id": 1, "study_count": 3}]
+                }).encode("utf-8")
+            else:
+                mock_resp.read.return_value = b"{}"
+            mock_context = MagicMock()
+            mock_context.__enter__.return_value = mock_resp
+            return mock_context
+
+        self.provider._opener = fake_opener
+        res = self.provider.get_deck_cards("momo_today")
+        card = res["cards"][0]
+        self.assertEqual(card["review_count"], 3)
+        self.assertEqual(card["fields"]["review_count_status"], "available")
+
+    def test_card_toplevel_required_fields(self):
+        """Each card must have all top-level required fields regardless of data."""
+        required_keys = {"cid", "nid", "term", "fields", "is_new", "is_failed", "review_count"}
+        def fake_opener(req, timeout):
+            mock_resp = MagicMock()
+            if "get_today_items" in req.full_url:
+                mock_resp.read.return_value = json.dumps({
+                    "today_items": [
+                        {"voc_id": 99, "voc_spelling": "test_word"},
+                    ]
+                }).encode("utf-8")
+            elif "query_study_records" in req.full_url:
+                mock_resp.read.return_value = json.dumps({"records": []}).encode("utf-8")
+            else:
+                mock_resp.read.return_value = b"{}"
+            mock_context = MagicMock()
+            mock_context.__enter__.return_value = mock_resp
+            return mock_context
+
+        self.provider._opener = fake_opener
+        res = self.provider.get_deck_cards("momo_today")
+        for card in res["cards"]:
+            self.assertTrue(required_keys.issubset(set(card.keys())),
+                            f"Missing keys: {required_keys - set(card.keys())}")
+
+    def test_fields_contain_term(self):
+        """Card fields dict must always contain 'term'."""
+        def fake_opener(req, timeout):
+            mock_resp = MagicMock()
+            if "get_today_items" in req.full_url:
+                mock_resp.read.return_value = json.dumps({
+                    "today_items": [{"voc_id": 1, "voc_spelling": "hello"}]
+                }).encode("utf-8")
+            elif "query_study_records" in req.full_url:
+                mock_resp.read.return_value = json.dumps({"records": []}).encode("utf-8")
+            else:
+                mock_resp.read.return_value = b"{}"
+            mock_context = MagicMock()
+            mock_context.__enter__.return_value = mock_resp
+            return mock_context
+
+        self.provider._opener = fake_opener
+        res = self.provider.get_deck_cards("momo_today")
+        for card in res["cards"]:
+            self.assertIn("term", card["fields"])
+            self.assertEqual(card["fields"]["term"], card["term"])
+
 
 if __name__ == "__main__":
     unittest.main()
-
