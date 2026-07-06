@@ -343,6 +343,11 @@ h2 {
   color: var(--warn);
 }
 
+.tag.vague {
+  background: #fff3e0;
+  color: #e65100;
+}
+
 .icon-button,
 .primary-button,
 .secondary-button {
@@ -650,7 +655,7 @@ h2 {
 .review-notes dl {
   display: grid;
   gap: 10px 14px;
-  grid-template-columns: minmax(80px, max-content) minmax(0, 1fr);
+  grid-template-columns: minmax(80px, 35%) minmax(0, 1fr);
   margin: 0;
 }
 

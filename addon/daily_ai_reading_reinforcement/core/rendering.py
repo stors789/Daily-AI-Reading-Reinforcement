@@ -158,7 +158,7 @@ def render_article_html(deck_name_value: str, cards: list[Any], article: str) ->
     .review-notes dl {{
       display: grid;
       gap: 10px 14px;
-      grid-template-columns: minmax(80px, max-content) minmax(0, 1fr);
+      grid-template-columns: minmax(80px, 35%) minmax(0, 1fr);
       margin: 0;
     }}
     .review-notes dt {{
