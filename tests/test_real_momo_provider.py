@@ -299,7 +299,7 @@ class TestRealMoMoDeckProvider(unittest.TestCase):
         self.assertEqual(cards[0]["review_count"], 5)
         self.assertEqual(cards[0]["fields"]["status"], "new")
         self.assertEqual(cards[0]["fields"]["source"], "MoMo Today")
-        self.assertEqual(cards[0]["fields"]["review_count_status"], "available")
+        self.assertEqual(cards[0]["fields"]["review_count_status"], "provider_value_unverified")
         
         # banana: is_finished=False => status "unfinished", NOT is_failed
         self.assertEqual(cards[1]["term"], "banana")
@@ -307,14 +307,14 @@ class TestRealMoMoDeckProvider(unittest.TestCase):
         self.assertFalse(cards[1]["is_new"])
         self.assertEqual(cards[1]["review_count"], 1)
         self.assertEqual(cards[1]["fields"]["status"], "unfinished")
-        self.assertEqual(cards[1]["fields"]["review_count_status"], "available")
+        self.assertEqual(cards[1]["fields"]["review_count_status"], "provider_value_unverified")
 
         # cherry: is_failed = False, status "finished"
         self.assertEqual(cards[2]["term"], "cherry")
         self.assertFalse(cards[2]["is_failed"])
         self.assertEqual(cards[2]["review_count"], 0)
         self.assertEqual(cards[2]["fields"]["status"], "finished")
-        self.assertEqual(cards[2]["fields"]["review_count_status"], "available")
+        self.assertEqual(cards[2]["fields"]["review_count_status"], "provider_value_unverified")
 
         # Verify fields list
         self.assertIn("term", res["fields"])
@@ -515,7 +515,7 @@ class TestRealMoMoDeckProvider(unittest.TestCase):
             self.assertEqual(card["fields"]["source"], "MoMo Today")
 
     def test_review_count_status_available_when_records_succeed(self):
-        """When study_records succeeds, review_count_status is 'available'."""
+        """When study_records succeeds, review_count_status is 'provider_value_unverified'."""
         def fake_opener(req, timeout):
             mock_resp = MagicMock()
             if "get_today_items" in req.full_url:
@@ -536,7 +536,7 @@ class TestRealMoMoDeckProvider(unittest.TestCase):
         res = self.provider.get_deck_cards("momo_today")
         card = res["cards"][0]
         self.assertEqual(card["review_count"], 3)
-        self.assertEqual(card["fields"]["review_count_status"], "available")
+        self.assertEqual(card["fields"]["review_count_status"], "provider_value_unverified")
 
     def test_card_toplevel_required_fields(self):
         """Each card must have all top-level required fields regardless of data."""

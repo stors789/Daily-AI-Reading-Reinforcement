@@ -312,7 +312,7 @@ class RealMoMoDeckProvider:
                     review_count = 0
                     review_count_status = "unavailable"
                     if records_available:
-                        review_count_status = "available"
+                        review_count_status = "provider_value_unverified"
                         if voc_id in records:
                             review_count = records[voc_id].get("study_count", 0)
 

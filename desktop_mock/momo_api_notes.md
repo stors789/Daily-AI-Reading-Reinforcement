@@ -231,3 +231,22 @@ Not yet verified with real token.
 
 ### Open questions
 - Needs real probe to confirm exact payload requirements and behavior for `limit` and `as_count`.
+
+## Phase 17.5 study_count semantics
+
+Observed:
+- `query_study_records` returns `study_count`.
+- Real probe confirmed records can be joined to today_items by `voc_id`.
+- User observed that most `study_count` values remained 0 even after studying some items and refreshing.
+- Therefore `study_count` is not confirmed to mean today's review count or Anki-style review count.
+
+Decision:
+- Keep using `study_count` only as an observed provider value.
+- Set `review_count_status=provider_value_unverified` when records are available.
+- Set `review_count_status=unavailable` when study_records fails.
+- Use `today_items.is_finished` for finished/unfinished status.
+- Use `today_items.first_response == "FORGET"` for failed heuristic.
+
+Future:
+- Phase 18 should probe Vocabulary / Interpretation / Phrase APIs for card enrichment.
+- Notepad and Note write APIs are future optional write features and must remain opt-in.
