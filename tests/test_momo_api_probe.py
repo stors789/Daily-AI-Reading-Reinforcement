@@ -369,3 +369,23 @@ class TestStudyRecordsParams(unittest.TestCase):
         import json
         body = json.loads(study_records["body"])
         self.assertEqual(body["as_count"], False)
+
+class TestEnrichmentParams(unittest.TestCase):
+    def test_enrichment_dry_run(self):
+        args = type("Args", (), {
+            "probe_enrichment": True,
+            "enrichment_source": "today_items",
+            "enrichment_limit": 3,
+            "probe_vocabulary": True,
+            "probe_interpretations": True,
+            "probe_phrases": True,
+        })()
+        endpoints = _probe._get_endpoints(args)
+        keys = [e["key"] for e in endpoints]
+        self.assertIn("today_items", keys)
+        self.assertIn("vocabulary_query_ids", keys)
+        self.assertIn("vocabulary_query_spellings", keys)
+        self.assertIn("interpretations", keys)
+        self.assertIn("phrases", keys)
+        self.assertNotIn("study_progress", keys)
+

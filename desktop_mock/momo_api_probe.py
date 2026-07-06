@@ -104,6 +104,20 @@ CANDIDATE_ENDPOINTS: tuple[dict[str, str], ...] = (
         "body": '{"spellings": ["apple"]}',
         "purpose": "单词查询 (id / spelling)",
     },
+    {
+        "key": "interpretations",
+        "method": "GET",
+        "path": "/api/v1/interpretations",
+        "body": "",
+        "purpose": "单词释义 (content / status)",
+    },
+    {
+        "key": "phrases",
+        "method": "GET",
+        "path": "/api/v1/phrases",
+        "body": "",
+        "purpose": "单词例句 (text / translation / highlight)",
+    },
 )
 
 # Frontend contract that downstream code expects. Used by the mapping
@@ -203,13 +217,21 @@ def _as_dict(value: Any) -> dict[str, Any]:
     return value if isinstance(value, dict) else {}
 
 
+def _unwrap(data: Any) -> dict[str, Any]:
+    """Unwrap the {"success": true, "data": {...}} envelope if present."""
+    body = _as_dict(data)
+    if "success" in body and "data" in body:
+        return _as_dict(body["data"])
+    return body
+
+
 def parse_study_progress_response(data: Any) -> dict[str, Any]:
     """Parse ``POST /study/get_study_progress``.
 
     Real shape: ``{"progress": {"finished": int, "total": int,
     "study_time": int}}``. Unknown shapes return ``{}``.
     """
-    body = _as_dict(data)
+    body = _unwrap(data)
     progress = _as_dict(body.get("progress"))
     out: dict[str, Any] = {}
     for key in ("finished", "total", "study_time"):
@@ -225,7 +247,7 @@ def parse_today_items_response(data: Any) -> list[dict[str, Any]]:
     ``voc_id``, ``voc_spelling``, ``order``, ``is_new``, ``is_finished``,
     and optional ``first_response``.
     """
-    body = _as_dict(data)
+    body = _unwrap(data)
     items = body.get("today_items")
     if not isinstance(items, list):
         return []
@@ -238,7 +260,7 @@ def parse_study_records_response(data: Any) -> dict[str, Any]:
     Real shape: ``{"records": [StudyRecord], "count": int}``. ``records``
     is empty when ``as_count=true`` was requested.
     """
-    body = _as_dict(data)
+    body = _unwrap(data)
     records = body.get("records")
     if not isinstance(records, list):
         records = []
@@ -254,7 +276,7 @@ def parse_markji_deck_list_response(data: Any) -> list[dict[str, Any]]:
 
     Real shape: ``{"decks": [MarkjiDeck], "total": int}``.
     """
-    body = _as_dict(data)
+    body = _unwrap(data)
     decks = body.get("decks")
     if not isinstance(decks, list):
         return []
@@ -267,7 +289,7 @@ def parse_vocabulary_query_response(data: Any) -> list[dict[str, Any]]:
     Real shape: ``{"voc": [Vocabulary]}`` where each entry has ``id`` and
     ``spelling``.
     """
-    body = _as_dict(data)
+    body = _unwrap(data)
     voc = body.get("voc")
     if not isinstance(voc, list):
         return []
@@ -399,7 +421,7 @@ def _probe_endpoint(
 # ---------------------------------------------------------------------------
 # Dry-run (no network)
 # ---------------------------------------------------------------------------
-def _get_endpoints(args: argparse.Namespace) -> list[dict[str, str]]:
+def _get_endpoints(args: argparse.Namespace) -> list[dict[str, Any]]:
     endpoints = []
     for spec in CANDIDATE_ENDPOINTS:
         spec_copy = dict(spec)
@@ -416,6 +438,37 @@ def _get_endpoints(args: argparse.Namespace) -> list[dict[str, str]]:
             if next_date is not None:
                 body["next_study_date"] = next_date
             spec_copy["body"] = json.dumps(body)
+            
+        if getattr(args, "probe_enrichment", False):
+            source = getattr(args, "enrichment_source", "today_items")
+            is_needed = False
+            
+            if spec_copy["key"] == source:
+                is_needed = True
+                
+            if spec_copy["key"] == "vocabulary_query" and getattr(args, "probe_vocabulary", False):
+                spec_ids = dict(spec_copy)
+                spec_ids["key"] = "vocabulary_query_ids"
+                spec_ids["body"] = json.dumps({"ids": []})
+                endpoints.append(spec_ids)
+                
+                spec_spellings = dict(spec_copy)
+                spec_spellings["key"] = "vocabulary_query_spellings"
+                spec_spellings["body"] = json.dumps({"spellings": []})
+                endpoints.append(spec_spellings)
+                continue
+                
+            if spec_copy["key"] == "interpretations" and getattr(args, "probe_interpretations", False):
+                spec_copy["path"] = "/api/v1/interpretations?voc_id=<voc_id>"
+                is_needed = True
+                
+            if spec_copy["key"] == "phrases" and getattr(args, "probe_phrases", False):
+                spec_copy["path"] = "/api/v1/phrases?voc_id=<voc_id>"
+                is_needed = True
+                
+            if not is_needed:
+                continue
+
         endpoints.append(spec_copy)
     return endpoints
 
@@ -490,12 +543,49 @@ def run_real_probe(args: argparse.Namespace) -> int:
 
     headers = build_request_headers(creds)
 
+    voc_ids: list[str] = []
+    voc_spellings: list[str] = []
+
     for spec in _get_endpoints(args):
+        if getattr(args, "probe_enrichment", False):
+            if spec["key"] == "vocabulary_query_ids":
+                if not voc_ids:
+                    print(f"[probe] skip {spec['key']}: no voc_ids extracted")
+                    continue
+                spec["body"] = json.dumps({"ids": voc_ids})
+            elif spec["key"] == "vocabulary_query_spellings":
+                if not voc_spellings:
+                    print(f"[probe] skip {spec['key']}: no voc_spellings extracted")
+                    continue
+                spec["body"] = json.dumps({"spellings": voc_spellings})
+            elif spec["key"] == "interpretations":
+                if not voc_ids:
+                    print(f"[probe] skip {spec['key']}: no voc_ids extracted")
+                    continue
+                spec["path"] = f"/api/v1/interpretations?voc_id={voc_ids[0]}"
+                spec["body"] = ""
+            elif spec["key"] == "phrases":
+                if not voc_ids:
+                    print(f"[probe] skip {spec['key']}: no voc_ids extracted")
+                    continue
+                spec["path"] = f"/api/v1/phrases?voc_id={voc_ids[0]}"
+                spec["body"] = ""
+
         result = _probe_endpoint(spec, headers)
         if not (result["ok"] and result["data"] is not None):
             continue
         data = result["data"]
         
+        if getattr(args, "probe_enrichment", False) and spec["key"] == getattr(args, "enrichment_source", "today_items"):
+            items = parse_today_items_response(data)
+            limit = getattr(args, "enrichment_limit", 3)
+            for it in items[:limit]:
+                if it.get("voc_id"):
+                    voc_ids.append(it["voc_id"])
+                if it.get("voc_spelling"):
+                    voc_spellings.append(it["voc_spelling"])
+            print(f"[probe] enrichment extracted {len(voc_ids)} ids, {len(voc_spellings)} spellings")
+
         if args.shape_only:
             shape = summarize_shape(data, max_items=args.limit)
             print(f"[probe] raw shape: {json.dumps(shape, indent=2, ensure_ascii=False)}")
@@ -577,6 +667,38 @@ def main(argv: list[str] | None = None) -> int:
         type=str,
         default=None,
         help="next_study_date for query_study_records (e.g. YYYY-MM-DD)",
+    )
+    parser.add_argument(
+        "--probe-enrichment",
+        action="store_true",
+        help="enable enrichment probing (vocabulary, interpretations, phrases)",
+    )
+    parser.add_argument(
+        "--enrichment-source",
+        type=str,
+        default="today_items",
+        help="source endpoint for extracting enrichment IDs (default: today_items)",
+    )
+    parser.add_argument(
+        "--enrichment-limit",
+        type=int,
+        default=3,
+        help="max items to extract from the source endpoint for enrichment queries",
+    )
+    parser.add_argument(
+        "--probe-vocabulary",
+        action="store_true",
+        help="probe /api/v1/vocabulary/query during enrichment",
+    )
+    parser.add_argument(
+        "--probe-interpretations",
+        action="store_true",
+        help="probe /api/v1/interpretations during enrichment",
+    )
+    parser.add_argument(
+        "--probe-phrases",
+        action="store_true",
+        help="probe /api/v1/phrases during enrichment",
     )
     args = parser.parse_args(argv)
     if args.dry_run:

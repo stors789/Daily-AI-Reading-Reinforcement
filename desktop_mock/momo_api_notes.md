@@ -250,3 +250,41 @@ Decision:
 Future:
 - Phase 18 should probe Vocabulary / Interpretation / Phrase APIs for card enrichment.
 - Notepad and Note write APIs are future optional write features and must remain opt-in.
+
+## Phase 18 Vocabulary / Interpretation / Phrase enrichment probe
+
+### Goal
+Find safe read-only enrichment sources for MoMo Today cards.
+
+### Vocabulary
+| query shape | status | count | useful fields | notes |
+|---|---:|---:|---|---|
+| `{"ids": [...]}` | 200 OK | N | `id`, `spelling` | NO `phonetic`, `audio`, or definitions. Just ID and spelling. |
+| `{"spellings": [...]}` | 200 OK | N | `id`, `spelling` | NO `phonetic`, `audio`, or definitions. Just ID and spelling. |
+
+### Interpretation
+| query shape | status | count | useful fields | notes |
+|---|---:|---:|---|---|
+| `GET ?voc_id=...` | 200 OK | 0 | none | According to OpenAPI spec: "获取单词下自己创建的释义" (user-created only). Returns empty list `[]` for official dictionary entries. |
+
+### Phrase
+| query shape | status | count | useful fields | notes |
+|---|---:|---:|---|---|
+| `GET ?voc_id=...` | 200 OK | 0 | none | According to OpenAPI spec: "获取单词下自己创建的例句" (user-created only). Returns empty list `[]` for official dictionary entries. |
+
+### Mapping candidates
+- `phonetic`: UNATTAINABLE
+- `audio_url`: UNATTAINABLE
+- `interpretation`: UNATTAINABLE (official dictionary definitions are not exposed).
+- `phrase`: UNATTAINABLE (official example sentences are not exposed).
+- `phrase_translation`: UNATTAINABLE
+- `phrase_highlight`: UNATTAINABLE
+
+### Decision
+- The MoMo OpenAPI **does not** expose official dictionary definitions, phonetic symbols, audio URLs, or example sentences. It only exposes user-generated notes (which are usually empty unless the user manually typed them).
+- Therefore, we CANNOT enrich card fields using the MoMo OpenAPI.
+- Provider integration for enrichment via MoMo is CANCELLED.
+- Future Phase 19 will not use `RealMoMoDeckProvider` for dictionary enrichment. It must rely on a different dictionary source or Anki's local data if needed.
+
+### Open questions
+- None. Probe confirmed the API surface constraints.
