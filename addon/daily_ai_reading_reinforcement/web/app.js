@@ -45,7 +45,7 @@
     cardCount: document.getElementById("cardCount"),
     selectFailedCardsButton: document.getElementById("selectFailedCardsButton"),
     selectAllCardsButton: document.getElementById("selectAllCardsButton"),
-    selectNewCardsButton: document.getElementById("selectNewCardsButton"),
+    selectVagueCardsButton: document.getElementById("selectVagueCardsButton"),
     clearCardSelectionButton: document.getElementById("clearCardSelectionButton"),
     dayWindow: document.getElementById("dayWindow"),
     decksHeading: document.getElementById("decksHeading"),
@@ -82,12 +82,16 @@
     temperatureLabel: document.getElementById("temperatureLabel"),
     maxTokensLabel: document.getElementById("maxTokensLabel"),
     clearApiKeyLabel: document.getElementById("clearApiKeyLabel"),
+    enableAnkiEnrichmentLabel: document.getElementById("enableAnkiEnrichmentLabel"),
+    ankiEnrichmentMaxMatchesLabel: document.getElementById("ankiEnrichmentMaxMatchesLabel"),
     articleCardDeckHint: document.getElementById("articleCardDeckHint"),
     baseUrlInput: document.getElementById("baseUrlInput"),
     modelInput: document.getElementById("modelInput"),
     apiKeyInput: document.getElementById("apiKeyInput"),
     temperatureInput: document.getElementById("temperatureInput"),
     maxTokensInput: document.getElementById("maxTokensInput"),
+    enableAnkiEnrichmentInput: document.getElementById("enableAnkiEnrichmentInput"),
+    ankiEnrichmentMaxMatchesInput: document.getElementById("ankiEnrichmentMaxMatchesInput"),
     clearApiKeyInput: document.getElementById("clearApiKeyInput"),
     apiKeyStatus: document.getElementById("apiKeyStatus"),
     saveApiSettingsButton: document.getElementById("saveApiSettingsButton"),
@@ -159,8 +163,8 @@
       selectDeckShort: "请选择卡组",
       candidateCards: "张候选卡",
       selectedCards: "已选",
-      selectFailedCards: "失败",
-      selectNewCards: "新学",
+      selectFailedCards: "遗忘",
+      selectVagueCards: "模糊",
       clearCardSelection: "清空",
       cardsUnit: "张卡",
       newCount: "新学",
@@ -180,6 +184,8 @@
       apiKey: "API key",
       temperature: "温度",
       maxTokens: "最大 tokens",
+      enableAnkiEnrichment: "启用 Anki 本地丰富",
+      ankiEnrichmentMaxMatches: "每个单词的最大本地匹配数",
       fetchModels: "获取模型",
       chooseModel: "选择模型",
       fetchingModels: "正在获取模型...",
@@ -259,8 +265,8 @@
       selectDeckShort: "Choose a deck",
       candidateCards: "candidate cards",
       selectedCards: "selected",
-      selectFailedCards: "Failed",
-      selectNewCards: "New",
+      selectFailedCards: "Forgotten",
+      selectVagueCards: "Vague",
       clearCardSelection: "Clear",
       cardsUnit: "cards",
       newCount: "new",
@@ -280,6 +286,8 @@
       apiKey: "API key",
       temperature: "Temperature",
       maxTokens: "Max tokens",
+      enableAnkiEnrichment: "Enable local Anki enrichment",
+      ankiEnrichmentMaxMatches: "Max local matches per term",
       fetchModels: "Fetch models",
       chooseModel: "Choose a model",
       fetchingModels: "Fetching models...",
@@ -359,8 +367,8 @@
       selectDeckShort: "デッキを選択",
       candidateCards: "候補カード",
       selectedCards: "選択中",
-      selectFailedCards: "失敗",
-      selectNewCards: "新規",
+      selectFailedCards: "忘却",
+      selectVagueCards: "曖昧",
       clearCardSelection: "クリア",
       cardsUnit: "カード",
       newCount: "新規",
@@ -380,6 +388,8 @@
       apiKey: "API key",
       temperature: "温度",
       maxTokens: "最大 tokens",
+      enableAnkiEnrichment: "Anki ローカルリッチ化を有効化",
+      ankiEnrichmentMaxMatches: "語句ごとの最大ローカルマッチ数",
       fetchModels: "モデル取得",
       chooseModel: "モデルを選択",
       fetchingModels: "モデルを取得中...",
@@ -450,7 +460,7 @@
     el.saveFieldsButton.textContent = tr("save");
     el.selectAllCardsButton.textContent = tr("all");
     el.selectFailedCardsButton.textContent = tr("selectFailedCards");
-    el.selectNewCardsButton.textContent = tr("selectNewCards");
+    el.selectVagueCardsButton.textContent = tr("selectVagueCards");
     el.clearCardSelectionButton.textContent = tr("clearCardSelection");
     el.generateButton.textContent = tr("generate");
     el.newPresetButton.textContent = tr("new");
@@ -468,6 +478,8 @@
     el.apiKeyLabel.textContent = tr("apiKey");
     el.temperatureLabel.textContent = tr("temperature");
     el.maxTokensLabel.textContent = tr("maxTokens");
+    el.enableAnkiEnrichmentLabel.textContent = tr("enableAnkiEnrichment");
+    el.ankiEnrichmentMaxMatchesLabel.textContent = tr("ankiEnrichmentMaxMatches");
     el.fetchModelsButton.textContent = tr("fetchModels");
     el.clearApiKeyLabel.textContent = tr("clearApiKey");
     if (el.regenerateButton) el.regenerateButton.textContent = tr("regenerate");
@@ -815,7 +827,7 @@
     const hasCards = total > 0;
     el.selectAllCardsButton.disabled = !hasCards;
     el.selectFailedCardsButton.disabled = !hasCards;
-    el.selectNewCardsButton.disabled = !hasCards;
+    el.selectVagueCardsButton.disabled = !hasCards;
     el.clearCardSelectionButton.disabled = !hasCards || selected === 0;
     updateGenerateButton();
   }
@@ -866,6 +878,8 @@
     el.modelInput.value = state.apiSettings.model || "";
     el.temperatureInput.value = state.apiSettings.temperature;
     el.maxTokensInput.value = state.apiSettings.maxTokens;
+    el.enableAnkiEnrichmentInput.checked = !!state.apiSettings.enableAnkiLocalEnrichment;
+    el.ankiEnrichmentMaxMatchesInput.value = state.apiSettings.ankiLocalEnrichmentMaxMatchesPerTerm || 3;
     el.apiKeyInput.value = "";
     el.clearApiKeyInput.checked = false;
     el.clearApiKeyInput.disabled = !state.apiSettings.hasApiKey;
@@ -1531,16 +1545,28 @@
     renderFields();
   });
 
+  function isForgottenCard(card) {
+    const f = String(card.first_response || "").toUpperCase();
+    const l = String(card.last_response || "").toUpperCase();
+    return f === "FORGET" || l === "FORGET" || Boolean(card.is_failed);
+  }
+
+  function isVagueCard(card) {
+    const f = String(card.first_response || "").toUpperCase();
+    const l = String(card.last_response || "").toUpperCase();
+    return f === "VAGUE" || l === "VAGUE";
+  }
+
   el.selectAllCardsButton.addEventListener("click", () => {
     selectCardsByPredicate(() => true);
   });
 
   el.selectFailedCardsButton.addEventListener("click", () => {
-    selectCardsByPredicate((card) => Boolean(card.is_failed));
+    selectCardsByPredicate(isForgottenCard);
   });
 
-  el.selectNewCardsButton.addEventListener("click", () => {
-    selectCardsByPredicate((card) => Boolean(card.is_new));
+  el.selectVagueCardsButton.addEventListener("click", () => {
+    selectCardsByPredicate(isVagueCard);
   });
 
   el.clearCardSelectionButton.addEventListener("click", () => {
@@ -1680,6 +1706,8 @@
         clearApiKey: el.clearApiKeyInput.checked,
         temperature: el.temperatureInput.value,
         maxTokens: el.maxTokensInput.value,
+        enableAnkiLocalEnrichment: el.enableAnkiEnrichmentInput.checked,
+        ankiLocalEnrichmentMaxMatchesPerTerm: el.ankiEnrichmentMaxMatchesInput.value,
       },
     });
   });

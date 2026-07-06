@@ -92,4 +92,22 @@ DEFAULT_CONFIG = {
         }
     ],
     "selected_prompt_preset_id": "default",
+    "enable_anki_local_enrichment": False,
+    "anki_local_enrichment_field_map": {
+        "phonetic": ["Phonetic", "Pronunciation", "音标", "発音"],
+        "audio_url": ["Audio", "Sound", "音声", "发音"],
+        "interpretation": ["Meaning", "Definition", "释义", "中文", "翻译", "意味"],
+        "phrase": ["Example", "Sentence", "例句", "例文"],
+        "phrase_translation": ["ExampleTranslation", "SentenceTranslation", "例句翻译", "例文訳"],
+    },
+    "anki_local_enrichment_search_fields": [
+        "Front",
+        "Word",
+        "Term",
+        "Expression",
+        "单词",
+        "词条",
+        "表面",
+    ],
+    "anki_local_enrichment_max_matches_per_term": 3,
 }

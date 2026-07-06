@@ -46,7 +46,7 @@ Default:
 python3 desktop_mock/main.py
 ```
 
-uses mock data.
+No enrichment is enabled by default.
 
 Real MoMo provider, manual opt-in:
 
@@ -56,6 +56,22 @@ DAIRR_DESKTOP_PROVIDER=real_momo MOMO_TOKEN="..." python3 desktop_mock/main.py
 
 Token is read only from the environment and is never saved.
 `Maimemo_key` is supported only as a legacy alias; prefer `MOMO_TOKEN`.
+
+### Optional Enrichment
+
+Mock enrichment (injects mock dictionary data, safe to test wiring):
+
+```bash
+DAIRR_DESKTOP_ENRICHMENT=mock python3 desktop_mock/main.py
+```
+
+Real MoMo with mock enrichment:
+
+```bash
+DAIRR_DESKTOP_PROVIDER=real_momo DAIRR_DESKTOP_ENRICHMENT=mock MOMO_TOKEN="..." python3 desktop_mock/main.py
+```
+
+Anki local enrichment is implemented as a source but is not automatically available in standalone desktop mock because there is no Anki collection object in this process.
 
 ## Supported mock actions
 

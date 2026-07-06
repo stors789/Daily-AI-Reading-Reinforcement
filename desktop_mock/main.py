@@ -19,6 +19,7 @@ from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 from pathlib import Path
 from typing import Any, Mapping
 
+from enrichment_factory import build_enrichment_source
 from mock_data import (
     build_article_list_payload,
     build_article_payload,
@@ -40,13 +41,19 @@ PORT = 8755
 def build_deck_provider(environ: Mapping[str, str] | None = None) -> Any:
     if environ is None:
         environ = os.environ
+        
+    try:
+        enrichment_source = build_enrichment_source(environ)
+    except Exception as exc:
+        raise ValueError(f"Failed to build enrichment source: {exc}")
+
     provider_type = environ.get("DAIRR_DESKTOP_PROVIDER", "mock")
     if provider_type == "real_momo":
         token = environ.get("MOMO_TOKEN") or environ.get("Maimemo_key")
         if not token:
             raise ValueError("MOMO_TOKEN is missing. Cannot start real_momo provider.")
         print("Using RealMoMoDeckProvider (MOMO_TOKEN present)")
-        return RealMoMoDeckProvider(token=token)
+        return RealMoMoDeckProvider(token=token, enrichment_source=enrichment_source)
     elif provider_type == "mock":
         print("Using MockMoMoDeckProvider")
         return MockMoMoDeckProvider()

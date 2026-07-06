@@ -95,7 +95,20 @@
             <span id="maxTokensLabel">Max tokens</span>
             <input id="maxTokensInput" type="number" min="128" max="32000" step="1">
           </label>
-          <button class="secondary-button full-button" id="saveApiSettingsButton">Save API settings</button>
+          <hr class="settings-divider" style="margin: 16px 0; border: none; border-top: 1px solid var(--border-color);">
+          <label class="inline-check">
+            <input id="enableAnkiEnrichmentInput" type="checkbox">
+            <span id="enableAnkiEnrichmentLabel">Enable Anki local enrichment</span>
+          </label>
+          <div class="muted small-text" style="font-size: 12px; margin-bottom: 12px; line-height: 1.4;">
+            Read matching fields from your local Anki collection to enrich MoMo Today cards. Disabled by default. Read-only.<br>
+            Field mappings use safe defaults and can be customized in the addon config file.
+          </div>
+          <label class="form-field compact-field">
+            <span id="ankiEnrichmentMaxMatchesLabel">Max local matches per term</span>
+            <input id="ankiEnrichmentMaxMatchesInput" type="number" min="1" max="10" step="1">
+          </label>
+          <button class="secondary-button full-button" id="saveApiSettingsButton" style="margin-top: 16px;">Save API settings</button>
         </div>
       </section>
     </div>
@@ -108,7 +121,7 @@
           <div class="button-row compact-buttons">
             <button class="secondary-button" id="selectAllCardsButton" disabled>All</button>
             <button class="secondary-button" id="selectFailedCardsButton" disabled>Failed</button>
-            <button class="secondary-button" id="selectNewCardsButton" disabled>New</button>
+            <button class="secondary-button" id="selectVagueCardsButton" disabled>Vague</button>
             <button class="secondary-button" id="clearCardSelectionButton" disabled>Clear</button>
           </div>
         </div>

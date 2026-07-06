@@ -288,3 +288,85 @@ Find safe read-only enrichment sources for MoMo Today cards.
 
 ### Open questions
 - None. Probe confirmed the API surface constraints.
+
+## Phase 19 enrichment source abstraction
+
+Reason:
+- MoMo OpenAPI does not expose official phonetic/audio/definition/example sentence data.
+- `/interpretations` and `/phrases` appear to expose user-created content only.
+- Therefore MoMo is not used as the primary dictionary enrichment source.
+
+Decision:
+- Introduce a generic `EnrichmentSource` abstraction.
+- Keep RealMoMoDeckProvider enrichment disabled by default.
+- Future sources may include local dictionaries, Anki local cards, or explicit external APIs.
+- Enrichment fields are optional and not selected by default.
+
+## Phase 20 Anki local enrichment source
+
+Decision:
+- The first real enrichment source is Anki local collection data.
+- This avoids external APIs and keeps enrichment local/private.
+- The source is read-only and disabled by default.
+- It extracts optional fields such as phonetic, interpretation, phrase, and phrase_translation from existing local notes.
+
+Limitations:
+- Field names vary by deck/model.
+- Search quality depends on local collection content.
+- Audio is preserved as Anki sound markup or filename, not converted to a public URL.
+
+## Phase 21 desktop enrichment wiring
+
+Decision:
+- Desktop mock supports optional enrichment wiring.
+- Default is disabled.
+- `DAIRR_DESKTOP_ENRICHMENT=mock` is available for smoke testing payload fields.
+- `anki_local` requires an injected collection and is not automatically available in standalone desktop mock.
+- No external dictionary API is called.
+
+## Phase 22 Anki addon local enrichment config
+
+Decision:
+- Add config fields for Anki local enrichment.
+- Default is disabled.
+- When enabled in Anki addon context, the source uses `mw.col` read-only.
+- No collection writes are performed.
+- No external dictionary API is called.
+- Field mappings are configurable because deck/model schemas differ.
+
+## Phase 23 Anki local enrichment config UI
+
+Decision:
+- Expose a minimal UI switch for Anki local enrichment.
+- Default remains disabled.
+- Expose only `max_matches_per_term` as a simple bounded number.
+- Field mappings stay in addon config defaults for now.
+- No collection writes are performed.
+
+## Phase 24 Anki UI smoke
+
+Result:
+- Local enrichment config UI smoke: PASS
+- Default remains disabled.
+- No collection writes were observed.
+- Existing generate/save behavior unchanged.
+
+Decision:
+- Freeze Anki local enrichment as optional experimental functionality.
+- Do not expand field mapping UI now.
+- Return product focus to MoMo study signals, word selection, and article generation.
+
+## Phase 25 MoMo word selection buttons
+
+Decision:
+- Do not implement complex automatic scoring.
+- Use explicit UI controls for word selection.
+- Supported selection modes:
+  - all today items
+  - forgotten words
+  - vague words
+  - clear selection
+- `FORGET` and `VAGUE` are detected from `first_response` / `last_response`.
+- `is_finished=false` is not treated as forgotten.
+- `study_count` is not used for selection.
+
