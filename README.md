@@ -35,12 +35,10 @@ The easiest way to install this add-on is through AnkiWeb.
 ```text
 addon/daily_ai_reading_reinforcement/
   __init__.py
-  config.json
-  manifest.json
-  web/
-    app.js
-    index.html
-    style.css
+  core/           # Pure, reusable business logic and Adapter interfaces
+  web/            # Cross-platform HTML/CSS/JS UI
+desktop_mock/     # Standalone HTTP server & external API providers (e.g., MoMo)
+tests/            # Unit tests
 ```
 
 ## Install for Development
@@ -54,6 +52,19 @@ On macOS, the target is usually:
 ```
 
 Then open Anki, find the add-on config, and set your API key.
+
+## Desktop Standalone Development
+
+We are currently evolving DAIRR into a standalone cross-platform desktop application. You can run the development desktop server which supports real LLM generation and connects to external APIs like MoMo:
+
+```bash
+# Run with Mock MoMo data
+python3 desktop_mock/main.py
+
+# Run with Real MoMo API (requires valid MOMO_TOKEN in desktop_mock/mock_data.py or env)
+DAIRR_DESKTOP_PROVIDER=real_momo python3 desktop_mock/main.py
+```
+Open your browser at `http://localhost:8755` to use the standalone UI.
 
 ## Config
 
