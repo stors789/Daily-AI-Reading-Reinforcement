@@ -165,6 +165,7 @@
       cardsUnit: "张卡",
       newCount: "新学",
       failedCount: "失败",
+      vagueCount: "模糊",
       reviews: "次复习",
       childDecks: "个子卡组",
       expandCollapse: "展开或折叠",
@@ -265,6 +266,7 @@
       cardsUnit: "cards",
       newCount: "new",
       failedCount: "failed",
+      vagueCount: "vague",
       reviews: "reviews",
       childDecks: "child decks",
       expandCollapse: "Expand or collapse",
@@ -365,6 +367,7 @@
       cardsUnit: "カード",
       newCount: "新規",
       failedCount: "失敗",
+      vagueCount: "曖昧",
       reviews: "回復習",
       childDecks: "子デッキ",
       expandCollapse: "展開または折りたたみ",
@@ -720,9 +723,14 @@
         const cardId = String(card.cid);
         const checked = state.selectedCardIds.has(cardId) ? " checked" : "";
         const selected = checked ? " selected" : "";
+        const f = String(card.first_response || "").toUpperCase();
+        const l = String(card.last_response || "").toUpperCase();
+        const isVague = f === "VAGUE" || l === "VAGUE";
+
         const tags = [
           card.is_new ? `<span class="tag">${tr("newCount")}</span>` : "",
           card.is_failed ? `<span class="tag failed">${tr("failedCount")}</span>` : "",
+          isVague ? `<span class="tag vague">${tr("vagueCount")}</span>` : "",
           `<span>${card.review_count} ${tr("reviews")}</span>`,
         ]
           .filter(Boolean)
@@ -1478,6 +1486,7 @@
 
   if (el.saveArticleToCardButton) {
     el.saveArticleToCardButton.addEventListener("click", () => {
+      if (el.saveArticleToCardButton.disabled) return;
       if (!state.lastGeneratedArticle) return;
       
       const payload = state.lastGeneratedArticle;
@@ -1496,6 +1505,7 @@
   }
 
   el.generateButton.addEventListener("click", () => {
+    if (el.generateButton.disabled) return;
     if (!state.selectedDeckId) return;
     if (!state.selectedFields.length) {
       setStatus("chooseField", true);
@@ -1514,6 +1524,9 @@
     if (el.notesPanel) el.notesPanel.innerHTML = "";
     el.savedPaths.innerHTML = "";
     setReadingMode(false);
+    
+    setStatus("generating", false);
+    el.generateButton.disabled = true;
     send("generate", {
       deckId: state.selectedDeckId,
       presetId: state.selectedPromptPresetId,
