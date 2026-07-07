@@ -86,6 +86,7 @@ SUPPORTED_ACTIONS = {
     "load",
     "selectDeck",
     "generate",
+    "saveArticleCard",
     "listArticles",
     "loadArticle",
 }
@@ -228,6 +229,36 @@ def handle_action(action: str, payload: dict[str, Any]) -> dict[str, Any]:
     if action == "generate":
         # delegate to real handler which falls back to mock on failure
         return handle_generate_real(str((payload or {}).get("deckId") or ""), payload)
+
+    if action == "saveArticleCard":
+        if not _DESKTOP_ADAPTERS_AVAILABLE:
+            return {"event": "articleCardSaved", "payload": {"articleCard": None}}
+        deck_id = str((payload or {}).get("deckId") or "")
+        try:
+            cards_data = DECK_PROVIDER.get_deck_cards(deck_id)
+            deck_name = str(cards_data.get("name") or "Desktop Deck")
+            raw_cards = cards_data.get("cards", [])
+            selected_card_ids = payload.get("cardIds")
+            if selected_card_ids is not None:
+                selected_ids = {str(cid) for cid in selected_card_ids}
+                raw_cards = [
+                    card for card in raw_cards
+                    if isinstance(card, dict) and str(card.get("cid")) in selected_ids
+                ]
+            deck_adapter = DesktopDeckAdapter()
+            article_card = deck_adapter.save_article_card(
+                deck_name,
+                [card for card in raw_cards if isinstance(card, dict)],
+                str(payload.get("article") or ""),
+                Path(str(payload.get("markdownPath") or "")),
+                Path(str(payload.get("htmlPath") or "")),
+            )
+            return {"event": "articleCardSaved", "payload": {"articleCard": article_card}}
+        except Exception as exc:
+            message = getattr(exc, "public_message", None)
+            if not isinstance(message, str) or not message.strip():
+                message = "Failed to create article card."
+            return {"event": "articleCardSaved", "payload": {"articleCardError": message}}
 
     if action == "listArticles":
         return {"event": "articleList", "payload": build_article_list_payload()}

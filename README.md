@@ -63,6 +63,12 @@ python3 desktop_mock/main.py
 
 # Run with Real MoMo API (requires valid MOMO_TOKEN in desktop_mock/mock_data.py or env)
 DAIRR_DESKTOP_PROVIDER=real_momo python3 desktop_mock/main.py
+
+# Run with local Anki through AnkiConnect
+DAIRR_DESKTOP_PROVIDER=ankiconnect python3 desktop_mock/main.py
+
+# Optional: override the default AnkiConnect endpoint
+DAIRR_ANKICONNECT_URL=http://127.0.0.1:8765 DAIRR_DESKTOP_PROVIDER=ankiconnect python3 desktop_mock/main.py
 ```
 Open your browser at `http://localhost:8755` to use the standalone UI.
 

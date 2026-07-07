@@ -76,6 +76,7 @@ DEFAULT_CONFIG = {
     "max_tokens": 30000,
     "prompt_template": "",
     "deck_field_config": {},
+    "create_article_cards": False,
     "last_selected_deck_id": "",
     "collapsed_deck_groups": [],
     "ui_language": "zh",

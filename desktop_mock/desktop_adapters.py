@@ -111,6 +111,7 @@ _core_config = _import_core("config")
 _core_article = _import_core("article")
 _core_article_generator = _import_core("article_generator")
 _core_llm = _import_core("llm")
+_core_rendering = _import_core("rendering")
 
 DEFAULT_CONFIG = dict(_core_config.DEFAULT_CONFIG)
 
@@ -275,7 +276,22 @@ class DesktopDeckAdapter:
         markdown_path: Path,
         html_path: Path,
     ) -> dict[str, Any]:
-        """Desktop does not create Anki cards -- return a stub."""
+        """Create an article card for AnkiConnect desktop mode, otherwise stub."""
+        if os.environ.get("DAIRR_DESKTOP_PROVIDER") == "ankiconnect":
+            from ankiconnect_card_saver import AnkiConnectArticleCardSaver
+            from ankiconnect_provider import DEFAULT_ANKICONNECT_URL
+
+            saver = AnkiConnectArticleCardSaver(
+                base_url=os.environ.get("DAIRR_ANKICONNECT_URL", DEFAULT_ANKICONNECT_URL),
+                render_article_fragment_html=_core_rendering.render_article_fragment_html,
+            )
+            return saver.save_article_card(
+                source_deck_name,
+                cards,
+                article,
+                markdown_path,
+                html_path,
+            )
         return {
             "noteId": 0,
             "deckName": source_deck_name,

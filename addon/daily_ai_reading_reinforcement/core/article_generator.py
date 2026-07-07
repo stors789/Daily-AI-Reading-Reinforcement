@@ -52,10 +52,34 @@ def run_article_generation(
         raise RuntimeError("The AI response was empty.")
 
     saved = deck_adapter.save_article(deck_name_value, cards, article)
+    article_card: dict[str, Any] | None = None
+    article_card_error = ""
+    if bool(config.get("create_article_cards")):
+        try:
+            saved_card = deck_adapter.save_article_card(
+                deck_name_value,
+                cards,
+                article,
+                saved["markdown"],
+                saved["html"],
+            )
+            if not (isinstance(saved_card, dict) and saved_card.get("_desktop_stub")):
+                article_card = saved_card
+        except Exception as exc:
+            article_card_error = _safe_article_card_error(exc)
+
     return {
         "deckName": deck_name_value,
         "article": article,
         "markdownPath": str(saved["markdown"]),
         "htmlPath": str(saved["html"]),
-        "articleCard": None,
+        "articleCard": article_card,
+        "articleCardError": article_card_error,
     }
+
+
+def _safe_article_card_error(exc: BaseException) -> str:
+    public_message = getattr(exc, "public_message", None)
+    if isinstance(public_message, str) and public_message.strip():
+        return public_message.strip()
+    return "Failed to create article card."
