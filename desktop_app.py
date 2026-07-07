@@ -14,7 +14,7 @@ import sys
 import threading
 import webbrowser
 from pathlib import Path
-from typing import Callable, MutableMapping, Sequence
+from typing import Any, Callable, MutableMapping, Sequence, TextIO
 
 
 DEFAULT_HOST = "127.0.0.1"
@@ -54,6 +54,11 @@ def build_parser() -> argparse.ArgumentParser:
         default=None,
         help="AnkiConnect endpoint used when --provider ankiconnect is selected.",
     )
+    parser.add_argument(
+        "--check",
+        action="store_true",
+        help="Run provider diagnostics and exit without starting the server.",
+    )
     return parser
 
 
@@ -90,6 +95,27 @@ def _load_server_runner() -> Callable[[str, int], None]:
     return module.run_server
 
 
+def _load_diagnostic_runner() -> tuple[
+    Callable[..., dict[str, Any]],
+    Callable[[dict[str, Any]], str],
+]:
+    repo_root = Path(__file__).resolve().parent
+    mock_dir = repo_root / "desktop_mock"
+    if str(mock_dir) not in sys.path:
+        sys.path.insert(0, str(mock_dir))
+
+    spec = importlib.util.spec_from_file_location(
+        "dairr_desktop_diagnostics",
+        mock_dir / "diagnostics.py",
+    )
+    if spec is None or spec.loader is None:
+        raise RuntimeError("Could not load desktop_mock/diagnostics.py")
+
+    module = importlib.util.module_from_spec(spec)
+    spec.loader.exec_module(module)
+    return module.run_diagnostics, module.format_diagnostics
+
+
 def _schedule_browser_open(
     url: str,
     browser_open: Callable[[str], bool],
@@ -106,10 +132,21 @@ def run_app(
     *,
     server_runner: Callable[[str, int], None] | None = None,
     browser_open: Callable[[str], bool] | None = None,
-) -> None:
+    check_runner: Callable[..., dict[str, Any]] | None = None,
+    check_formatter: Callable[[dict[str, Any]], str] | None = None,
+    stdout: TextIO | None = None,
+) -> int:
     args = parse_args(argv)
     configure_environment(args)
     url = f"http://{args.host}:{args.port}"
+
+    if args.check:
+        if check_runner is None or check_formatter is None:
+            check_runner, check_formatter = _load_diagnostic_runner()
+        result = check_runner(args.provider, environ=os.environ)
+        output = check_formatter(result)
+        print(output, file=stdout or sys.stdout)
+        return 0 if result.get("ok") else 1
 
     if browser_open is None:
         browser_open = webbrowser.open
@@ -120,10 +157,11 @@ def run_app(
         _schedule_browser_open(url, browser_open)
 
     server_runner(args.host, args.port)
+    return 0
 
 
 def main() -> None:
-    run_app()
+    raise SystemExit(run_app())
 
 
 if __name__ == "__main__":

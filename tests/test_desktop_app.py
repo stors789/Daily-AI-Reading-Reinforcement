@@ -6,6 +6,7 @@ import importlib.util
 import os
 import sys
 import unittest
+from io import StringIO
 from pathlib import Path
 from unittest.mock import MagicMock, patch
 
@@ -47,6 +48,11 @@ class TestDesktopAppCli(unittest.TestCase):
         self.assertEqual(args.port, 8760)
         self.assertTrue(args.no_browser)
         self.assertEqual(args.ankiconnect_url, "http://127.0.0.1:18765")
+
+    def test_parse_args_accepts_check(self) -> None:
+        args = desktop_app.parse_args(["--provider", "ankiconnect", "--check"])
+
+        self.assertTrue(args.check)
 
     def test_configure_environment_writes_provider(self) -> None:
         args = desktop_app.parse_args(["--provider", "real_momo"])
@@ -108,6 +114,48 @@ class TestDesktopAppCli(unittest.TestCase):
         self.assertEqual(seen_env["ankiconnect_url"], "http://127.0.0.1:18765")
         self.assertEqual(seen_env["host"], "127.0.0.1")
         self.assertEqual(seen_env["port"], "8755")
+
+    def test_run_app_check_does_not_start_server_or_browser(self) -> None:
+        server_runner = MagicMock()
+        browser_open = MagicMock()
+        stdout = StringIO()
+
+        def check_runner(provider, environ):
+            return {
+                "ok": True,
+                "provider": provider,
+                "checks": [{"name": "probe", "ok": True, "message": environ["DAIRR_DESKTOP_PROVIDER"]}],
+            }
+
+        with patch.dict(os.environ, {}, clear=True):
+            exit_code = desktop_app.run_app(
+                ["--provider", "mock", "--check"],
+                server_runner=server_runner,
+                browser_open=browser_open,
+                check_runner=check_runner,
+                check_formatter=lambda result: f"checked {result['provider']}",
+                stdout=stdout,
+            )
+
+        self.assertEqual(exit_code, 0)
+        self.assertEqual(stdout.getvalue().strip(), "checked mock")
+        server_runner.assert_not_called()
+        browser_open.assert_not_called()
+
+    def test_run_app_check_returns_failure_code(self) -> None:
+        stdout = StringIO()
+
+        with patch.dict(os.environ, {}, clear=True):
+            exit_code = desktop_app.run_app(
+                ["--provider", "ankiconnect", "--check"],
+                server_runner=MagicMock(),
+                browser_open=MagicMock(),
+                check_runner=lambda provider, environ: {"ok": False, "provider": provider, "checks": []},
+                check_formatter=lambda result: "failed",
+                stdout=stdout,
+            )
+
+        self.assertEqual(exit_code, 1)
 
 
 class TestDesktopMockImport(unittest.TestCase):

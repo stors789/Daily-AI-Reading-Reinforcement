@@ -79,11 +79,31 @@ server and opens the system browser automatically:
 python3 desktop_app.py --provider mock
 python3 desktop_app.py --provider ankiconnect
 python3 desktop_app.py --provider ankiconnect --ankiconnect-url http://127.0.0.1:8765
+
+# Run diagnostics without starting the server or opening the browser
+python3 desktop_app.py --provider ankiconnect --check
 ```
 
 This is a conservative standard-library launcher for Phase 29. A later desktop
 packaging shell can replace it with PyQt6, pywebview, or another native wrapper
 without changing the shared web UI or provider logic.
+
+### Desktop AnkiConnect Troubleshooting
+
+Run this first when the standalone desktop app cannot see today's Anki cards:
+
+```bash
+python3 desktop_app.py --provider ankiconnect --check
+```
+
+Common checks:
+
+- Anki must be running before DAIRR can connect.
+- The AnkiConnect add-on must be installed and enabled in Anki.
+- AnkiConnect uses `http://127.0.0.1:8765` by default. If your setup uses a
+  different port, pass `--ankiconnect-url http://127.0.0.1:<port>`.
+- If there are no `rated:1` cards today, the check can connect successfully but
+  the UI will have no studied cards to show.
 
 ## Config
 
