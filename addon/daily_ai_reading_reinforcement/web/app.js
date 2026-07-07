@@ -45,6 +45,7 @@
     cardCount: document.getElementById("cardCount"),
     selectFailedCardsButton: document.getElementById("selectFailedCardsButton"),
     selectAllCardsButton: document.getElementById("selectAllCardsButton"),
+    selectNewCardsButton: document.getElementById("selectNewCardsButton"),
     selectVagueCardsButton: document.getElementById("selectVagueCardsButton"),
     clearCardSelectionButton: document.getElementById("clearCardSelectionButton"),
     dayWindow: document.getElementById("dayWindow"),
@@ -159,6 +160,7 @@
       selectDeckShort: "请选择卡组",
       candidateCards: "张候选卡",
       selectedCards: "已选",
+      selectNewCards: "新学",
       selectFailedCards: "遗忘",
       selectVagueCards: "模糊",
       clearCardSelection: "清空",
@@ -260,6 +262,7 @@
       selectDeckShort: "Choose a deck",
       candidateCards: "candidate cards",
       selectedCards: "selected",
+      selectNewCards: "New",
       selectFailedCards: "Forgotten",
       selectVagueCards: "Vague",
       clearCardSelection: "Clear",
@@ -361,6 +364,7 @@
       selectDeckShort: "デッキを選択",
       candidateCards: "候補カード",
       selectedCards: "選択中",
+      selectNewCards: "新規",
       selectFailedCards: "忘却",
       selectVagueCards: "曖昧",
       clearCardSelection: "クリア",
@@ -452,6 +456,7 @@
     el.invertFieldsButton.textContent = tr("invert");
     el.saveFieldsButton.textContent = tr("save");
     el.selectAllCardsButton.textContent = tr("all");
+    el.selectNewCardsButton.textContent = tr("selectNewCards");
     el.selectFailedCardsButton.textContent = tr("selectFailedCards");
     el.selectVagueCardsButton.textContent = tr("selectVagueCards");
     el.clearCardSelectionButton.textContent = tr("clearCardSelection");
@@ -822,6 +827,7 @@
       : tr("selectDeckShort");
     const hasCards = total > 0;
     el.selectAllCardsButton.disabled = !hasCards;
+    el.selectNewCardsButton.disabled = !hasCards;
     el.selectFailedCardsButton.disabled = !hasCards;
     el.selectVagueCardsButton.disabled = !hasCards;
     el.clearCardSelectionButton.disabled = !hasCards || selected === 0;
@@ -1556,8 +1562,16 @@
     return f === "VAGUE" || l === "VAGUE";
   }
 
+  function isNewCard(card) {
+    return Boolean(card.is_new);
+  }
+
   el.selectAllCardsButton.addEventListener("click", () => {
     selectCardsByPredicate(() => true);
+  });
+
+  el.selectNewCardsButton.addEventListener("click", () => {
+    selectCardsByPredicate(isNewCard);
   });
 
   el.selectFailedCardsButton.addEventListener("click", () => {

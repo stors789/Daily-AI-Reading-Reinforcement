@@ -53,7 +53,7 @@ class MockMoMoDeckProvider:
         """Return cards for *deck_id* in frontend-compatible format."""
         deck = MOCK_DECKS.get(deck_id)
         if not deck:
-            return {"deckId": deck_id, "cards": []}
+            return {"deckId": deck_id, "name": "", "cards": []}
         cards: list[dict[str, Any]] = []
         for card in deck["cards"]:
             cards.append(
@@ -67,4 +67,4 @@ class MockMoMoDeckProvider:
                     "review_count": card["review_count"],
                 }
             )
-        return {"deckId": deck_id, "cards": cards}
+        return {"deckId": deck_id, "name": deck["name"], "cards": cards}

@@ -4,6 +4,7 @@ __pycache__/
 .uv-cache/
 .vendor-aqt/
 dist/
+desktop_mock/output/
 addon/daily_ai_reading_reinforcement/user_files/
 !addon/daily_ai_reading_reinforcement/user_files/
 !addon/daily_ai_reading_reinforcement/user_files/README.txt

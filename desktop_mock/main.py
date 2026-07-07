@@ -110,6 +110,9 @@ def handle_generate_real(deck_id: str, payload: dict[str, Any]) -> dict[str, Any
 
     Returns an {event, payload} envelope matching the addon contract.
     """
+    if isinstance(DECK_PROVIDER, MockMoMoDeckProvider):
+        return _mock_generate(deck_id)
+
     if not _DESKTOP_ADAPTERS_AVAILABLE:
         return _mock_generate(deck_id)
 
