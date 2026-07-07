@@ -26,6 +26,7 @@ from mock_data import (
     build_loaded_article_payload,
     build_state_payload,
 )
+from ankiconnect_provider import AnkiConnectDeckProvider, DEFAULT_ANKICONNECT_URL
 from momo_provider import MockMoMoDeckProvider
 from real_momo_provider import RealMoMoDeckProvider
 
@@ -54,7 +55,11 @@ def build_deck_provider(environ: Mapping[str, str] | None = None) -> Any:
        
 
     provider_type = environ.get("DAIRR_DESKTOP_PROVIDER", "mock")
-    if provider_type == "real_momo":
+    if provider_type == "ankiconnect":
+        base_url = environ.get("DAIRR_ANKICONNECT_URL", DEFAULT_ANKICONNECT_URL)
+        print(f"Using AnkiConnectDeckProvider ({base_url})")
+        return AnkiConnectDeckProvider(base_url=base_url)
+    elif provider_type == "real_momo":
         token = environ.get("MOMO_TOKEN") or environ.get("Maimemo_key")
         if not token:
             raise ValueError("MOMO_TOKEN is missing. Cannot start real_momo provider.")

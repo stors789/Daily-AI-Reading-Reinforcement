@@ -19,6 +19,7 @@ def _load(name: str, path: Path):
     return mod
 
 _main = _load("dairr_mock_main", _mock_dir / "main.py")
+from ankiconnect_provider import AnkiConnectDeckProvider
 from momo_provider import MockMoMoDeckProvider
 from real_momo_provider import RealMoMoDeckProvider
 
@@ -47,6 +48,21 @@ class TestProviderFactory(unittest.TestCase):
         })
         self.assertIsInstance(provider, RealMoMoDeckProvider)
         self.assertEqual(provider._token, "legacysecret")
+
+    def test_ankiconnect_returns_ankiconnect_provider(self):
+        provider = _main.build_deck_provider({
+            "DAIRR_DESKTOP_PROVIDER": "ankiconnect",
+        })
+        self.assertIsInstance(provider, AnkiConnectDeckProvider)
+        self.assertEqual(provider._base_url, "http://127.0.0.1:8765")
+
+    def test_ankiconnect_url_can_be_overridden(self):
+        provider = _main.build_deck_provider({
+            "DAIRR_DESKTOP_PROVIDER": "ankiconnect",
+            "DAIRR_ANKICONNECT_URL": "http://127.0.0.1:18765/",
+        })
+        self.assertIsInstance(provider, AnkiConnectDeckProvider)
+        self.assertEqual(provider._base_url, "http://127.0.0.1:18765")
 
     def test_real_momo_without_token_raises_error(self):
         with self.assertRaises(ValueError) as cm:
