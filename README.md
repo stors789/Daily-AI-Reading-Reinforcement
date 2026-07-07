@@ -70,7 +70,20 @@ DAIRR_DESKTOP_PROVIDER=ankiconnect python3 desktop_mock/main.py
 # Optional: override the default AnkiConnect endpoint
 DAIRR_ANKICONNECT_URL=http://127.0.0.1:8765 DAIRR_DESKTOP_PROVIDER=ankiconnect python3 desktop_mock/main.py
 ```
-Open your browser at `http://localhost:8755` to use the standalone UI.
+Open your browser at `http://127.0.0.1:8755` to use the standalone UI.
+
+There is also a dependency-free desktop launcher. It starts the same local
+server and opens the system browser automatically:
+
+```bash
+python3 desktop_app.py --provider mock
+python3 desktop_app.py --provider ankiconnect
+python3 desktop_app.py --provider ankiconnect --ankiconnect-url http://127.0.0.1:8765
+```
+
+This is a conservative standard-library launcher for Phase 29. A later desktop
+packaging shell can replace it with PyQt6, pywebview, or another native wrapper
+without changing the shared web UI or provider logic.
 
 ## Config
 

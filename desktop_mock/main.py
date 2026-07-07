@@ -73,11 +73,16 @@ def build_deck_provider(environ: Mapping[str, str] | None = None) -> Any:
 
 
 # Single provider instance used by handle_action() for load / selectDeck.
-try:
-    DECK_PROVIDER = build_deck_provider()
-except Exception as e:
-    print(f"Failed to initialize deck provider: {e}")
-    sys.exit(1)
+# It is initialized lazily so importing this module never starts network-backed
+# providers or exits the process.
+DECK_PROVIDER: Any | None = None
+
+
+def get_deck_provider() -> Any:
+    global DECK_PROVIDER
+    if DECK_PROVIDER is None:
+        DECK_PROVIDER = build_deck_provider()
+    return DECK_PROVIDER
 
 
 # Actions the mock understands. Anything else returns an error event so the
@@ -116,7 +121,8 @@ def handle_generate_real(deck_id: str, payload: dict[str, Any]) -> dict[str, Any
 
     Returns an {event, payload} envelope matching the addon contract.
     """
-    if isinstance(DECK_PROVIDER, MockMoMoDeckProvider):
+    deck_provider = get_deck_provider()
+    if isinstance(deck_provider, MockMoMoDeckProvider):
         return _mock_generate(deck_id)
 
     if not _DESKTOP_ADAPTERS_AVAILABLE:
@@ -128,7 +134,7 @@ def handle_generate_real(deck_id: str, payload: dict[str, Any]) -> dict[str, Any
 
     # Build card-like objects from the provider's cards
     try:
-        cards_data = DECK_PROVIDER.get_deck_cards(deck_id)
+        cards_data = deck_provider.get_deck_cards(deck_id)
         deck_name = cards_data.get("name", "Desktop Deck")
         cards = cards_data.get("cards", [])
     except Exception:
@@ -202,7 +208,7 @@ def handle_action(action: str, payload: dict[str, Any]) -> dict[str, Any]:
     if action == "load":
         last_selected = str((payload or {}).get("lastSelectedDeckId") or "")
         try:
-            decks = DECK_PROVIDER.get_today_decks()
+            decks = get_deck_provider().get_today_decks()
             return {"event": "state", "payload": build_state_payload(last_selected, decks=decks)}
         except Exception as exc:
             err_type = type(exc).__name__
@@ -212,7 +218,7 @@ def handle_action(action: str, payload: dict[str, Any]) -> dict[str, Any]:
     if action == "selectDeck":
         deck_id = str((payload or {}).get("deckId") or "")
         try:
-            cards_data = DECK_PROVIDER.get_deck_cards(deck_id)
+            cards_data = get_deck_provider().get_deck_cards(deck_id)
             return {"event": "deckCards", "payload": build_deck_cards_payload(deck_id, cards_data=cards_data)}
         except Exception as exc:
             err_type = type(exc).__name__
@@ -235,7 +241,7 @@ def handle_action(action: str, payload: dict[str, Any]) -> dict[str, Any]:
             return {"event": "articleCardSaved", "payload": {"articleCard": None}}
         deck_id = str((payload or {}).get("deckId") or "")
         try:
-            cards_data = DECK_PROVIDER.get_deck_cards(deck_id)
+            cards_data = get_deck_provider().get_deck_cards(deck_id)
             deck_name = str(cards_data.get("name") or "Desktop Deck")
             raw_cards = cards_data.get("cards", [])
             selected_card_ids = payload.get("cardIds")
@@ -508,15 +514,24 @@ class MockHandler(BaseHTTPRequestHandler):
         sys.stderr.write("[mock] " + (fmt % args) + "\n")
 
 
-def main() -> None:
-    server = ThreadingHTTPServer((HOST, PORT), MockHandler)
-    print(f"DAIRR desktop mock running at http://{HOST}:{PORT}")
+def run_server(host: str = HOST, port: int = PORT) -> None:
+    get_deck_provider()
+    server = ThreadingHTTPServer((host, port), MockHandler)
+    print(f"DAIRR desktop mock running at http://{host}:{port}")
     print("Press Ctrl+C to stop.")
     try:
         server.serve_forever()
     except KeyboardInterrupt:
         print("\nStopping.")
         server.shutdown()
+
+
+def main() -> None:
+    try:
+        run_server()
+    except Exception as e:
+        print(f"Failed to start desktop mock server: {e}")
+        sys.exit(1)
 
 
 if __name__ == "__main__":
