@@ -12,9 +12,15 @@ import json
 import os
 import urllib.error
 import urllib.request
+from pathlib import Path
 from typing import Any, Callable, Mapping
 
-from ankiconnect_card_saver import ARTICLE_FIELDS, ARTICLE_NOTE_TYPE
+from ankiconnect_card_saver import (
+    ARTICLE_FIELDS,
+    ARTICLE_NOTE_TYPE,
+    AnkiConnectArticleCardSaver,
+    AnkiConnectCardSaverError,
+)
 from ankiconnect_provider import ANKICONNECT_VERSION, DEFAULT_ANKICONNECT_URL
 from momo_provider import MockMoMoDeckProvider
 from real_momo_provider import RealMoMoDeckProvider
@@ -53,11 +59,76 @@ def run_diagnostics(
     return result
 
 
+def run_write_diagnostics(
+    provider: str = "ankiconnect",
+    *,
+    environ: Mapping[str, str] | None = None,
+    opener: Opener | None = None,
+) -> DiagnosticResult:
+    """Write one DAIRR smoke-test article card through AnkiConnect."""
+    if environ is None:
+        environ = os.environ
+
+    checks: list[dict[str, Any]] = []
+    result: DiagnosticResult = {
+        "provider": provider,
+        "mode": "write",
+        "checks": checks,
+    }
+
+    if provider != "ankiconnect":
+        checks.append(_check("provider", False, "--check-write requires provider ankiconnect."))
+        result["ok"] = False
+        return result
+
+    base_url = environ.get("DAIRR_ANKICONNECT_URL", DEFAULT_ANKICONNECT_URL)
+    recording_opener = _RecordingOpener(opener or urllib.request.urlopen)
+    client = _AnkiConnectDiagnosticClient(base_url=base_url, opener=recording_opener)
+
+    try:
+        version = client.invoke("version")
+    except Exception as exc:
+        checks.append(_check("AnkiConnect reachable", False, _safe_error_message(exc)))
+        checks.append(_check("article note created", False, "Skipped because AnkiConnect is not reachable."))
+        checks.append(_check("returned noteId", False, "Unavailable."))
+        checks.append(_check("suspend attempted", False, "Skipped."))
+        result["ok"] = False
+        return result
+
+    checks.append(_check("AnkiConnect reachable", True, f"AnkiConnect version: {version}"))
+
+    saver = AnkiConnectArticleCardSaver(base_url=base_url, opener=recording_opener)
+    try:
+        save_result = saver.save_article_card(
+            "DAIRR Smoke Test",
+            [{"term": "dairr-smoke-term"}],
+            "DAIRR AnkiConnect write smoke test article.",
+            Path("/tmp/dairr-smoke-test.md"),
+            Path("/tmp/dairr-smoke-test.html"),
+        )
+    except Exception as exc:
+        checks.append(_check("article note created", False, _safe_error_message(exc)))
+        checks.append(_check("returned noteId", False, "Unavailable."))
+        _append_suspend_checks(checks, recording_opener.records)
+        result["ok"] = False
+        return result
+
+    note_id = save_result.get("noteId") if isinstance(save_result, dict) else None
+    checks.append(_check("article note created", True, "Smoke test article note was created."))
+    checks.append(_check("returned noteId", isinstance(note_id, int), str(note_id) if note_id else "Unavailable."))
+    _append_suspend_checks(checks, recording_opener.records)
+
+    result["noteId"] = note_id
+    result["ok"] = all(item.get("ok") for item in checks)
+    return result
+
+
 def format_diagnostics(result: DiagnosticResult) -> str:
     """Return safe, human-readable diagnostic output."""
     status = "OK" if result.get("ok") else "FAILED"
     provider = str(result.get("provider") or "")
-    lines = [f"DAIRR desktop check: {status}", f"Provider: {provider}"]
+    label = "DAIRR desktop write check" if result.get("mode") == "write" else "DAIRR desktop check"
+    lines = [f"{label}: {status}", f"Provider: {provider}"]
     for item in result.get("checks", []):
         mark = "OK" if item.get("ok") else "FAIL"
         name = str(item.get("name") or "check")
@@ -256,6 +327,49 @@ class _DiagnosticError(RuntimeError):
     """Safe diagnostic error for user-facing output."""
 
 
+class _RecordingOpener:
+    def __init__(self, opener: Opener) -> None:
+        self._opener = opener
+        self.records: list[dict[str, Any]] = []
+
+    def __call__(self, req: Any, timeout: float = 0) -> Any:
+        action = _request_action(req)
+        record = {"action": action, "body": None, "exception": None}
+        self.records.append(record)
+        try:
+            response = self._opener(req, timeout=timeout)
+        except Exception as exc:
+            record["exception"] = type(exc).__name__
+            raise
+        return _RecordingResponse(response, record)
+
+
+class _RecordingResponse:
+    def __init__(self, response: Any, record: dict[str, Any]) -> None:
+        self._response = response
+        self._active_response = response
+        self._record = record
+
+    def __enter__(self) -> "_RecordingResponse":
+        if hasattr(self._response, "__enter__"):
+            self._active_response = self._response.__enter__()
+        return self
+
+    def __exit__(self, *args: Any) -> Any:
+        if hasattr(self._response, "__exit__"):
+            return self._response.__exit__(*args)
+        return None
+
+    def read(self) -> bytes:
+        raw = self._active_response.read()
+        try:
+            text = raw.decode("utf-8", errors="replace") if raw else "{}"
+            self._record["body"] = json.loads(text)
+        except Exception:
+            self._record["body"] = None
+        return raw
+
+
 def _make_provider(
     provider: str,
     provider_factory: Callable[[str], Any] | None,
@@ -288,6 +402,8 @@ def _safe_error_message(exc: BaseException) -> str:
     text = str(exc)
     if isinstance(exc, _DiagnosticError):
         return text or type(exc).__name__
+    if isinstance(exc, AnkiConnectCardSaverError):
+        return exc.public_message
     if isinstance(exc, ValueError):
         return _redact_secrets(text)
     return type(exc).__name__
@@ -302,3 +418,41 @@ def _redact_secrets(text: str) -> str:
         else:
             redacted_words.append(word)
     return " ".join(redacted_words)
+
+
+def _request_action(req: Any) -> str:
+    data = getattr(req, "data", None)
+    if not data:
+        return ""
+    try:
+        payload = json.loads(data.decode("utf-8"))
+    except Exception:
+        return ""
+    return str(payload.get("action") or "")
+
+
+def _append_suspend_checks(checks: list[dict[str, Any]], records: list[dict[str, Any]]) -> None:
+    suspend_records = [record for record in records if record.get("action") == "suspend"]
+    if not suspend_records:
+        checks.append(_check("suspend attempted", False, "No suspend request was made."))
+        checks.append(_check("suspend succeeded", False, "Could not confirm suspend succeeded."))
+        return
+
+    checks.append(_check("suspend attempted", True, "suspend was called."))
+    succeeded = any(_record_succeeded(record) for record in suspend_records)
+    message = (
+        "AnkiConnect accepted the suspend request."
+        if succeeded
+        else "Could not confirm suspend succeeded."
+    )
+    checks.append(_check("suspend succeeded", succeeded, message))
+
+
+def _record_succeeded(record: dict[str, Any]) -> bool:
+    body = record.get("body")
+    return (
+        record.get("exception") is None
+        and isinstance(body, dict)
+        and body.get("error") in (None, "")
+        and "result" in body
+    )

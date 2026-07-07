@@ -54,6 +54,24 @@ class TestDesktopAppCli(unittest.TestCase):
 
         self.assertTrue(args.check)
 
+    def test_parse_args_accepts_check_write(self) -> None:
+        args = desktop_app.parse_args(["--provider", "ankiconnect", "--check-write"])
+
+        self.assertTrue(args.check_write)
+
+    def test_parse_args_rejects_check_write_without_ankiconnect(self) -> None:
+        with patch("sys.stderr", StringIO()), self.assertRaises(SystemExit) as ctx:
+            desktop_app.parse_args(["--provider", "mock", "--check-write"])
+
+        self.assertEqual(ctx.exception.code, 2)
+
+    def test_help_mentions_check_write_writes_smoke_card(self) -> None:
+        help_text = desktop_app.build_parser().format_help()
+
+        self.assertIn("--check-write", help_text)
+        self.assertIn("writes one", help_text)
+        self.assertIn("DAIRR smoke test article card to local Anki", help_text)
+
     def test_configure_environment_writes_provider(self) -> None:
         args = desktop_app.parse_args(["--provider", "real_momo"])
         environ: dict[str, str] = {}
@@ -156,6 +174,34 @@ class TestDesktopAppCli(unittest.TestCase):
             )
 
         self.assertEqual(exit_code, 1)
+
+    def test_run_app_check_write_does_not_start_server_or_browser(self) -> None:
+        server_runner = MagicMock()
+        browser_open = MagicMock()
+        stdout = StringIO()
+
+        def check_write_runner(environ):
+            return {
+                "ok": True,
+                "provider": environ["DAIRR_DESKTOP_PROVIDER"],
+                "mode": "write",
+                "checks": [{"name": "article note created", "ok": True, "message": "ok"}],
+            }
+
+        with patch.dict(os.environ, {}, clear=True):
+            exit_code = desktop_app.run_app(
+                ["--provider", "ankiconnect", "--check-write"],
+                server_runner=server_runner,
+                browser_open=browser_open,
+                check_write_runner=check_write_runner,
+                check_write_formatter=lambda result: f"write checked {result['provider']}",
+                stdout=stdout,
+            )
+
+        self.assertEqual(exit_code, 0)
+        self.assertEqual(stdout.getvalue().strip(), "write checked ankiconnect")
+        server_runner.assert_not_called()
+        browser_open.assert_not_called()
 
 
 class TestDesktopMockImport(unittest.TestCase):

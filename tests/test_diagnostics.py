@@ -13,7 +13,7 @@ if str(_mock_dir) not in sys.path:
     sys.path.insert(0, str(_mock_dir))
 
 from ankiconnect_card_saver import ARTICLE_FIELDS, ARTICLE_NOTE_TYPE
-from diagnostics import format_diagnostics, run_diagnostics
+from diagnostics import format_diagnostics, run_diagnostics, run_write_diagnostics
 
 
 class FakeResponse:
@@ -72,6 +72,12 @@ class FakeAnkiConnectOpener:
             return FakeResponse({"result": [{"cardId": 101, "deckName": "Deck"}], "error": None})
         if action == "modelFieldNames":
             return FakeResponse({"result": self.article_fields, "error": None})
+        if action == "createDeck":
+            return FakeResponse({"result": 201, "error": None})
+        if action == "addNote":
+            return FakeResponse({"result": 123456, "error": None})
+        if action == "suspend":
+            return FakeResponse({"result": True, "error": None})
         return FakeResponse({"result": None, "error": None})
 
 
@@ -138,6 +144,55 @@ class TestDiagnostics(unittest.TestCase):
 
         self.assertFalse(result["ok"])
         self.assertIn("missing field(s): Article", output)
+
+    def test_write_diagnostics_success_writes_and_suspends(self) -> None:
+        opener = FakeAnkiConnectOpener()
+
+        result = run_write_diagnostics(environ={}, opener=opener)
+        output = format_diagnostics(result)
+
+        self.assertTrue(result["ok"])
+        self.assertEqual(result["provider"], "ankiconnect")
+        self.assertEqual(result["noteId"], 123456)
+        actions = [request["action"] for request in opener.requests]
+        for action in ["createDeck", "modelNames", "addNote", "findCards", "suspend"]:
+            self.assertIn(action, actions)
+        self.assertIn("DAIRR desktop write check: OK", output)
+        self.assertIn("AnkiConnect reachable", output)
+        self.assertIn("article note created", output)
+        self.assertIn("returned noteId: 123456", output)
+        self.assertIn("suspend attempted", output)
+        self.assertIn("suspend succeeded", output)
+
+        add_note = next(request for request in opener.requests if request["action"] == "addNote")
+        note = add_note["params"]["note"]
+        self.assertEqual(note["fields"]["Source Deck"], "DAIRR Smoke Test")
+        self.assertEqual(note["fields"]["Source Terms"], "dairr-smoke-term")
+
+    def test_write_diagnostics_rejects_non_ankiconnect_provider(self) -> None:
+        result = run_write_diagnostics("mock", environ={})
+        output = format_diagnostics(result)
+
+        self.assertFalse(result["ok"])
+        self.assertIn("--check-write requires provider ankiconnect", output)
+
+    def test_write_diagnostics_add_note_error_is_sanitized(self) -> None:
+        opener = FakeAnkiConnectOpener(error_action="addNote")
+
+        result = run_write_diagnostics(environ={}, opener=opener)
+        output = format_diagnostics(result)
+
+        self.assertFalse(result["ok"])
+        self.assertNotIn("sk-secret", json.dumps(result))
+        self.assertNotIn("sk-secret", output)
+        self.assertIn("Failed to create article card through AnkiConnect.", output)
+
+    def test_plain_check_does_not_write(self) -> None:
+        opener = FakeAnkiConnectOpener()
+
+        run_diagnostics("ankiconnect", environ={}, opener=opener)
+
+        self.assertNotIn("addNote", [request["action"] for request in opener.requests])
 
 
 if __name__ == "__main__":

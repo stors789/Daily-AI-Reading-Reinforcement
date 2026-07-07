@@ -82,6 +82,9 @@ python3 desktop_app.py --provider ankiconnect --ankiconnect-url http://127.0.0.1
 
 # Run diagnostics without starting the server or opening the browser
 python3 desktop_app.py --provider ankiconnect --check
+
+# Run an explicit AnkiConnect write smoke test
+python3 desktop_app.py --provider ankiconnect --check-write
 ```
 
 This is a conservative standard-library launcher for Phase 29. A later desktop
@@ -95,6 +98,16 @@ Run this first when the standalone desktop app cannot see today's Anki cards:
 ```bash
 python3 desktop_app.py --provider ankiconnect --check
 ```
+
+To verify that AnkiConnect can write and suspend article cards, run:
+
+```bash
+python3 desktop_app.py --provider ankiconnect --check-write
+```
+
+This creates one suspended DAIRR smoke-test article card in Anki under the
+`DAIRR Smoke Test` source deck. You can manually delete the smoke-test card
+after confirming the write path works.
 
 Common checks:
 

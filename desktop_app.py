@@ -54,16 +54,30 @@ def build_parser() -> argparse.ArgumentParser:
         default=None,
         help="AnkiConnect endpoint used when --provider ankiconnect is selected.",
     )
-    parser.add_argument(
+    check_group = parser.add_mutually_exclusive_group()
+    check_group.add_argument(
         "--check",
         action="store_true",
         help="Run provider diagnostics and exit without starting the server.",
+    )
+    check_group.add_argument(
+        "--check-write",
+        action="store_true",
+        help=(
+            "Run a writing smoke test and exit without starting the server. "
+            "Requires --provider ankiconnect and writes one DAIRR smoke test "
+            "article card to local Anki."
+        ),
     )
     return parser
 
 
 def parse_args(argv: Sequence[str] | None = None) -> argparse.Namespace:
-    return build_parser().parse_args(argv)
+    parser = build_parser()
+    args = parser.parse_args(argv)
+    if args.check_write and args.provider != "ankiconnect":
+        parser.error("--check-write requires --provider ankiconnect")
+    return args
 
 
 def configure_environment(
@@ -116,6 +130,27 @@ def _load_diagnostic_runner() -> tuple[
     return module.run_diagnostics, module.format_diagnostics
 
 
+def _load_write_diagnostic_runner() -> tuple[
+    Callable[..., dict[str, Any]],
+    Callable[[dict[str, Any]], str],
+]:
+    repo_root = Path(__file__).resolve().parent
+    mock_dir = repo_root / "desktop_mock"
+    if str(mock_dir) not in sys.path:
+        sys.path.insert(0, str(mock_dir))
+
+    spec = importlib.util.spec_from_file_location(
+        "dairr_desktop_diagnostics",
+        mock_dir / "diagnostics.py",
+    )
+    if spec is None or spec.loader is None:
+        raise RuntimeError("Could not load desktop_mock/diagnostics.py")
+
+    module = importlib.util.module_from_spec(spec)
+    spec.loader.exec_module(module)
+    return module.run_write_diagnostics, module.format_diagnostics
+
+
 def _schedule_browser_open(
     url: str,
     browser_open: Callable[[str], bool],
@@ -134,6 +169,8 @@ def run_app(
     browser_open: Callable[[str], bool] | None = None,
     check_runner: Callable[..., dict[str, Any]] | None = None,
     check_formatter: Callable[[dict[str, Any]], str] | None = None,
+    check_write_runner: Callable[..., dict[str, Any]] | None = None,
+    check_write_formatter: Callable[[dict[str, Any]], str] | None = None,
     stdout: TextIO | None = None,
 ) -> int:
     args = parse_args(argv)
@@ -145,6 +182,14 @@ def run_app(
             check_runner, check_formatter = _load_diagnostic_runner()
         result = check_runner(args.provider, environ=os.environ)
         output = check_formatter(result)
+        print(output, file=stdout or sys.stdout)
+        return 0 if result.get("ok") else 1
+
+    if args.check_write:
+        if check_write_runner is None or check_write_formatter is None:
+            check_write_runner, check_write_formatter = _load_write_diagnostic_runner()
+        result = check_write_runner(environ=os.environ)
+        output = check_write_formatter(result)
         print(output, file=stdout or sys.stdout)
         return 0 if result.get("ok") else 1
 
