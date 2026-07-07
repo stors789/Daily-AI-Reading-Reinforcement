@@ -55,68 +55,19 @@ Then open Anki, find the add-on config, and set your API key.
 
 ## Desktop Standalone Development
 
-We are currently evolving DAIRR into a standalone cross-platform desktop application. You can run the development desktop server which supports real LLM generation and connects to external APIs like MoMo:
-
-```bash
-# Run with Mock MoMo data
-python3 desktop_mock/main.py
-
-# Run with Real MoMo API (requires valid MOMO_TOKEN in desktop_mock/mock_data.py or env)
-DAIRR_DESKTOP_PROVIDER=real_momo python3 desktop_mock/main.py
-
-# Run with local Anki through AnkiConnect
-DAIRR_DESKTOP_PROVIDER=ankiconnect python3 desktop_mock/main.py
-
-# Optional: override the default AnkiConnect endpoint
-DAIRR_ANKICONNECT_URL=http://127.0.0.1:8765 DAIRR_DESKTOP_PROVIDER=ankiconnect python3 desktop_mock/main.py
-```
-Open your browser at `http://127.0.0.1:8755` to use the standalone UI.
-
-There is also a dependency-free desktop launcher. It starts the same local
-server and opens the system browser automatically:
+DAIRR can also run as a dependency-free standalone desktop launcher that reuses
+the same shared web UI and core logic as the Anki add-on.
 
 ```bash
 python3 desktop_app.py --provider mock
 python3 desktop_app.py --provider ankiconnect
-python3 desktop_app.py --provider ankiconnect --ankiconnect-url http://127.0.0.1:8765
-
-# Run diagnostics without starting the server or opening the browser
 python3 desktop_app.py --provider ankiconnect --check
-
-# Run an explicit AnkiConnect write smoke test
 python3 desktop_app.py --provider ankiconnect --check-write
 ```
 
-This is a conservative standard-library launcher for Phase 29. A later desktop
-packaging shell can replace it with PyQt6, pywebview, or another native wrapper
-without changing the shared web UI or provider logic.
-
-### Desktop AnkiConnect Troubleshooting
-
-Run this first when the standalone desktop app cannot see today's Anki cards:
-
-```bash
-python3 desktop_app.py --provider ankiconnect --check
-```
-
-To verify that AnkiConnect can write and suspend article cards, run:
-
-```bash
-python3 desktop_app.py --provider ankiconnect --check-write
-```
-
-This creates one suspended DAIRR smoke-test article card in Anki under the
-`DAIRR Smoke Test` source deck. You can manually delete the smoke-test card
-after confirming the write path works.
-
-Common checks:
-
-- Anki must be running before DAIRR can connect.
-- The AnkiConnect add-on must be installed and enabled in Anki.
-- AnkiConnect uses `http://127.0.0.1:8765` by default. If your setup uses a
-  different port, pass `--ankiconnect-url http://127.0.0.1:<port>`.
-- If there are no `rated:1` cards today, the check can connect successfully but
-  the UI will have no studied cards to show.
+See [Desktop Standalone Mode](docs/desktop_standalone.md) for provider modes,
+AnkiConnect data flow, diagnostics, environment variables, known limitations,
+and the manual release checklist.
 
 ## Config
 
