@@ -155,7 +155,16 @@ The launcher starts the local server at `http://127.0.0.1:8755` by default.
   `http://127.0.0.1:8765`.
 - `MOMO_TOKEN` / `Maimemo_key`: token used by the `real_momo` provider.
 - `DESKTOP_OUTPUT_DIR`: base output directory for generated desktop
-  Markdown/HTML. Defaults to `desktop_mock/output/`.
+  Markdown/HTML. Defaults to the packaged-app user data directory:
+  macOS `~/Library/Application Support/DAIRR/articles/`, Windows
+  `%APPDATA%/DAIRR/articles/`, and Linux `~/.local/share/dairr/articles/`.
+- `DESKTOP_CONFIG_PATH`: config JSON path used by `DesktopConfigAdapter`.
+  When unset, desktop mode reads an existing legacy `~/.dairr_config.json`
+  for compatibility. If that legacy file does not exist, it uses the
+  packaged-app user data directory: macOS
+  `~/Library/Application Support/DAIRR/config.json`, Windows
+  `%APPDATA%/DAIRR/config.json`, and Linux
+  `~/.local/share/dairr/config.json`.
 
 Related generation/config environment variables are handled by
 `DesktopConfigAdapter`, including `DAIRR_API_KEY`, `DAIRR_BASE_URL`,

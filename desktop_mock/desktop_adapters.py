@@ -15,6 +15,8 @@ import threading
 from pathlib import Path
 from typing import Any, Callable, TypeVar
 
+from desktop_paths import app_config_path, app_output_dir, legacy_config_path
+
 _REPO_ROOT = Path(__file__).resolve().parent.parent
 _ADDON_ROOT = _REPO_ROOT / "addon" / "daily_ai_reading_reinforcement"
 
@@ -157,8 +159,10 @@ class DesktopConfigAdapter:
 
     Priority (highest first):
       1. Environment variables (DAIRR_API_KEY, DAIRR_BASE_URL, DAIRR_MODEL, etc.)
-      2. A JSON config file at DESKTOP_CONFIG_PATH or ~/.dairr_config.json
-      3. DEFAULT_CONFIG from core/config.py
+      2. A JSON config file at DESKTOP_CONFIG_PATH
+      3. Legacy ~/.dairr_config.json, when it already exists
+      4. Packaged-app config path under the user's application data directory
+      5. DEFAULT_CONFIG from core/config.py
     """
 
     ENV_MAP: dict[str, str] = {
@@ -177,9 +181,12 @@ class DesktopConfigAdapter:
         if file_path:
             self._file_path = Path(file_path)
         else:
-            self._file_path = Path(
-                os.environ.get("DESKTOP_CONFIG_PATH", os.path.expanduser("~/.dairr_config.json"))
-            )
+            env_path = os.environ.get("DESKTOP_CONFIG_PATH")
+            if env_path:
+                self._file_path = Path(env_path)
+            else:
+                legacy_path = legacy_config_path()
+                self._file_path = legacy_path if legacy_path.is_file() else app_config_path()
         self._cache: dict[str, Any] | None = None
 
     def load(self) -> dict[str, Any] | None:
@@ -238,20 +245,23 @@ class DesktopDeckAdapter:
 
     Unlike the Anki adapter, it does NOT write into the Anki collection.
     Instead it writes to a local articles/ directory under DESKTOP_OUTPUT_DIR
-    (default: desktop_mock/output/).
+    (default: the packaged-app user data directory).
     """
 
-    __slots__ = ("_output_dir",)
+    __slots__ = ("_output_dir", "_articles_dir")
 
     def __init__(self, output_dir: str | None = None) -> None:
         if output_dir:
             self._output_dir = Path(output_dir)
+            self._articles_dir = self._output_dir / "articles"
         else:
             env_dir = os.environ.get("DESKTOP_OUTPUT_DIR", "")
             if env_dir:
                 self._output_dir = Path(env_dir)
+                self._articles_dir = self._output_dir / "articles"
             else:
-                self._output_dir = _REPO_ROOT / "desktop_mock" / "output"
+                self._articles_dir = app_output_dir()
+                self._output_dir = self._articles_dir.parent
 
     def save_article(
         self,
@@ -263,7 +273,7 @@ class DesktopDeckAdapter:
         # Override the articles directory temporarily so core_article saves to our output dir.
         original_dir = _core_article.ARTICLES_DIR
         try:
-            _core_article.ARTICLES_DIR = self._output_dir / "articles"
+            _core_article.ARTICLES_DIR = self._articles_dir
             return _core_article.save_article(deck_name_value, cards, article)
         finally:
             _core_article.ARTICLES_DIR = original_dir
