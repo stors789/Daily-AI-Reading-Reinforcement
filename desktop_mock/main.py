@@ -92,6 +92,8 @@ SUPPORTED_ACTIONS = {
     "selectDeck",
     "generate",
     "saveArticleCard",
+    "saveCollapsedDeckGroups",
+    "saveFieldConfig",
     "listArticles",
     "loadArticle",
 }
@@ -108,6 +110,75 @@ def safe_exception_summary(exc: BaseException | None) -> str:
     if reason is not None:
         return f"{type(exc).__name__}"
     return type(exc).__name__
+
+
+def _load_desktop_config() -> dict[str, Any]:
+    if not _DESKTOP_ADAPTERS_AVAILABLE:
+        return {}
+    try:
+        return DesktopConfigAdapter().load() or {}
+    except Exception:
+        return {}
+
+
+def _save_desktop_config(config: dict[str, Any]) -> None:
+    if not _DESKTOP_ADAPTERS_AVAILABLE:
+        return
+    DesktopConfigAdapter().save(config)
+
+
+def _state_payload(last_selected_deck_id: str, decks: list[dict[str, Any]]) -> dict[str, Any]:
+    config = _load_desktop_config()
+    payload = build_state_payload(last_selected_deck_id, decks=decks)
+    if not config:
+        return payload
+    payload["promptPresets"] = list(config.get("prompt_presets") or payload["promptPresets"])
+    payload["selectedPromptPresetId"] = (
+        config.get("selected_prompt_preset_id") or payload["selectedPromptPresetId"]
+    )
+    payload["uiLanguage"] = config.get("ui_language") or payload["uiLanguage"]
+    payload["collapsedDeckGroups"] = list(
+        config.get("collapsed_deck_groups") or payload["collapsedDeckGroups"]
+    )
+    payload["lastSelectedDeckId"] = (
+        config.get("last_selected_deck_id") or last_selected_deck_id
+    )
+    try:
+        from mock_data import _api_settings_payload
+        payload["apiSettings"] = _api_settings_payload(config)
+    except Exception:
+        pass
+    return payload
+
+
+def _deck_fields_from_cards(cards: list[dict[str, Any]]) -> list[str]:
+    seen: set[str] = set()
+    fields: list[str] = []
+    for card in cards:
+        card_fields = card.get("fields")
+        if not isinstance(card_fields, dict):
+            continue
+        for name, value in card_fields.items():
+            if name in seen or not value:
+                continue
+            seen.add(name)
+            fields.append(str(name))
+    return fields
+
+
+def _selected_fields_for_deck(deck_id: str, available_fields: list[str]) -> list[str]:
+    config = _load_desktop_config()
+    deck_field_config = config.get("deck_field_config") or {}
+    saved_fields = deck_field_config.get(deck_id) or []
+    selected = [field for field in saved_fields if field in available_fields]
+    return selected or available_fields
+
+
+def _deck_cards_payload(deck_id: str, cards_data: dict[str, Any]) -> dict[str, Any]:
+    payload = build_deck_cards_payload(deck_id, cards_data=cards_data)
+    fields = list(payload.get("fields") or [])
+    payload["selectedFields"] = _selected_fields_for_deck(deck_id, fields)
+    return payload
 
 
 
@@ -209,7 +280,7 @@ def handle_action(action: str, payload: dict[str, Any]) -> dict[str, Any]:
         last_selected = str((payload or {}).get("lastSelectedDeckId") or "")
         try:
             decks = get_deck_provider().get_today_decks()
-            return {"event": "state", "payload": build_state_payload(last_selected, decks=decks)}
+            return {"event": "state", "payload": _state_payload(last_selected, decks)}
         except Exception as exc:
             err_type = type(exc).__name__
             sys.stderr.write(f"[mock] Provider error on load: {err_type}\n")
@@ -219,7 +290,11 @@ def handle_action(action: str, payload: dict[str, Any]) -> dict[str, Any]:
         deck_id = str((payload or {}).get("deckId") or "")
         try:
             cards_data = get_deck_provider().get_deck_cards(deck_id)
-            return {"event": "deckCards", "payload": build_deck_cards_payload(deck_id, cards_data=cards_data)}
+            config = _load_desktop_config()
+            if config:
+                config["last_selected_deck_id"] = deck_id
+                _save_desktop_config(config)
+            return {"event": "deckCards", "payload": _deck_cards_payload(deck_id, cards_data)}
         except Exception as exc:
             err_type = type(exc).__name__
             stage = getattr(exc, "stage", None)
@@ -231,6 +306,41 @@ def handle_action(action: str, payload: dict[str, Any]) -> dict[str, Any]:
                 msg = "Failed to load deck cards from provider."
                 sys.stderr.write(f"[mock] Provider error on selectDeck: {err_type} cause={cause_summary}\n")
             return {"event": "error", "payload": {"message": msg}}
+
+    if action == "saveCollapsedDeckGroups":
+        config = _load_desktop_config()
+        config["collapsed_deck_groups"] = [
+            str(group).strip()
+            for group in (payload.get("collapsedDeckGroups") or [])
+            if str(group).strip()
+        ]
+        _save_desktop_config(config)
+        return {"event": "noop", "payload": {}}
+
+    if action == "saveFieldConfig":
+        deck_id = str((payload or {}).get("deckId") or "")
+        try:
+            cards_data = get_deck_provider().get_deck_cards(deck_id)
+        except Exception:
+            return {"event": "error", "payload": {"message": "Select a deck before saving fields."}}
+        cards = cards_data.get("cards") or []
+        available_fields = _deck_fields_from_cards([card for card in cards if isinstance(card, dict)])
+        selected_fields = [
+            str(field)
+            for field in (payload.get("fields") or [])
+            if str(field) in available_fields
+        ]
+        if not selected_fields:
+            return {"event": "error", "payload": {"message": "Choose at least one field for AI input."}}
+        config = _load_desktop_config()
+        deck_field_config = dict(config.get("deck_field_config") or {})
+        deck_field_config[deck_id] = selected_fields
+        config["deck_field_config"] = deck_field_config
+        _save_desktop_config(config)
+        return {
+            "event": "fieldConfigSaved",
+            "payload": {"deckId": deck_id, "selectedFields": selected_fields},
+        }
 
     if action == "generate":
         # delegate to real handler which falls back to mock on failure

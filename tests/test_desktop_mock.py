@@ -5,9 +5,12 @@ without starting the HTTP server or opening a browser.
 """
 
 import importlib.util
+import os
 import sys
+import tempfile
 import unittest
 from pathlib import Path
+from unittest.mock import patch
 
 _mock_dir = Path(__file__).resolve().parent.parent / "desktop_mock"
 # main.py imports mock_data as a top-level module, so make the mock dir
@@ -94,6 +97,31 @@ class TestHandleAction(unittest.TestCase):
         self.assertEqual(result["event"], "error")
         self.assertIn("Unknown command", result["payload"]["message"])
 
+    def test_save_collapsed_deck_groups_is_supported(self) -> None:
+        with tempfile.TemporaryDirectory() as tmpdir, patch.dict(
+            os.environ,
+            {"DESKTOP_CONFIG_PATH": str(Path(tmpdir) / "config.json")},
+        ):
+            result = _main.handle_action(
+                "saveCollapsedDeckGroups",
+                {"collapsedDeckGroups": ["Parent::Child"]},
+            )
+
+        self.assertEqual(result["event"], "noop")
+
+    def test_save_field_config_returns_saved_fields(self) -> None:
+        with tempfile.TemporaryDirectory() as tmpdir, patch.dict(
+            os.environ,
+            {"DESKTOP_CONFIG_PATH": str(Path(tmpdir) / "config.json")},
+        ):
+            result = _main.handle_action(
+                "saveFieldConfig",
+                {"deckId": "deck-japanese", "fields": ["Front"]},
+            )
+
+        self.assertEqual(result["event"], "fieldConfigSaved")
+        self.assertEqual(result["payload"]["selectedFields"], ["Front"])
+
 
 class TestMockDataShape(unittest.TestCase):
     def test_two_decks_each_with_three_cards(self) -> None:
@@ -141,4 +169,3 @@ class TestProviderIntegration(unittest.TestCase):
 
 if __name__ == "__main__":
     unittest.main()
-

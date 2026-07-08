@@ -1141,6 +1141,7 @@
   if (el.returnToSelectionButton) {
     el.returnToSelectionButton.addEventListener("click", () => {
       setReadingMode(false);
+      updateGenerateButton();
     });
   }
 
@@ -1218,7 +1219,9 @@
         if (payload.articleCardError) {
           setStatus("articleCardFailed", true, { message: payload.articleCardError });
         } else if (payload.articleCard) {
-          setStatus("articleCardSaved", false, { deckName: payload.articleCard.deck });
+          setStatus("articleCardSaved", false, {
+            deckName: payload.articleCard.deckName || payload.articleCard.deck || "",
+          });
         } else {
           setStatus("articleCardSkipped", false);
         }
