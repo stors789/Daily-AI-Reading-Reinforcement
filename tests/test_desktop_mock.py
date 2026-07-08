@@ -178,6 +178,38 @@ class TestHandleAction(unittest.TestCase):
         self.assertIn("Japanese", payload["promptPreview"])
         self.assertTrue(payload["promptContainsArticleLanguage"])
 
+    def test_debug_prompt_uses_payload_preset_override_for_matching_id(self) -> None:
+        with tempfile.TemporaryDirectory() as tmpdir, patch.dict(
+            os.environ,
+            {"DESKTOP_CONFIG_PATH": str(Path(tmpdir) / "config.json")},
+        ):
+            self._write_debug_config(Path(tmpdir) / "config.json")
+            result = _main.handle_action(
+                "debugPrompt",
+                {
+                    "deckId": "deck-japanese",
+                    "presetId": "english",
+                    "preset": {
+                        "id": "english",
+                        "name": "Draft English",
+                        "reader_native_language": "中文",
+                        "article_language": "日本語",
+                        "difficulty": "N4",
+                        "max_words": "",
+                        "instructions": "",
+                        "prompt_template": "",
+                    },
+                },
+            )
+
+        self.assertEqual(result["event"], "debugPrompt")
+        payload = result["payload"]
+        self.assertEqual(payload["requestedPresetId"], "english")
+        self.assertEqual(payload["resolvedPreset"]["id"], "english")
+        self.assertEqual(payload["resolvedPreset"]["article_language"], "日本語")
+        self.assertEqual(payload["articleLanguage"], "日本語")
+        self.assertIn("Article language: 日本語", payload["promptPreview"])
+
     def test_debug_prompt_does_not_leak_api_key(self) -> None:
         with tempfile.TemporaryDirectory() as tmpdir, patch.dict(
             os.environ,

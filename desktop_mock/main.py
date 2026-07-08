@@ -220,6 +220,30 @@ def _preset_by_id(presets: list[Any], preset_id: str) -> dict[str, Any] | None:
     return None
 
 
+def _payload_preset_override(payload: dict[str, Any], requested_preset_id: str) -> dict[str, Any] | None:
+    preset = payload.get("preset")
+    if not isinstance(preset, dict):
+        return None
+    preset_id = str(preset.get("id") or "")
+    if not preset_id or preset_id != requested_preset_id:
+        return None
+    try:
+        from desktop_adapters import _import_core
+        _utils = _import_core("utils")
+        return {
+            "id": preset_id,
+            "name": _utils.clean_text(preset.get("name")) or "Untitled",
+            "reader_native_language": _utils.clean_text(preset.get("reader_native_language")),
+            "article_language": _utils.clean_text(preset.get("article_language")),
+            "difficulty": _utils.clean_text(preset.get("difficulty")),
+            "max_words": _utils.clean_max_words(preset.get("max_words")),
+            "instructions": _utils.clean_text(preset.get("instructions")),
+            "prompt_template": str(preset.get("prompt_template") or ""),
+        }
+    except Exception:
+        return dict(preset)
+
+
 def resolve_generation_context(deck_id: str, payload: dict[str, Any]) -> dict[str, Any]:
     """Resolve cards, fields, config, and preset exactly once for generation.
 
@@ -245,7 +269,13 @@ def resolve_generation_context(deck_id: str, payload: dict[str, Any]) -> dict[st
     config = _load_generation_config()
     presets = list(config.get("prompt_presets") or [])
     selected_preset_id = str(config.get("selected_prompt_preset_id") or "")
-    preset = _preset_by_id(presets, requested_preset_id) if requested_preset_id else None
+    preset = (
+        _payload_preset_override(payload, requested_preset_id)
+        if requested_preset_id
+        else None
+    )
+    if not preset:
+        preset = _preset_by_id(presets, requested_preset_id) if requested_preset_id else None
     if not preset:
         preset = _preset_by_id(presets, selected_preset_id)
     if not preset and presets:

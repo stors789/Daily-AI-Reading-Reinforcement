@@ -920,6 +920,19 @@
       || { id: "default", name: "Default", reader_native_language: "", article_language: "", difficulty: "", max_words: "", instructions: "" };
   }
 
+  function currentPresetFormPayload() {
+    return {
+      id: state.selectedPromptPresetId,
+      name: el.presetName.value,
+      reader_native_language: el.presetReaderNativeLanguage ? el.presetReaderNativeLanguage.value : "",
+      article_language: el.presetArticleLanguage ? el.presetArticleLanguage.value : "",
+      difficulty: el.presetDifficulty.value,
+      max_words: el.presetMaxWords.value,
+      instructions: el.presetInstructions.value,
+      prompt_template: "",
+    };
+  }
+
   function setStatus(key, isError = false, params = {}) {
     state.statusData = { key, isError, params };
     renderStatus();
@@ -1539,6 +1552,7 @@
     send("generate", {
       deckId: state.selectedDeckId,
       presetId: state.selectedPromptPresetId,
+      preset: currentPresetFormPayload(),
       cardIds: Array.from(state.selectedCardIds),
     });
   });
@@ -1674,16 +1688,7 @@
 
   el.savePresetButton.addEventListener("click", () => {
     send("savePromptPreset", {
-      preset: {
-        id: state.selectedPromptPresetId,
-        name: el.presetName.value,
-        reader_native_language: el.presetReaderNativeLanguage ? el.presetReaderNativeLanguage.value : "",
-        article_language: el.presetArticleLanguage ? el.presetArticleLanguage.value : "",
-        difficulty: el.presetDifficulty.value,
-        max_words: el.presetMaxWords.value,
-        instructions: el.presetInstructions.value,
-        prompt_template: "",
-      },
+      preset: currentPresetFormPayload(),
     });
   });
 

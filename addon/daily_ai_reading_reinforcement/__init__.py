@@ -170,6 +170,7 @@ window.addEventListener("error", function (event) {
                     str(payload.get("deckId", "")),
                     str(payload.get("presetId", "")),
                     payload.get("cardIds"),
+                    dict(payload.get("preset") or {}),
                 )
             elif action == "listArticles":
                 self._list_articles()
@@ -295,16 +296,7 @@ window.addEventListener("error", function (event) {
         config = load_config()
         presets = normalize_prompt_presets(config)
         preset_id = str(preset.get("id") or f"preset-{uuid4().hex[:10]}")
-        clean_preset = {
-            "id": preset_id,
-            "name": clean_text(preset.get("name")) or "Untitled",
-            "reader_native_language": clean_text(preset.get("reader_native_language")),
-            "article_language": clean_text(preset.get("article_language")),
-            "difficulty": clean_text(preset.get("difficulty")),
-            "max_words": clean_max_words(preset.get("max_words")),
-            "instructions": clean_text(preset.get("instructions")),
-            "prompt_template": str(preset.get("prompt_template") or ""),
-        }
+        clean_preset = clean_prompt_preset(preset, preset_id)
 
         replaced = False
         for index, existing in enumerate(presets):
@@ -457,7 +449,11 @@ window.addEventListener("error", function (event) {
         mw.taskman.run_in_background(task, on_done)
 
     def _generate_article(
-        self, deck_id: str, preset_id: str, selected_card_ids: Any = None
+        self,
+        deck_id: str,
+        preset_id: str,
+        selected_card_ids: Any = None,
+        preset_override: dict[str, Any] | None = None,
     ) -> None:
         payload = self.deck_payloads.get(deck_id)
         if not payload:
@@ -480,6 +476,8 @@ window.addEventListener("error", function (event) {
 
         config = load_config()
         preset = prompt_preset_by_id(config, preset_id)
+        if preset_override and str(preset_override.get("id") or "") == preset_id:
+            preset = clean_prompt_preset(preset_override, preset_id)
         available_fields = deck_field_names(cards)
         selected_fields = selected_fields_for_deck(deck_id, available_fields, config)
         if not selected_fields:
@@ -826,6 +824,19 @@ def normalize_prompt_presets(config: dict[str, Any]) -> list[dict[str, str]]:
             },
         )
     return presets
+
+
+def clean_prompt_preset(preset: dict[str, Any], preset_id: str) -> dict[str, str]:
+    return {
+        "id": preset_id,
+        "name": clean_text(preset.get("name")) or "Untitled",
+        "reader_native_language": clean_text(preset.get("reader_native_language")),
+        "article_language": clean_text(preset.get("article_language")),
+        "difficulty": clean_text(preset.get("difficulty")),
+        "max_words": clean_max_words(preset.get("max_words")),
+        "instructions": clean_text(preset.get("instructions")),
+        "prompt_template": str(preset.get("prompt_template") or ""),
+    }
 
 
 def prompt_preset_by_id(config: dict[str, Any], preset_id: str) -> dict[str, str]:
