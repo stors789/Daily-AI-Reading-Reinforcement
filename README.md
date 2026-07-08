@@ -69,6 +69,9 @@ See [Desktop Standalone Mode](docs/desktop_standalone.md) for provider modes,
 AnkiConnect data flow, diagnostics, environment variables, known limitations,
 and the manual release checklist.
 
+An optional pywebview native shell scaffold is available via
+`desktop_native.py`; see [Native Shell Scaffold](docs/native_shell.md).
+
 ## Config
 
 The add-on uses an OpenAI-compatible chat completions API:
