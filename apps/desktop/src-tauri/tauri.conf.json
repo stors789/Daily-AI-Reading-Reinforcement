@@ -1,0 +1,35 @@
+{
+  "$schema": "https://schema.tauri.app/config/2",
+  "productName": "DAIRR",
+  "version": "0.1.0",
+  "identifier": "com.dairr.app",
+  "build": {
+    "devUrl": "http://127.0.0.1:8755",
+    "frontendDist": "http://127.0.0.1:8755",
+    "beforeDevCommand": null,
+    "beforeBuildCommand": null,
+    "additionalWatchFolders": [
+      "../../../addon/daily_ai_reading_reinforcement/web",
+      "../../../desktop_mock"
+    ]
+  },
+  "app": {
+    "windows": [],
+    "security": {
+      "csp": null
+    }
+  },
+  "bundle": {
+    "active": false,
+    "targets": "all",
+    "macOS": {
+      "minimumSystemVersion": "10.13"
+    },
+    "windows": {
+      "webviewInstallMode": {
+        "type": "downloadBootstrapper",
+        "silent": true
+      }
+    }
+  }
+}

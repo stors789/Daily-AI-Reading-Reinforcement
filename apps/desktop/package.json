@@ -1,0 +1,14 @@
+{
+  "name": "dairr-desktop-tauri",
+  "version": "0.1.0",
+  "private": true,
+  "description": "Tauri proof-of-concept shell for Daily AI Reading Reinforcement.",
+  "scripts": {
+    "dev": "tauri dev",
+    "build": "tauri build",
+    "info": "tauri info"
+  },
+  "devDependencies": {
+    "@tauri-apps/cli": "^2.8.0"
+  }
+}
