@@ -41,8 +41,17 @@ class TestPackageDesktopCommand(unittest.TestCase):
         self.assertIn("--onefile", output)
         self.assertIn("--windowed", output)
         self.assertIn("--clean", output)
+        self.assertIn("--noconfirm", output)
+        self.assertIn("--hidden-import datetime", output)
+        self.assertIn("--hidden-import http.server", output)
+        self.assertIn("--hidden-import urllib.error", output)
+        self.assertIn("--hidden-import urllib.request", output)
+        self.assertIn("--hidden-import uuid", output)
+        self.assertIn("addon/daily_ai_reading_reinforcement/core", output)
         self.assertIn("addon/daily_ai_reading_reinforcement/web", output)
-        self.assertIn("desktop_mock", output)
+        self.assertIn("desktop_mock/main.py", output)
+        self.assertIn("desktop_mock/diagnostics.py", output)
+        self.assertNotIn("desktop_mock/output", output)
         self.assertIn("desktop_app.py", output)
 
     def test_dry_run_native_builds_expected_command(self) -> None:

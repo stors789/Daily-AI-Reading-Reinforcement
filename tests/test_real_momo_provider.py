@@ -86,17 +86,43 @@ class TestRealMoMoDeckProvider(unittest.TestCase):
         req = self.opener.requests[0]
         self.assertEqual(json.loads(req.data), {})
 
+        self.opener.requests.clear()
+        self.provider.get_today_items_raw(voc_ids=["v1", "v2"])
+        req = self.opener.requests[0]
+        self.assertEqual(json.loads(req.data), {"voc_ids": ["v1", "v2"]})
+
+        with self.assertRaises(ValueError):
+            self.provider.get_today_items_raw(voc_ids=["v1"], spellings=["apple"])
+
     def test_query_study_records_raw(self):
-        self.provider.query_study_records_raw(next_study_date="2026-07-05", as_count=True, limit=20)
+        self.provider.query_study_records_raw(
+            next_study_date={"end": "2026-07-05T00:00:00+08:00"},
+            as_count=True,
+            limit=20,
+        )
         req = self.opener.requests[0]
         self.assertEqual(req.full_url, "https://open.maimemo.com/open/api/v1/study/query_study_records")
         self.assertEqual(req.method, "POST")
-        self.assertEqual(json.loads(req.data), {"next_study_date": "2026-07-05", "as_count": True, "limit": 20})
+        self.assertEqual(
+            json.loads(req.data),
+            {"next_study_date": {"end": "2026-07-05T00:00:00+08:00"}, "as_count": True, "limit": 20},
+        )
         
         self.opener.requests.clear()
-        self.provider.query_study_records_raw(limit=5)
+        self.provider.query_study_records_raw(voc_ids=["v1"], limit=5)
         req = self.opener.requests[0]
-        self.assertEqual(json.loads(req.data), {"limit": 5})
+        self.assertEqual(json.loads(req.data), {"voc_ids": ["v1"], "limit": 5})
+
+        self.opener.requests.clear()
+        self.provider.query_study_records_raw(spellings=["apple"])
+        req = self.opener.requests[0]
+        self.assertEqual(json.loads(req.data), {"spellings": ["apple"]})
+
+        with self.assertRaises(ValueError):
+            self.provider.query_study_records_raw(voc_ids=["v1"], spellings=["apple"])
+
+        with self.assertRaises(ValueError):
+            self.provider.query_study_records_raw(next_study_date="2026-07-05")
 
     def test_get_markji_decks_raw(self):
         self.provider.get_markji_decks_raw()
@@ -205,25 +231,44 @@ class TestRealMoMoDeckProvider(unittest.TestCase):
     # --- Mapping Tests ---
 
     def test_get_today_decks(self):
-        self.opener.response_data = json.dumps({
-            "decks": [
-                {"id": "d1", "name": "Deck 1", "card_count": 100},
-                {"id": "d2", "name": "Deck 2"}
-            ]
-        }).encode("utf-8")
+        def fake_opener(req, timeout):
+            mock_resp = MagicMock()
+            if "get_today_items" in req.full_url:
+                mock_resp.read.return_value = json.dumps({
+                    "today_items": [
+                        {"voc_id": "v1", "voc_spelling": "apple", "is_new": True, "first_response": "FAMILIAR"},
+                        {"voc_id": "v2", "voc_spelling": "banana", "is_new": False, "first_response": "FORGET"},
+                        {"voc_id": "v3", "voc_spelling": "cherry", "is_new": False, "first_response": "VAGUE"},
+                    ]
+                }).encode("utf-8")
+            elif "query_study_records" in req.full_url:
+                mock_resp.read.return_value = json.dumps({
+                    "records": [
+                        {"voc_id": "v1", "study_count": 1, "last_response": "FAMILIAR"},
+                        {"voc_id": "v2", "study_count": 2, "last_response": "FORGET"},
+                        {"voc_id": "v3", "study_count": 3, "last_response": "VAGUE"},
+                    ]
+                }).encode("utf-8")
+            elif "get_study_progress" in req.full_url:
+                mock_resp.read.return_value = json.dumps({"progress": {"total": 3}}).encode("utf-8")
+            else:
+                mock_resp.read.return_value = b"{}"
+            mock_context = MagicMock()
+            mock_context.__enter__.return_value = mock_resp
+            return mock_context
+
+        self.provider._opener = fake_opener
         decks = self.provider.get_today_decks()
-        self.assertEqual(len(decks), 2)
-        self.assertEqual(decks[0]["id"], "d1")
-        self.assertEqual(decks[0]["name"], "Deck 1")
-        self.assertEqual(decks[0]["totalCount"], 100)
-        self.assertEqual(decks[0]["newCount"], 0)
-        self.assertEqual(decks[0]["failedCount"], 0)
+        self.assertEqual(len(decks), 1)
+        self.assertEqual(decks[0]["id"], "momo_today")
+        self.assertEqual(decks[0]["name"], "MoMo Today")
+        self.assertEqual(decks[0]["totalCount"], 3)
+        self.assertEqual(decks[0]["newCount"], 1)
+        self.assertEqual(decks[0]["failedCount"], 1)
         self.assertFalse(decks[0]["isGroup"])
 
-        self.assertEqual(decks[1]["totalCount"], 0)
-
     def test_get_today_decks_fallback(self):
-        self.opener.status = 403
+        self.opener.status = 500
         decks = self.provider.get_today_decks()
         self.assertEqual(len(decks), 1)
         self.assertEqual(decks[0]["id"], "momo_today")
@@ -235,7 +280,7 @@ class TestRealMoMoDeckProvider(unittest.TestCase):
         self.opener.requests.clear()
         
         def fake_opener(req, timeout):
-            if "markji" in req.full_url:
+            if "get_today_items" in req.full_url:
                 raise urllib.error.HTTPError(req.full_url, 403, "Forbidden", {}, None)
             
             mock_resp = MagicMock()
@@ -275,8 +320,8 @@ class TestRealMoMoDeckProvider(unittest.TestCase):
             elif "query_study_records" in req.full_url:
                 mock_resp.read.return_value = json.dumps({
                     "records": [
-                        {"voc_id": 1, "study_count": 5},
-                        {"voc_id": 2, "study_count": 1},
+                        {"voc_id": 1, "study_count": 5, "last_response": "FAMILIAR"},
+                        {"voc_id": 2, "study_count": 1, "last_response": "FORGET"},
                     ]
                 }).encode("utf-8")
             else:
@@ -301,9 +346,10 @@ class TestRealMoMoDeckProvider(unittest.TestCase):
         self.assertEqual(cards[0]["fields"]["source"], "MoMo Today")
         self.assertEqual(cards[0]["fields"]["review_count_status"], "provider_value_unverified")
         
-        # banana: is_finished=False => status "unfinished", NOT is_failed
+        # banana: last_response=FORGET must not mark today's failed tag;
+        # first_response is the only source for today's failed/vague labels.
         self.assertEqual(cards[1]["term"], "banana")
-        self.assertFalse(cards[1]["is_failed"])  # Phase 16: no longer failed
+        self.assertFalse(cards[1]["is_failed"])
         self.assertFalse(cards[1]["is_new"])
         self.assertEqual(cards[1]["review_count"], 1)
         self.assertEqual(cards[1]["fields"]["status"], "unfinished")
@@ -326,8 +372,9 @@ class TestRealMoMoDeckProvider(unittest.TestCase):
         for req in requests_seen:
             body = json.loads(req.data) if req.data else {}
             if "get_today_items" in req.full_url:
-                self.assertEqual(body.get("limit"), 500)
+                self.assertEqual(body.get("limit"), 1000)
             elif "query_study_records" in req.full_url:
+                self.assertEqual(body.get("voc_ids"), ["1", "2", "3"])
                 self.assertNotIn("limit", body)
 
     def test_get_deck_cards_momo_today_empty(self):

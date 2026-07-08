@@ -6,6 +6,7 @@
     </div>
     <div class="top-actions">
       <button class="secondary-button" id="historyButton" title="历史文章">历史文章</button>
+      <button class="secondary-button" id="desktopSettingsButton" title="设置">设置</button>
       <select id="uiLanguageSelect" class="language-select">
         <option value="zh">中文</option>
         <option value="en">English</option>
@@ -27,6 +28,35 @@
       <div class="history-right" id="historyRight">
         <div class="history-heatmap" id="historyHeatmap"></div>
         <div class="history-articles" id="historyArticles"></div>
+      </div>
+    </div>
+  </section>
+
+  <section class="panel desktop-settings-panel" id="desktopSettingsPanel" style="display: none;">
+    <div class="panel-heading">
+      <h2 id="desktopSettingsHeading">设置</h2>
+      <button class="secondary-button" id="desktopSettingsCloseButton">✕</button>
+    </div>
+    <div class="desktop-settings-body">
+      <label class="form-field">
+        <span id="momoApiKeyLabel">墨墨 API</span>
+        <input id="momoApiKeyInput" type="password" autocomplete="off">
+      </label>
+      <label class="inline-check">
+        <input id="clearMomoApiKeyInput" type="checkbox">
+        <span id="clearMomoApiKeyLabel">清除已保存的墨墨 API</span>
+      </label>
+      <label class="form-field compact-field">
+        <span id="momoDayStartLabel">一天开始</span>
+        <input id="momoDayStartInput" type="time">
+      </label>
+      <label class="form-field compact-field">
+        <span id="momoDayEndLabel">一天结束</span>
+        <input id="momoDayEndInput" type="time">
+      </label>
+      <div class="settings-actions">
+        <span class="muted" id="momoApiKeyStatus">未保存</span>
+        <button class="secondary-button" id="saveDesktopSettingsButton">保存设置</button>
       </div>
     </div>
   </section>

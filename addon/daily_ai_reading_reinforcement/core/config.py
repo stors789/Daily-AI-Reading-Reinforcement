@@ -80,6 +80,9 @@ DEFAULT_CONFIG = {
     "last_selected_deck_id": "",
     "collapsed_deck_groups": [],
     "ui_language": "zh",
+    "momo_api_key": "",
+    "momo_day_start": "04:00",
+    "momo_day_end": "04:00",
     "prompt_presets": [
         {
             "id": "default",

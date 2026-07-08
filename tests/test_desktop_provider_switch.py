@@ -65,8 +65,9 @@ class TestProviderFactory(unittest.TestCase):
         self.assertEqual(provider._base_url, "http://127.0.0.1:18765")
 
     def test_real_momo_without_token_raises_error(self):
-        with self.assertRaises(ValueError) as cm:
-            _main.build_deck_provider({"DAIRR_DESKTOP_PROVIDER": "real_momo"})
+        with patch.object(_main, "_load_provider_config", return_value={}):
+            with self.assertRaises(ValueError) as cm:
+                _main.build_deck_provider({"DAIRR_DESKTOP_PROVIDER": "real_momo"})
         self.assertIn("MOMO_TOKEN is missing", str(cm.exception))
 
     def test_unknown_provider_raises_error(self):

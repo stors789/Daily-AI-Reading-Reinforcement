@@ -21,9 +21,30 @@ ENTRY_POINTS = {
     "browser": ROOT / "desktop_app.py",
     "native": ROOT / "desktop_native.py",
 }
+DESKTOP_MOCK_FILES = (
+    "ankiconnect_card_saver.py",
+    "ankiconnect_provider.py",
+    "desktop_adapters.py",
+    "desktop_paths.py",
+    "diagnostics.py",
+    "main.py",
+    "mock_data.py",
+    "momo_provider.py",
+    "real_momo_provider.py",
+)
 DATA_PATHS = (
+    (ROOT / "addon" / "daily_ai_reading_reinforcement" / "core", Path("addon/daily_ai_reading_reinforcement/core")),
     (ROOT / "addon" / "daily_ai_reading_reinforcement" / "web", Path("addon/daily_ai_reading_reinforcement/web")),
-    (ROOT / "desktop_mock", Path("desktop_mock")),
+) + tuple(
+    (ROOT / "desktop_mock" / filename, Path("desktop_mock"))
+    for filename in DESKTOP_MOCK_FILES
+)
+HIDDEN_IMPORTS = (
+    "datetime",
+    "http.server",
+    "urllib.error",
+    "urllib.request",
+    "uuid",
 )
 PYINSTALLER_MISSING_MESSAGE = (
     "PyInstaller is not installed. Install it in your packaging environment, "
@@ -61,6 +82,10 @@ def build_pyinstaller_command(
         command.append("--windowed")
     if clean:
         command.append("--clean")
+        command.append("--noconfirm")
+
+    for module_name in HIDDEN_IMPORTS:
+        command.extend(["--hidden-import", module_name])
 
     for source, destination in DATA_PATHS:
         command.extend(["--add-data", format_add_data(source, destination, platform)])

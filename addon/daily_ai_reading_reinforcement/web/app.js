@@ -25,6 +25,11 @@
       parentDeck: "Daily AI Reading Reinforcement",
       noteType: "Daily AI Reading Reinforcement Article",
     },
+    desktopSettings: {
+      hasMomoApiKey: false,
+      momoDayStart: "04:00",
+      momoDayEnd: "04:00",
+    },
     statusData: { key: "selectDeck", isError: false, params: {} },
    readingMode: false,
    writingMode: "horizontal",
@@ -110,6 +115,20 @@
     historyArticles: document.getElementById("historyArticles"),
    historyCloseButton: document.getElementById("historyCloseButton"),
     historyEmptyText: document.getElementById("historyEmptyText"),
+    desktopSettingsButton: document.getElementById("desktopSettingsButton"),
+    desktopSettingsPanel: document.getElementById("desktopSettingsPanel"),
+    desktopSettingsHeading: document.getElementById("desktopSettingsHeading"),
+    desktopSettingsCloseButton: document.getElementById("desktopSettingsCloseButton"),
+    momoApiKeyLabel: document.getElementById("momoApiKeyLabel"),
+    momoApiKeyInput: document.getElementById("momoApiKeyInput"),
+    momoApiKeyStatus: document.getElementById("momoApiKeyStatus"),
+    clearMomoApiKeyInput: document.getElementById("clearMomoApiKeyInput"),
+    clearMomoApiKeyLabel: document.getElementById("clearMomoApiKeyLabel"),
+    momoDayStartLabel: document.getElementById("momoDayStartLabel"),
+    momoDayStartInput: document.getElementById("momoDayStartInput"),
+    momoDayEndLabel: document.getElementById("momoDayEndLabel"),
+    momoDayEndInput: document.getElementById("momoDayEndInput"),
+    saveDesktopSettingsButton: document.getElementById("saveDesktopSettingsButton"),
     writingModeButtons: document.getElementById("writingModeButtons"),
     writingModeHorizontal: document.getElementById("writingModeHorizontal"),
     writingModeVertical: document.getElementById("writingModeVertical"),
@@ -215,6 +234,16 @@
       historyNoDate: "请选择一个日期。",
       historyArticlesCount: "篇文章",
       historyRecentDate: "最近",
+      desktopSettingsTitle: "设置",
+      momoApiKey: "墨墨 API",
+      clearMomoApiKey: "清除已保存的墨墨 API",
+      momoDayStart: "一天开始",
+      momoDayEnd: "一天结束",
+      saveDesktopSettings: "保存设置",
+      desktopSettingsSaved: "设置已保存。",
+      momoKeySaved: "墨墨 API 已保存",
+      momoNoKey: "未保存墨墨 API",
+      enterNewMomoKey: "留空则保留已保存墨墨 API",
      writingHorizontal: "横",
      writingVertical: "竖",
    },
@@ -317,6 +346,16 @@
       historyNoDate: "Choose a date.",
       historyArticlesCount: "articles",
       historyRecentDate: "Recent",
+      desktopSettingsTitle: "Settings",
+      momoApiKey: "MoMo API",
+      clearMomoApiKey: "Clear saved MoMo API",
+      momoDayStart: "Day start",
+      momoDayEnd: "Day end",
+      saveDesktopSettings: "Save settings",
+      desktopSettingsSaved: "Settings saved.",
+      momoKeySaved: "MoMo API saved",
+      momoNoKey: "No MoMo API",
+      enterNewMomoKey: "Leave blank to keep saved MoMo API",
      writingHorizontal: "横",
      writingVertical: "縦",
     },
@@ -419,6 +458,16 @@
       historyNoDate: "日付を選んでください。",
       historyArticlesCount: "件",
       historyRecentDate: "最近",
+      desktopSettingsTitle: "設定",
+      momoApiKey: "MoMo API",
+      clearMomoApiKey: "保存済み MoMo API を消去",
+      momoDayStart: "1日の開始",
+      momoDayEnd: "1日の終了",
+      saveDesktopSettings: "設定を保存",
+      desktopSettingsSaved: "設定を保存しました。",
+      momoKeySaved: "MoMo API 保存済み",
+      momoNoKey: "MoMo API なし",
+      enterNewMomoKey: "空欄なら保存済み MoMo API を保持",
      writingHorizontal: "横",
      writingVertical: "縦",
     },
@@ -492,11 +541,23 @@
       el.historyButton.title = tr("historyTitle");
     }
     if (el.historyCloseButton) el.historyCloseButton.title = tr("historyClose");
+    if (el.desktopSettingsButton) {
+      el.desktopSettingsButton.textContent = tr("desktopSettingsTitle");
+      el.desktopSettingsButton.title = tr("desktopSettingsTitle");
+    }
+    if (el.desktopSettingsHeading) el.desktopSettingsHeading.textContent = tr("desktopSettingsTitle");
+    if (el.desktopSettingsCloseButton) el.desktopSettingsCloseButton.title = tr("historyClose");
+    if (el.momoApiKeyLabel) el.momoApiKeyLabel.textContent = tr("momoApiKey");
+    if (el.clearMomoApiKeyLabel) el.clearMomoApiKeyLabel.textContent = tr("clearMomoApiKey");
+    if (el.momoDayStartLabel) el.momoDayStartLabel.textContent = tr("momoDayStart");
+    if (el.momoDayEndLabel) el.momoDayEndLabel.textContent = tr("momoDayEnd");
+    if (el.saveDesktopSettingsButton) el.saveDesktopSettingsButton.textContent = tr("saveDesktopSettings");
     if (el.writingModeHorizontal) el.writingModeHorizontal.textContent = tr("writingHorizontal");
    if (el.writingModeVertical) el.writingModeVertical.textContent = tr("writingVertical");
     if (el.readingTabArticle) el.readingTabArticle.textContent = tr("readingTabArticle");
     if (el.readingTabNotes) el.readingTabNotes.textContent = tr("readingTabNotes");
    renderModelOptions();
+    renderDesktopSettings();
     updateCardSelectionControls();
     
     if (state.dayStart && state.dayEnd) {
@@ -729,8 +790,7 @@
         const checked = state.selectedCardIds.has(cardId) ? " checked" : "";
         const selected = checked ? " selected" : "";
         const f = String(card.first_response || "").toUpperCase();
-        const l = String(card.last_response || "").toUpperCase();
-        const isVague = f === "VAGUE" || l === "VAGUE";
+        const isVague = f === "VAGUE";
 
         const tags = [
           card.is_new ? `<span class="tag">${tr("newCount")}</span>` : "",
@@ -887,6 +947,18 @@
     el.apiKeyInput.placeholder = state.apiSettings.hasApiKey ? tr("enterNewKey") : "";
     renderArticleCardDestination();
     renderModelOptions();
+  }
+
+  function renderDesktopSettings() {
+    if (!el.momoApiKeyInput) return;
+    const settings = state.desktopSettings || {};
+    el.momoApiKeyInput.value = "";
+    el.momoApiKeyInput.placeholder = settings.hasMomoApiKey ? tr("enterNewMomoKey") : "";
+    el.clearMomoApiKeyInput.checked = false;
+    el.clearMomoApiKeyInput.disabled = !settings.hasMomoApiKey;
+    el.momoApiKeyStatus.textContent = settings.hasMomoApiKey ? tr("momoKeySaved") : tr("momoNoKey");
+    el.momoDayStartInput.value = settings.momoDayStart || "04:00";
+    el.momoDayEndInput.value = settings.momoDayEnd || "04:00";
   }
 
   function renderArticleCardDestination() {
@@ -1170,6 +1242,7 @@
         state.providerProfiles = payload.providerProfiles || [];
         state.apiSettings = payload.apiSettings || state.apiSettings;
         state.articleCardSettings = payload.articleCardSettings || state.articleCardSettings;
+        state.desktopSettings = payload.desktopSettings || state.desktopSettings;
         state.dayStart = payload.dayStart;
         state.dayEnd = payload.dayEnd;
         el.dayWindow.textContent = `${formatTime(state.dayStart)} - ${formatTime(state.dayEnd)}`;
@@ -1178,6 +1251,7 @@
         renderDecks();
         renderPresets();
         renderApiSettings();
+        renderDesktopSettings();
         setStatus(state.decks.length ? "selectDeck" : "noStudy");
         chooseInitialDeck(payload.lastSelectedDeckId || "");
       }
@@ -1210,6 +1284,17 @@
         renderApiSettings();
         applyI18n();
         setStatus("apiSettingsSaved");
+      }
+      if (event === "desktopSettingsSaved") {
+        state.desktopSettings = payload.desktopSettings || state.desktopSettings;
+        state.dayStart = payload.dayStart || state.dayStart;
+        state.dayEnd = payload.dayEnd || state.dayEnd;
+        if (state.dayStart && state.dayEnd) {
+          el.dayWindow.textContent = `${formatTime(state.dayStart)} - ${formatTime(state.dayEnd)}`;
+        }
+        renderDesktopSettings();
+        setStatus("desktopSettingsSaved");
+        send("load");
       }
       if (event === "modelsFetched") {
         state.modelOptions = payload.models || [];
@@ -1265,10 +1350,25 @@
 
   function openHistoryPanel() {
     if (el.historyPanel) {
+      closeDesktopSettingsPanel();
       state.historySelectedDeck = null;
       state.historySelectedDate = null;
       el.historyPanel.style.display = "";
       send("listArticles");
+    }
+  }
+
+  function openDesktopSettingsPanel() {
+    if (el.desktopSettingsPanel) {
+      closeHistoryPanel();
+      renderDesktopSettings();
+      el.desktopSettingsPanel.style.display = "";
+    }
+  }
+
+  function closeDesktopSettingsPanel() {
+    if (el.desktopSettingsPanel) {
+      el.desktopSettingsPanel.style.display = "none";
     }
   }
 
@@ -1472,6 +1572,18 @@
     });
   }
 
+  if (el.desktopSettingsButton) {
+    el.desktopSettingsButton.addEventListener("click", () => {
+      openDesktopSettingsPanel();
+    });
+  }
+
+  if (el.desktopSettingsCloseButton) {
+    el.desktopSettingsCloseButton.addEventListener("click", () => {
+      closeDesktopSettingsPanel();
+    });
+  }
+
   function setWritingMode(mode) {
     state.writingMode = mode;
     if (el.articleOutput) {
@@ -1569,14 +1681,12 @@
 
   function isForgottenCard(card) {
     const f = String(card.first_response || "").toUpperCase();
-    const l = String(card.last_response || "").toUpperCase();
-    return f === "FORGET" || l === "FORGET" || Boolean(card.is_failed);
+    return f === "FORGET" || Boolean(card.is_failed);
   }
 
   function isVagueCard(card) {
     const f = String(card.first_response || "").toUpperCase();
-    const l = String(card.last_response || "").toUpperCase();
-    return f === "VAGUE" || l === "VAGUE";
+    return f === "VAGUE";
   }
 
   function isNewCard(card) {
@@ -1730,6 +1840,19 @@
       },
     });
   });
+
+  if (el.saveDesktopSettingsButton) {
+    el.saveDesktopSettingsButton.addEventListener("click", () => {
+      send("saveDesktopSettings", {
+        settings: {
+          momoApiKey: el.momoApiKeyInput.value,
+          clearMomoApiKey: el.clearMomoApiKeyInput.checked,
+          momoDayStart: el.momoDayStartInput.value,
+          momoDayEnd: el.momoDayEndInput.value,
+        },
+      });
+    });
+  }
 
 
   el.fetchModelsButton.addEventListener("click", () => {

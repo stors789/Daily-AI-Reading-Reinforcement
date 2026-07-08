@@ -373,20 +373,25 @@ def today_item_mapping_report(raw_item: dict[str, Any]) -> dict[str, dict[str, s
 # ---------------------------------------------------------------------------
 def _request(
     url: str, headers: dict[str, str], method: str, body: str, timeout: float = 10.0,
-) -> Any:
-    """Perform one HTTP request and return parsed JSON. Raises on error."""
+) -> tuple[int, Any]:
+    """Perform one HTTP request and return ``(status, parsed_json)``.
+
+    Raises on transport / HTTP errors. Response bodies are still parsed with
+    strings redacted later by ``summarize_shape``.
+    """
     data = body.encode("utf-8") if body else None
     req = urllib.request.Request(url, data=data, headers=headers, method=method)
     if data is not None:
         req.add_header("Content-Type", "application/json")
     with urllib.request.urlopen(req, timeout=timeout) as resp:  # noqa: S310 -- manual probe
+        status = getattr(resp, "status", getattr(resp, "code", 0)) or 0
         raw = resp.read()
     if not raw:
-        return None
+        return status, None
     try:
-        return json.loads(raw.decode("utf-8", errors="replace"))
+        return status, json.loads(raw.decode("utf-8", errors="replace"))
     except json.JSONDecodeError:
-        return {"_raw_text": raw.decode("utf-8", errors="replace")}
+        return status, {"_raw_text": raw.decode("utf-8", errors="replace")}
 
 
 def _probe_endpoint(
@@ -403,18 +408,19 @@ def _probe_endpoint(
     print(f"[probe] {method} {url}")
     result: dict[str, Any] = {
         "key": spec["key"], "method": method, "url": url,
-        "ok": False, "data": None, "error": "",
+        "ok": False, "status": None, "data": None, "error": "",
     }
     try:
-        result["data"] = _request(url, headers, method, body)
+        result["status"], result["data"] = _request(url, headers, method, body)
         result["ok"] = True
     except urllib.error.HTTPError as exc:
+        result["status"] = exc.code
         result["error"] = f"HTTP {exc.code}: {exc.reason}"
     except urllib.error.URLError as exc:
         result["error"] = f"URL error: {exc.reason}"
     except Exception as exc:  # noqa: BLE001 -- probe must not crash the run
         result["error"] = f"{type(exc).__name__}: {exc}"
-    print(f"[probe]   -> ok={result['ok']} error={result['error'] or '-'}")
+    print(f"[probe]   -> status={result['status'] or '-'} ok={result['ok']} error={result['error'] or '-'}")
     return result
 
 
@@ -425,6 +431,11 @@ def _get_endpoints(args: argparse.Namespace) -> list[dict[str, Any]]:
     endpoints = []
     for spec in CANDIDATE_ENDPOINTS:
         spec_copy = dict(spec)
+        if spec_copy["key"] == "today_items":
+            today_limit = getattr(args, "today_items_limit", None)
+            if today_limit is not None:
+                spec_copy["body"] = json.dumps({"limit": today_limit})
+
         if spec_copy["key"] == "study_records" and getattr(args, "probe_study_records", False):
             body: dict[str, Any] = {}
             if getattr(args, "study_records_limit", None) is not None:
@@ -436,7 +447,18 @@ def _get_endpoints(args: argparse.Namespace) -> list[dict[str, Any]]:
                 body["as_count"] = False
             next_date = getattr(args, "study_records_next_date", None)
             if next_date is not None:
-                body["next_study_date"] = next_date
+                body["next_study_date"] = {"end": next_date}
+            voc_ids = _split_csv(getattr(args, "study_records_voc_ids", None))
+            spellings = _split_csv(getattr(args, "study_records_spellings", None))
+            if voc_ids and spellings:
+                body["error"] = "voc_ids and spellings are mutually exclusive"
+            elif voc_ids:
+                body["voc_ids"] = voc_ids
+            elif spellings:
+                body["spellings"] = spellings
+            elif getattr(args, "study_records_from_today", False):
+                match_by = getattr(args, "study_records_match", "voc_ids")
+                body[match_by] = [f"<from_today_items_{match_by}>"]
             spec_copy["body"] = json.dumps(body)
             
         if getattr(args, "probe_enrichment", False):
@@ -471,6 +493,13 @@ def _get_endpoints(args: argparse.Namespace) -> list[dict[str, Any]]:
 
         endpoints.append(spec_copy)
     return endpoints
+
+
+def _split_csv(value: str | None) -> list[str]:
+    """Split a comma-separated CLI value, dropping empty parts."""
+    if not value:
+        return []
+    return [part.strip() for part in value.split(",") if part.strip()]
 
 
 def run_dry_run(args: argparse.Namespace) -> int:
@@ -547,6 +576,16 @@ def run_real_probe(args: argparse.Namespace) -> int:
     voc_spellings: list[str] = []
 
     for spec in _get_endpoints(args):
+        if spec["key"] == "study_records" and getattr(args, "study_records_from_today", False):
+            match_by = getattr(args, "study_records_match", "voc_ids")
+            values = voc_ids if match_by == "voc_ids" else voc_spellings
+            if not values:
+                print(f"[probe] skip {spec['key']}: no {match_by} extracted from today_items")
+                continue
+            body = json.loads(spec.get("body") or "{}")
+            body[match_by] = values[: getattr(args, "enrichment_limit", 3)]
+            spec["body"] = json.dumps(body)
+
         if getattr(args, "probe_enrichment", False):
             if spec["key"] == "vocabulary_query_ids":
                 if not voc_ids:
@@ -585,6 +624,16 @@ def run_real_probe(args: argparse.Namespace) -> int:
                 if it.get("voc_spelling"):
                     voc_spellings.append(it["voc_spelling"])
             print(f"[probe] enrichment extracted {len(voc_ids)} ids, {len(voc_spellings)} spellings")
+
+        if spec["key"] == "today_items" and getattr(args, "study_records_from_today", False):
+            items = parse_today_items_response(data)
+            limit = getattr(args, "enrichment_limit", 3)
+            for it in items[:limit]:
+                if it.get("voc_id"):
+                    voc_ids.append(it["voc_id"])
+                if it.get("voc_spelling"):
+                    voc_spellings.append(it["voc_spelling"])
+            print(f"[probe] study_records source extracted {len(voc_ids)} ids, {len(voc_spellings)} spellings")
 
         if args.shape_only:
             shape = summarize_shape(data, max_items=args.limit)
@@ -646,6 +695,12 @@ def main(argv: list[str] | None = None) -> int:
         help="max number of list items to summarize in shape-only mode",
     )
     parser.add_argument(
+        "--today-items-limit",
+        type=int,
+        default=None,
+        help="optional limit for get_today_items (OpenAPI max 1000)",
+    )
+    parser.add_argument(
         "--probe-study-records",
         action="store_true",
         help="enable custom parameters for query_study_records",
@@ -666,7 +721,30 @@ def main(argv: list[str] | None = None) -> int:
         "--study-records-next-date",
         type=str,
         default=None,
-        help="next_study_date for query_study_records (e.g. YYYY-MM-DD)",
+        help="next_study_date.end for query_study_records (ISO datetime; next-study planning only)",
+    )
+    parser.add_argument(
+        "--study-records-voc-ids",
+        type=str,
+        default=None,
+        help="comma-separated voc_ids for precise query_study_records lookup",
+    )
+    parser.add_argument(
+        "--study-records-spellings",
+        type=str,
+        default=None,
+        help="comma-separated spellings for precise query_study_records lookup",
+    )
+    parser.add_argument(
+        "--study-records-from-today",
+        action="store_true",
+        help="extract a few values from today_items and use them for precise query_study_records lookup",
+    )
+    parser.add_argument(
+        "--study-records-match",
+        choices=["voc_ids", "spellings"],
+        default="voc_ids",
+        help="field to use with --study-records-from-today",
     )
     parser.add_argument(
         "--probe-enrichment",

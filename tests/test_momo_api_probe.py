@@ -357,7 +357,7 @@ class TestStudyRecordsParams(unittest.TestCase):
         body = json.loads(study_records["body"])
         self.assertEqual(body["limit"], 10)
         self.assertEqual(body["as_count"], True)
-        self.assertEqual(body["next_study_date"], "2026-07-06")
+        self.assertEqual(body["next_study_date"], {"end": "2026-07-06"})
 
     def test_probe_study_records_as_count_false(self):
         args = type("Args", (), {
@@ -369,6 +369,29 @@ class TestStudyRecordsParams(unittest.TestCase):
         import json
         body = json.loads(study_records["body"])
         self.assertEqual(body["as_count"], False)
+
+    def test_probe_study_records_with_voc_ids(self):
+        args = type("Args", (), {
+            "probe_study_records": True,
+            "study_records_voc_ids": "v1, v2",
+        })()
+        endpoints = _probe._get_endpoints(args)
+        study_records = next(e for e in endpoints if e["key"] == "study_records")
+        import json
+        body = json.loads(study_records["body"])
+        self.assertEqual(body["voc_ids"], ["v1", "v2"])
+
+    def test_probe_study_records_from_today_placeholder(self):
+        args = type("Args", (), {
+            "probe_study_records": True,
+            "study_records_from_today": True,
+            "study_records_match": "voc_ids",
+        })()
+        endpoints = _probe._get_endpoints(args)
+        study_records = next(e for e in endpoints if e["key"] == "study_records")
+        import json
+        body = json.loads(study_records["body"])
+        self.assertEqual(body["voc_ids"], ["<from_today_items_voc_ids>"])
 
 class TestEnrichmentParams(unittest.TestCase):
     def test_enrichment_dry_run(self):
@@ -388,4 +411,3 @@ class TestEnrichmentParams(unittest.TestCase):
         self.assertIn("interpretations", keys)
         self.assertIn("phrases", keys)
         self.assertNotIn("study_progress", keys)
-

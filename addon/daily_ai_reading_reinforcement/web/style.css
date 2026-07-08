@@ -399,6 +399,26 @@ h2 {
   padding: 12px;
 }
 
+.desktop-settings-panel {
+  margin: 0 auto 16px;
+  max-width: 1600px;
+}
+
+.desktop-settings-body {
+  display: grid;
+  gap: 12px;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  padding: 14px;
+}
+
+.settings-actions {
+  align-items: center;
+  display: flex;
+  gap: 12px;
+  grid-column: 1 / -1;
+  justify-content: flex-end;
+}
+
 .form-field {
   display: grid;
   gap: 6px;
@@ -922,9 +942,15 @@ h2 {
   }
 
   .settings-editor,
+  .desktop-settings-body,
   .preset-grid,
   .model-tools {
     grid-template-columns: 1fr;
+  }
+
+  .settings-actions {
+    align-items: stretch;
+    flex-direction: column;
   }
 
   /* Narrow screen: stack header/tabs/body/notes; tabs switch between

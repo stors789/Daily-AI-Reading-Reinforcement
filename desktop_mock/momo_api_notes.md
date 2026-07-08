@@ -222,10 +222,19 @@ Real-token smoke found that POST /api/v1/study/get_today_items with limit=5000 r
 Find a safe request shape for `query_study_records`.
 
 ### Results
-Not yet verified with real token.
+Verified with real token on 2026-07-08 using `desktop_mock/momo_api_probe.py`.
+
+| query shape | status | observed shape | decision |
+|---|---:|---|---|
+| `{}` | 200 | default planning-oriented records, 50 by default | Do not use in UI enrichment; it is not scoped to today's visible items. |
+| `{"voc_ids": [...]}` from `get_today_items` | 200 | same number of records as requested IDs in the sample | Use this as the preferred precise enrichment path. |
+| `{"spellings": [...]}` from `get_today_items` | 200 | same number of records as requested spellings in the sample | Valid fallback when IDs are unavailable. |
+| `{"next_study_date": {"end": "..."}}` | documented | filters by next planned review date | Do not use to infer "reviewed today". |
 
 ### Mapping decision
-- `review_count` can/cannot be derived from `study_count`.
+- `review_count` maps from `StudyRecord.study_count`, with
+  `review_count_status=provider_value_unverified` because MoMo defines it as
+  "学习次数（每日最多计入 1 次）", not as an Anki-style same-day review count.
 - Join key is `voc_id` if available.
 - If study_records is unavailable, keep `review_count_status=unavailable`.
 
@@ -250,6 +259,39 @@ Decision:
 Future:
 - Phase 18 should probe Vocabulary / Interpretation / Phrase APIs for card enrichment.
 - Notepad and Note write APIs are future optional write features and must remain opt-in.
+
+## Phase 28: Today-study source correction
+
+Official basis: `api_bundle.yaml` from <https://open.maimemo.com/#/>.
+
+Real-token validation via `desktop_mock/momo_api_probe.py`:
+
+- `POST /api/v1/study/get_today_items` with body `{"limit": 1000}` returned
+  200 and `data.today_items[]` with `voc_id`, `voc_spelling`, `order`,
+  `first_response`, `is_new`, `is_finished`.
+- `POST /api/v1/study/query_study_records` with body
+  `{"voc_ids": [...]}` returned 200 and matching `data.records[]` with
+  `last_response`, `study_count`, `next_study_date`.
+- The same precise lookup with `{"spellings": [...]}` returned 200.
+- `GET /api/v1/markji/decks` returned 403 for the available MoMo token, so
+  Markji must not be the primary source for "today's study words".
+
+Provider decision:
+
+- `RealMoMoDeckProvider.get_today_decks()` now returns a single `momo_today`
+  row derived from `get_today_items` plus `get_study_progress`.
+- `RealMoMoDeckProvider.get_deck_cards("momo_today")` now fetches today items
+  first, then uses `voc_ids` to precisely enrich only those items via
+  `query_study_records`.
+- `next_study_date` is stored only as scheduling/planning data in MoMo's
+  `StudyRecord`; it is not a signal that the word was reviewed today.
+- `is_finished=false` maps to UI status `unfinished`, not to forgotten.
+- `is_failed` / forgotten maps from `first_response == "FORGET"` only.
+  `StudyRecord.last_response` is not used for today's failed/vague labels
+  because it can change after the word is finished.
+- UI "vague" selection/tagging maps to the yellow MoMo button only:
+  `first_response == "VAGUE"`. The green "认识" button maps to `FAMILIAR`
+  and is not included in vague.
 
 ## Phase 18 Vocabulary / Interpretation / Phrase enrichment probe
 
@@ -369,4 +411,3 @@ Decision:
 - `FORGET` and `VAGUE` are detected from `first_response` / `last_response`.
 - `is_finished=false` is not treated as forgotten.
 - `study_count` is not used for selection.
-

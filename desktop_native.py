@@ -28,7 +28,7 @@ def build_parser() -> argparse.ArgumentParser:
     parser.add_argument(
         "--provider",
         choices=desktop_app.PROVIDER_CHOICES,
-        default="mock",
+        default=desktop_app.default_provider(),
         help="Deck provider to use for the desktop server.",
     )
     parser.add_argument(

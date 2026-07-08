@@ -14,6 +14,7 @@ from __future__ import annotations
 import json
 import os
 import sys
+from datetime import datetime, timedelta
 from functools import lru_cache
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 from pathlib import Path
@@ -50,6 +51,65 @@ HOST = "127.0.0.1"
 PORT = 8755
 
 
+def _load_provider_config() -> dict[str, Any]:
+    if not _DESKTOP_ADAPTERS_AVAILABLE:
+        return {}
+    try:
+        return DesktopConfigAdapter().load() or {}
+    except Exception:
+        return {}
+
+
+def _momo_api_key(
+    environ: Mapping[str, str] | None = None,
+    config: dict[str, Any] | None = None,
+) -> str:
+    if environ is None:
+        environ = os.environ
+    token = environ.get("MOMO_TOKEN") or environ.get("Maimemo_key")
+    if token:
+        return str(token).strip()
+    if config is None:
+        config = _load_provider_config()
+    return str(config.get("momo_api_key") or "").strip()
+
+
+def _time_setting(value: Any, fallback: str = "04:00") -> str:
+    text = str(value or "").strip()
+    try:
+        hour_text, minute_text = text.split(":", 1)
+        hour = int(hour_text)
+        minute = int(minute_text)
+    except (TypeError, ValueError):
+        return fallback
+    if hour < 0 or hour > 23 or minute < 0 or minute > 59:
+        return fallback
+    return f"{hour:02d}:{minute:02d}"
+
+
+def _study_window(config: dict[str, Any]) -> tuple[int, int]:
+    start_text = _time_setting(config.get("momo_day_start"))
+    end_text = _time_setting(config.get("momo_day_end"))
+    now = datetime.now()
+    start_hour, start_minute = [int(part) for part in start_text.split(":", 1)]
+    end_hour, end_minute = [int(part) for part in end_text.split(":", 1)]
+    start = now.replace(hour=start_hour, minute=start_minute, second=0, microsecond=0)
+    if now < start:
+        start = start - timedelta(days=1)
+    end = start.replace(hour=end_hour, minute=end_minute)
+    if end <= start:
+        end = end + timedelta(days=1)
+    return int(start.timestamp()), int(end.timestamp())
+
+
+def _desktop_settings_payload(config: dict[str, Any]) -> dict[str, Any]:
+    return {
+        "hasMomoApiKey": bool(_momo_api_key(config=config)),
+        "momoDayStart": _time_setting(config.get("momo_day_start")),
+        "momoDayEnd": _time_setting(config.get("momo_day_end")),
+    }
+
+
 def build_deck_provider(environ: Mapping[str, str] | None = None) -> Any:
     if environ is None:
         environ = os.environ
@@ -61,7 +121,7 @@ def build_deck_provider(environ: Mapping[str, str] | None = None) -> Any:
         print(f"Using AnkiConnectDeckProvider ({base_url})")
         return AnkiConnectDeckProvider(base_url=base_url)
     elif provider_type == "real_momo":
-        token = environ.get("MOMO_TOKEN") or environ.get("Maimemo_key")
+        token = _momo_api_key(environ)
         if not token:
             raise ValueError("MOMO_TOKEN is missing. Cannot start real_momo provider.")
         print("Using RealMoMoDeckProvider (MOMO_TOKEN present)")
@@ -77,6 +137,7 @@ def build_deck_provider(environ: Mapping[str, str] | None = None) -> Any:
 # It is initialized lazily so importing this module never starts network-backed
 # providers or exits the process.
 DECK_PROVIDER: Any | None = None
+MOMO_PROVIDER: Any | None = None
 
 
 def get_deck_provider() -> Any:
@@ -84,6 +145,43 @@ def get_deck_provider() -> Any:
     if DECK_PROVIDER is None:
         DECK_PROVIDER = build_deck_provider()
     return DECK_PROVIDER
+
+
+def get_momo_provider() -> Any | None:
+    global MOMO_PROVIDER
+    token = _momo_api_key()
+    if not token:
+        return None
+    if MOMO_PROVIDER is None or getattr(MOMO_PROVIDER, "_token", "") != token:
+        MOMO_PROVIDER = RealMoMoDeckProvider(token=token)
+    return MOMO_PROVIDER
+
+
+def _momo_deck_rows() -> list[dict[str, Any]]:
+    provider = get_momo_provider()
+    if provider is None:
+        return []
+    try:
+        return list(provider.get_today_decks())
+    except Exception as exc:
+        sys.stderr.write(f"[mock] MoMo provider load skipped: {type(exc).__name__}\n")
+        return []
+
+
+def _merge_momo_decks(decks: list[dict[str, Any]], deck_provider: Any) -> list[dict[str, Any]]:
+    if isinstance(deck_provider, RealMoMoDeckProvider):
+        return decks
+    momo_decks = _momo_deck_rows()
+    if not momo_decks:
+        return decks
+    seen = {str(deck.get("id") or "") for deck in decks}
+    merged = list(decks)
+    for deck in momo_decks:
+        deck_id = str(deck.get("id") or "")
+        if deck_id and deck_id not in seen:
+            merged.append(deck)
+            seen.add(deck_id)
+    return merged
 
 
 # Actions the mock understands. Anything else returns an error event so the
@@ -132,6 +230,11 @@ def _save_desktop_config(config: dict[str, Any]) -> None:
 def _state_payload(last_selected_deck_id: str, decks: list[dict[str, Any]]) -> dict[str, Any]:
     config = _load_desktop_config()
     payload = build_state_payload(last_selected_deck_id, decks=decks)
+    active_config = config or _desktop_default_config()
+    day_start, day_end = _study_window(active_config)
+    payload["dayStart"] = day_start
+    payload["dayEnd"] = day_end
+    payload["desktopSettings"] = _desktop_settings_payload(active_config)
     if not config:
         return payload
     payload["promptPresets"] = list(config.get("prompt_presets") or payload["promptPresets"])
@@ -142,8 +245,15 @@ def _state_payload(last_selected_deck_id: str, decks: list[dict[str, Any]]) -> d
     payload["collapsedDeckGroups"] = list(
         config.get("collapsed_deck_groups") or payload["collapsedDeckGroups"]
     )
+    available_deck_ids = {str(deck.get("id") or "") for deck in decks}
+    saved_deck_id = str(config.get("last_selected_deck_id") or "")
+    requested_deck_id = str(last_selected_deck_id or "")
     payload["lastSelectedDeckId"] = (
-        config.get("last_selected_deck_id") or last_selected_deck_id
+        saved_deck_id
+        if saved_deck_id in available_deck_ids
+        else requested_deck_id
+        if requested_deck_id in available_deck_ids
+        else ""
     )
     try:
         from mock_data import _api_settings_payload
@@ -251,7 +361,10 @@ def resolve_generation_context(deck_id: str, payload: dict[str, Any]) -> dict[st
     the diagnostic prompt is built from the same provider cards and preset
     resolution as the real LLM request.
     """
-    cards_data = get_deck_provider().get_deck_cards(deck_id)
+    deck_provider = get_momo_provider() if deck_id.startswith("momo_") else get_deck_provider()
+    if deck_provider is None:
+        raise RuntimeError("MoMo API key is not configured.")
+    cards_data = deck_provider.get_deck_cards(deck_id)
     deck_name = str(cards_data.get("name") or "Desktop Deck")
     raw_cards = cards_data.get("cards", [])
     if not isinstance(raw_cards, list):
@@ -435,7 +548,8 @@ def handle_action(action: str, payload: dict[str, Any]) -> dict[str, Any]:
     if action == "load":
         last_selected = str((payload or {}).get("lastSelectedDeckId") or "")
         try:
-            decks = get_deck_provider().get_today_decks()
+            deck_provider = get_deck_provider()
+            decks = _merge_momo_decks(deck_provider.get_today_decks(), deck_provider)
             return {"event": "state", "payload": _state_payload(last_selected, decks)}
         except Exception as exc:
             err_type = type(exc).__name__
@@ -445,7 +559,10 @@ def handle_action(action: str, payload: dict[str, Any]) -> dict[str, Any]:
     if action == "selectDeck":
         deck_id = str((payload or {}).get("deckId") or "")
         try:
-            cards_data = get_deck_provider().get_deck_cards(deck_id)
+            deck_provider = get_momo_provider() if deck_id.startswith("momo_") else get_deck_provider()
+            if deck_provider is None:
+                return {"event": "error", "payload": {"message": "MoMo API key is not configured."}}
+            cards_data = deck_provider.get_deck_cards(deck_id)
             config = _load_desktop_config()
             if config:
                 config["last_selected_deck_id"] = deck_id
@@ -476,7 +593,10 @@ def handle_action(action: str, payload: dict[str, Any]) -> dict[str, Any]:
     if action == "saveFieldConfig":
         deck_id = str((payload or {}).get("deckId") or "")
         try:
-            cards_data = get_deck_provider().get_deck_cards(deck_id)
+            deck_provider = get_momo_provider() if deck_id.startswith("momo_") else get_deck_provider()
+            if deck_provider is None:
+                return {"event": "error", "payload": {"message": "MoMo API key is not configured."}}
+            cards_data = deck_provider.get_deck_cards(deck_id)
         except Exception:
             return {"event": "error", "payload": {"message": "Select a deck before saving fields."}}
         cards = cards_data.get("cards") or []
@@ -510,7 +630,10 @@ def handle_action(action: str, payload: dict[str, Any]) -> dict[str, Any]:
             return {"event": "articleCardSaved", "payload": {"articleCard": None}}
         deck_id = str((payload or {}).get("deckId") or "")
         try:
-            cards_data = get_deck_provider().get_deck_cards(deck_id)
+            deck_provider = get_momo_provider() if deck_id.startswith("momo_") else get_deck_provider()
+            if deck_provider is None:
+                return {"event": "articleCardSaved", "payload": {"articleCardError": "MoMo API key is not configured."}}
+            cards_data = deck_provider.get_deck_cards(deck_id)
             deck_name = str(cards_data.get("name") or "Desktop Deck")
             raw_cards = cards_data.get("cards", [])
             selected_card_ids = payload.get("cardIds")
@@ -575,6 +698,29 @@ def handle_action(action: str, payload: dict[str, Any]) -> dict[str, Any]:
 
         if action == "getConfig":
             return {"event": "configLoaded", "payload": config}
+        if action == "saveDesktopSettings":
+            settings = payload.get("settings") or {}
+            momo_key = str(settings.get("momoApiKey") or "").strip()
+            clear_momo_key = bool(settings.get("clearMomoApiKey"))
+            if momo_key:
+                config["momo_api_key"] = momo_key
+            elif clear_momo_key:
+                config["momo_api_key"] = ""
+            config["momo_day_start"] = _time_setting(settings.get("momoDayStart"))
+            config["momo_day_end"] = _time_setting(settings.get("momoDayEnd"))
+            config_adapter.save(config)
+            global MOMO_PROVIDER
+            MOMO_PROVIDER = None
+            day_start, day_end = _study_window(config)
+            return {
+                "event": "desktopSettingsSaved",
+                "payload": {
+                    "desktopSettings": _desktop_settings_payload(config),
+                    "dayStart": day_start,
+                    "dayEnd": day_end,
+                    "message": "Desktop settings saved.",
+                },
+            }
         if action == "saveApiSettings":
             settings = payload.get("settings") or {}
             try:

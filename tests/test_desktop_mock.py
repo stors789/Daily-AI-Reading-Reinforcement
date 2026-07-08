@@ -49,12 +49,81 @@ class TestHandleAction(unittest.TestCase):
             "providerProfiles",
             "apiSettings",
             "articleCardSettings",
+            "desktopSettings",
         ):
             self.assertIn(key, payload, f"state payload missing {key}")
 
     def test_load_returns_two_decks(self) -> None:
-        result = _main.handle_action("load", {})
+        with patch.object(_main, "get_momo_provider", return_value=None):
+            result = _main.handle_action("load", {})
         self.assertEqual(len(result["payload"]["decks"]), 2)
+
+    def test_load_merges_saved_momo_deck(self) -> None:
+        fake_momo = type(
+            "FakeMoMo",
+            (),
+            {
+                "get_today_decks": lambda self: [
+                    {"id": "momo_today", "name": "MoMo Today", "totalCount": 2, "newCount": 1, "failedCount": 0, "isGroup": False}
+                ]
+            },
+        )()
+        with patch.object(_main, "get_momo_provider", return_value=fake_momo):
+            result = _main.handle_action("load", {})
+
+        deck_ids = [deck["id"] for deck in result["payload"]["decks"]]
+        self.assertIn("momo_today", deck_ids)
+
+    def test_select_momo_deck_routes_to_momo_provider(self) -> None:
+        fake_momo = type(
+            "FakeMoMo",
+            (),
+            {
+                "get_deck_cards": lambda self, deck_id: {
+                    "deckId": deck_id,
+                    "cards": [{"cid": "1", "term": "墨墨", "fields": {"term": "墨墨"}}],
+                    "fields": ["term"],
+                    "selectedFields": ["term"],
+                }
+            },
+        )()
+        with patch.object(_main, "get_momo_provider", return_value=fake_momo):
+            result = _main.handle_action("selectDeck", {"deckId": "momo_today"})
+
+        self.assertEqual(result["event"], "deckCards")
+        self.assertEqual(result["payload"]["deckId"], "momo_today")
+        self.assertEqual(len(result["payload"]["cards"]), 1)
+
+    def test_save_desktop_settings_persists_safe_payload(self) -> None:
+        with tempfile.TemporaryDirectory() as tmpdir, patch.dict(
+            os.environ,
+            {"DESKTOP_CONFIG_PATH": str(Path(tmpdir) / "config.json")},
+            clear=True,
+        ):
+            result = _main.handle_action(
+                "saveDesktopSettings",
+                {"settings": {"momoApiKey": "secret-momo", "momoDayStart": "05:30", "momoDayEnd": "01:15"}},
+            )
+
+        self.assertEqual(result["event"], "desktopSettingsSaved")
+        settings = result["payload"]["desktopSettings"]
+        self.assertTrue(settings["hasMomoApiKey"])
+        self.assertEqual(settings["momoDayStart"], "05:30")
+        self.assertEqual(settings["momoDayEnd"], "01:15")
+        self.assertNotIn("secret-momo", str(result))
+
+    def test_state_payload_drops_stale_saved_deck_id(self) -> None:
+        with patch.object(
+            _main,
+            "_load_desktop_config",
+            return_value={"last_selected_deck_id": "deck-english"},
+        ):
+            payload = _main._state_payload(
+                "",
+                [{"id": "anki-real-deck", "name": "Anki Real Deck"}],
+            )
+
+        self.assertEqual(payload["lastSelectedDeckId"], "")
 
     def test_select_deck_returns_cards(self) -> None:
         result = _main.handle_action("selectDeck", {"deckId": "deck-japanese"})
@@ -328,7 +397,8 @@ class TestProviderIntegration(unittest.TestCase):
     """Verify handle_action routes through the provider correctly."""
 
     def test_load_passes_decks_from_provider(self) -> None:
-        result = _main.handle_action("load", {})
+        with patch.object(_main, "get_momo_provider", return_value=None):
+            result = _main.handle_action("load", {})
         payload = result["payload"]
         self.assertEqual(len(payload["decks"]), 2)
         names = [d["name"] for d in payload["decks"]]

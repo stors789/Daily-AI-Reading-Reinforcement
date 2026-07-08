@@ -21,6 +21,26 @@ DEFAULT_HOST = "127.0.0.1"
 DEFAULT_PORT = 8755
 DEFAULT_ANKICONNECT_URL = "http://127.0.0.1:8765"
 PROVIDER_CHOICES = ("mock", "real_momo", "ankiconnect")
+DEFAULT_DEV_PROVIDER = "mock"
+DEFAULT_PACKAGED_PROVIDER = "ankiconnect"
+
+
+def is_frozen_app() -> bool:
+    return bool(getattr(sys, "frozen", False))
+
+
+def default_provider(
+    *,
+    environ: MutableMapping[str, str] | None = None,
+    frozen: bool | None = None,
+) -> str:
+    env = os.environ if environ is None else environ
+    configured = env.get("DAIRR_DESKTOP_PROVIDER")
+    if configured in PROVIDER_CHOICES:
+        return configured
+    if frozen is None:
+        frozen = is_frozen_app()
+    return DEFAULT_PACKAGED_PROVIDER if frozen else DEFAULT_DEV_PROVIDER
 
 
 def build_parser() -> argparse.ArgumentParser:
@@ -30,7 +50,7 @@ def build_parser() -> argparse.ArgumentParser:
     parser.add_argument(
         "--provider",
         choices=PROVIDER_CHOICES,
-        default="mock",
+        default=default_provider(),
         help="Deck provider to use for the desktop server.",
     )
     parser.add_argument(

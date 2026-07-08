@@ -33,6 +33,12 @@ def _load_module(name: str, path: Path):
 
 
 class TestDesktopNativeCli(unittest.TestCase):
+    def test_default_provider_matches_packaged_desktop_default(self) -> None:
+        with patch.dict(os.environ, {}, clear=True), patch.object(sys, "frozen", True, create=True):
+            args = desktop_native.parse_args([])
+
+        self.assertEqual(args.provider, "ankiconnect")
+
     def test_parse_args_accepts_native_options(self) -> None:
         args = desktop_native.parse_args([
             "--provider",

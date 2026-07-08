@@ -1,15 +1,13 @@
-"""Phase 10: Real MoMo DeckProvider skeleton.
+"""Real MoMo DeckProvider for the desktop mock / standalone app.
 
 This module provides the RealMoMoDeckProvider class, which interacts with
 the real MoMo (墨墨) Open API. It implements the same high-level interface
 (get_today_decks, get_deck_cards) as MockMoMoDeckProvider, but sources its
 data from the network.
 
-Currently, this is a skeleton:
-- get_today_decks() fetches Markji decks but fills newCount/failedCount
-  with default values (0).
-- get_deck_cards(deck_id) uses a conservative skeleton strategy (Strategy A)
-  and does not yet fetch real cards, returning an empty list.
+The provider treats the study API's get_today_items endpoint as the primary
+source for today's learning words, then uses precise query_study_records
+lookups by voc_id for optional review-count / last-response enrichment.
 """
 
 from __future__ import annotations
@@ -19,6 +17,10 @@ import urllib.error
 import urllib.request
 from typing import Any, Callable
 
+
+MOMO_TODAY_DECK_ID = "momo_today"
+MOMO_TODAY_DECK_NAME = "MoMo Today"
+TODAY_ITEMS_LIMIT = 1000
 
 
 class MoMoAPIError(RuntimeError):
@@ -115,6 +117,34 @@ def parse_vocabulary_query_response(data: Any) -> list[dict[str, Any]]:
     return [v for v in voc if isinstance(v, dict)]
 
 
+def _is_forget(value: Any) -> bool:
+    return isinstance(value, str) and value.upper() == "FORGET"
+
+
+def _today_item_status(item: dict[str, Any]) -> str:
+    if bool(item.get("is_new")):
+        return "new"
+    if item.get("is_finished") is True:
+        return "finished"
+    if item.get("is_finished") is False:
+        return "unfinished"
+    return "unknown"
+
+
+def _unique_nonempty_strings(values: list[Any]) -> list[str]:
+    seen: set[str] = set()
+    out: list[str] = []
+    for value in values:
+        if value is None:
+            continue
+        text = str(value)
+        if not text or text in seen:
+            continue
+        seen.add(text)
+        out.append(text)
+    return out
+
+
 class RealMoMoDeckProvider:
     """Real provider interacting with the MoMo Open API.
     
@@ -168,9 +198,16 @@ class RealMoMoDeckProvider:
         return self._request("POST", "/api/v1/study/get_study_progress", body={})
 
     def get_today_items_raw(
-        self, is_finished: bool | None = None, is_new: bool | None = None, limit: int | None = None
+        self,
+        is_finished: bool | None = None,
+        is_new: bool | None = None,
+        limit: int | None = None,
+        voc_ids: list[str] | None = None,
+        spellings: list[str] | None = None,
     ) -> dict[str, Any]:
         """Fetch raw today items. Only set parameters are included in the request body."""
+        if voc_ids is not None and spellings is not None:
+            raise ValueError("voc_ids and spellings are mutually exclusive")
         body: dict[str, Any] = {}
         if is_finished is not None:
             body["is_finished"] = is_finished
@@ -178,15 +215,32 @@ class RealMoMoDeckProvider:
             body["is_new"] = is_new
         if limit is not None:
             body["limit"] = limit
+        if voc_ids is not None:
+            body["voc_ids"] = voc_ids
+        if spellings is not None:
+            body["spellings"] = spellings
         return self._request("POST", "/api/v1/study/get_today_items", body=body)
 
     def query_study_records_raw(
-        self, next_study_date: str | None = None, as_count: bool | None = None, limit: int | None = None
+        self,
+        next_study_date: dict[str, str] | None = None,
+        voc_ids: list[str] | None = None,
+        spellings: list[str] | None = None,
+        as_count: bool | None = None,
+        limit: int | None = None,
     ) -> dict[str, Any]:
         """Query raw study records."""
+        if voc_ids is not None and spellings is not None:
+            raise ValueError("voc_ids and spellings are mutually exclusive")
+        if next_study_date is not None and not isinstance(next_study_date, dict):
+            raise ValueError("next_study_date must be an object with start/end keys")
         body: dict[str, Any] = {}
         if next_study_date is not None:
             body["next_study_date"] = next_study_date
+        if voc_ids is not None:
+            body["voc_ids"] = voc_ids
+        if spellings is not None:
+            body["spellings"] = spellings
         if as_count is not None:
             body["as_count"] = as_count
         if limit is not None:
@@ -211,55 +265,45 @@ class RealMoMoDeckProvider:
     # --- High-level mappings ---
 
     def get_today_decks(self) -> list[dict[str, Any]]:
-        """Return deck rows mapped from Markji decks."""
+        """Return the MoMo Today row from study data.
+
+        ``get_today_items`` is the authoritative source for today's words.
+        Markji decks are a separate product line and may be unavailable for
+        a MoMo 背单词 token.
+        """
         try:
-            raw_data = self.get_markji_decks_raw()
-            decks = parse_markji_deck_list_response(raw_data)
+            raw_items = self.get_today_items_raw(limit=TODAY_ITEMS_LIMIT)
+            items = parse_today_items_response(raw_items)
         except MoMoAPIError:
-            # Fallback for markji 403
-            decks = None
-        
-        if decks is None:
-            # Try to get study progress for totalCount fallback
-            total_count = 0
-            try:
-                prog_raw = self.get_study_progress_raw()
-                prog = parse_study_progress_response(prog_raw)
-                total_count = prog.get("total", 0)
-            except MoMoAPIError:
-                pass
-            
             return [{
-                "id": "momo_today",
-                "name": "MoMo Today",
+                "id": MOMO_TODAY_DECK_ID,
+                "name": MOMO_TODAY_DECK_NAME,
                 "newCount": 0,
                 "failedCount": 0,
-                "totalCount": total_count,
+                "totalCount": self._safe_today_total(0),
                 "isGroup": False,
             }]
 
-        result = []
-        for deck in decks:
-            result.append({
-                "id": deck.get("id", ""),
-                "name": deck.get("name", "Unknown Deck"),
-                "totalCount": deck.get("card_count", 0),
-                "newCount": 0,      # TODO: per-deck new count not exposed in confirmed spec
-                "failedCount": 0,   # TODO: per-deck failed count not exposed in confirmed spec
-                "isGroup": False,   # TODO: verify parent_id / root_deck semantics with real data
-            })
-        return result
+        records, _records_available = self._query_records_for_today_items(items)
+        return [{
+            "id": MOMO_TODAY_DECK_ID,
+            "name": MOMO_TODAY_DECK_NAME,
+            "newCount": sum(1 for item in items if bool(item.get("is_new"))),
+            "failedCount": sum(1 for item in items if self._today_item_is_failed(item)),
+            "totalCount": self._safe_today_total(len(items)),
+            "isGroup": False,
+        }]
 
     def get_deck_cards(self, deck_id: str) -> dict[str, Any]:
         """Return skeleton deck cards or study-based cards.
         
         Strategy A: Conservative skeleton.
-        If deck_id is 'momo_today' (fallback deck), uses today_items
-        and query_study_records_raw to populate cards.
+        If deck_id is 'momo_today', uses today_items and a precise
+        voc_id-based query_study_records lookup to populate cards.
         """
-        if deck_id == "momo_today":
+        if deck_id == MOMO_TODAY_DECK_ID:
             try:
-                raw_items = self.get_today_items_raw(limit=500)
+                raw_items = self.get_today_items_raw(limit=TODAY_ITEMS_LIMIT)
             except MoMoAPIError as exc:
                 raise MoMoProviderDataError("today_items_request") from exc
                 
@@ -277,15 +321,7 @@ class RealMoMoDeckProvider:
                     "fields": deck_fields,
                     "selectedFields": ["term"],
                 }
-            
-            records_available = False
-            try:
-                raw_records = self.query_study_records_raw()
-                records_data = parse_study_records_response(raw_records)
-                records = {r.get("voc_id"): r for r in records_data.get("records", []) if "voc_id" in r}
-                records_available = True
-            except MoMoAPIError:
-                records = {}
+            records, records_available = self._query_records_for_today_items(items)
             
             try:
 
@@ -297,34 +333,25 @@ class RealMoMoDeckProvider:
                     voc_spelling = item.get("voc_spelling", str(voc_id))
                     is_new = bool(item.get("is_new"))
                     first_response = item.get("first_response")
-                    last_response = item.get("last_response")
+                    record = records.get(str(voc_id), {})
+                    last_response = record.get("last_response")
                     is_finished = item.get("is_finished")
 
-                    # Phase 16: is_failed reserved for FORGET only;
-                    # is_finished=False maps to status="unfinished" instead.
-                    is_failed = first_response == "FORGET"
-
-                    # Derive status from study item state.
-                    if is_new:
-                        status = "new"
-                    elif is_finished is True:
-                        status = "finished"
-                    elif is_finished is False:
-                        status = "unfinished"
-                    else:
-                        status = "unknown"
+                    # Today's failed/vague labels mean the first response made
+                    # today. last_response can change after the word is finished.
+                    is_failed = _is_forget(first_response)
+                    status = _today_item_status(item)
 
                     review_count = 0
                     review_count_status = "unavailable"
                     if records_available:
                         review_count_status = "provider_value_unverified"
-                        if voc_id in records:
-                            review_count = records[voc_id].get("study_count", 0)
+                        review_count = record.get("study_count", 0)
 
                     card_fields = {
                         "term": voc_spelling,
                         "status": status,
-                        "source": "MoMo Today",
+                        "source": MOMO_TODAY_DECK_NAME,
                         "review_count_status": review_count_status,
                     }
                     cards.append({
@@ -355,3 +382,31 @@ class RealMoMoDeckProvider:
             "fields": ["term", "status", "source", "review_count_status"],
             "selectedFields": ["term"],
         }
+
+    def _safe_today_total(self, fallback: int) -> int:
+        try:
+            prog_raw = self.get_study_progress_raw()
+            prog = parse_study_progress_response(prog_raw)
+            total = prog.get("total")
+            return total if isinstance(total, int) else fallback
+        except MoMoAPIError:
+            return fallback
+
+    def _query_records_for_today_items(self, items: list[dict[str, Any]]) -> tuple[dict[str, dict[str, Any]], bool]:
+        voc_ids = _unique_nonempty_strings([item.get("voc_id") for item in items])
+        if not voc_ids:
+            return {}, False
+        try:
+            raw_records = self.query_study_records_raw(voc_ids=voc_ids[:1000])
+            records_data = parse_study_records_response(raw_records)
+            records = {
+                str(r.get("voc_id")): r
+                for r in records_data.get("records", [])
+                if r.get("voc_id") is not None
+            }
+            return records, True
+        except MoMoAPIError:
+            return {}, False
+
+    def _today_item_is_failed(self, item: dict[str, Any]) -> bool:
+        return _is_forget(item.get("first_response"))

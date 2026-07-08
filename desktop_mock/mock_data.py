@@ -72,6 +72,14 @@ def _article_card_settings_payload() -> dict[str, Any]:
     }
 
 
+def _desktop_settings_payload(config: dict[str, Any]) -> dict[str, Any]:
+    return {
+        "hasMomoApiKey": bool(str(config.get("momo_api_key") or "").strip()),
+        "momoDayStart": str(config.get("momo_day_start") or "04:00"),
+        "momoDayEnd": str(config.get("momo_day_end") or "04:00"),
+    }
+
+
 def _prompt_presets() -> list[dict[str, str]]:
     presets = DEFAULT_CONFIG.get("prompt_presets") or []
     return [dict(preset) for preset in presets]
@@ -256,6 +264,7 @@ def build_state_payload(
         "providerProfiles": _provider_profiles_payload(),
         "apiSettings": _api_settings_payload(config),
         "articleCardSettings": _article_card_settings_payload(),
+        "desktopSettings": _desktop_settings_payload(config),
     }
 
 

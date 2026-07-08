@@ -30,6 +30,24 @@ def _load_module(name: str, path: Path):
 
 
 class TestDesktopAppCli(unittest.TestCase):
+    def test_default_provider_is_mock_in_dev_mode(self) -> None:
+        with patch.dict(os.environ, {}, clear=True), patch.object(sys, "frozen", False, create=True):
+            args = desktop_app.parse_args([])
+
+        self.assertEqual(args.provider, "mock")
+
+    def test_default_provider_is_ankiconnect_when_frozen(self) -> None:
+        with patch.dict(os.environ, {}, clear=True), patch.object(sys, "frozen", True, create=True):
+            args = desktop_app.parse_args([])
+
+        self.assertEqual(args.provider, "ankiconnect")
+
+    def test_default_provider_can_be_overridden_by_environment(self) -> None:
+        with patch.dict(os.environ, {"DAIRR_DESKTOP_PROVIDER": "real_momo"}, clear=True):
+            args = desktop_app.parse_args([])
+
+        self.assertEqual(args.provider, "real_momo")
+
     def test_parse_args_accepts_launcher_options(self) -> None:
         args = desktop_app.parse_args([
             "--provider",
