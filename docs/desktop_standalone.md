@@ -190,6 +190,36 @@ This performs an explicit write smoke test. It creates one suspended
 DAIRR smoke-test article card in Anki under the `DAIRR Smoke Test` source deck
 path and verifies that `suspend` was attempted and accepted.
 
+### Troubleshooting Generation Language
+
+If a request for Japanese generation produces English output, use the
+development-only `debugPrompt` bridge action to inspect the preset and prompt
+that standalone desktop mode would send to the LLM. There is no UI button for
+this action; call it from a test, browser dev tools, or another local
+development tool against `/api/bridge`.
+
+Example payload:
+
+```json
+{
+  "action": "debugPrompt",
+  "payload": {
+    "deckId": "deck-japanese",
+    "presetId": "japanese",
+    "cardIds": [1001, 1002]
+  }
+}
+```
+
+The response event is `debugPrompt`. Its payload includes the requested preset
+id, saved selected preset id, resolved preset, selected fields, selected card
+count, a 2000-character prompt preview, whether that preview contains the
+resolved article language, and the resolved article/reader languages. This
+helps distinguish UI preset saving problems, missing `presetId` during
+generation, desktop config persistence problems, preset field-name mismatches,
+prompt construction problems, and cases where the LLM ignored a correct prompt.
+The debug payload does not include API keys.
+
 ## Known Limitations
 
 - AnkiConnect mode is less precise than the Anki add-on's internal revlog SQL.

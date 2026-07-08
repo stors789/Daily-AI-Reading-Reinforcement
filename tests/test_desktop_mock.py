@@ -5,6 +5,7 @@ without starting the HTTP server or opening a browser.
 """
 
 import importlib.util
+import json
 import os
 import sys
 import tempfile
@@ -121,6 +122,147 @@ class TestHandleAction(unittest.TestCase):
 
         self.assertEqual(result["event"], "fieldConfigSaved")
         self.assertEqual(result["payload"]["selectedFields"], ["Front"])
+
+    def test_debug_prompt_uses_payload_preset_id_first(self) -> None:
+        with tempfile.TemporaryDirectory() as tmpdir, patch.dict(
+            os.environ,
+            {"DESKTOP_CONFIG_PATH": str(Path(tmpdir) / "config.json")},
+        ):
+            self._write_debug_config(Path(tmpdir) / "config.json")
+            result = _main.handle_action(
+                "debugPrompt",
+                {
+                    "deckId": "deck-japanese",
+                    "presetId": "english",
+                    "cardIds": [1001, 1002, 1003],
+                },
+            )
+
+        self.assertEqual(result["event"], "debugPrompt")
+        payload = result["payload"]
+        self.assertEqual(payload["selectedPromptPresetId"], "japanese")
+        self.assertEqual(payload["requestedPresetId"], "english")
+        self.assertEqual(payload["resolvedPreset"]["id"], "english")
+        self.assertEqual(payload["articleLanguage"], "English")
+
+    def test_debug_prompt_falls_back_to_selected_preset(self) -> None:
+        with tempfile.TemporaryDirectory() as tmpdir, patch.dict(
+            os.environ,
+            {"DESKTOP_CONFIG_PATH": str(Path(tmpdir) / "config.json")},
+        ):
+            self._write_debug_config(Path(tmpdir) / "config.json")
+            result = _main.handle_action(
+                "debugPrompt",
+                {"deckId": "deck-japanese", "cardIds": [1001, 1002, 1003]},
+            )
+
+        self.assertEqual(result["event"], "debugPrompt")
+        payload = result["payload"]
+        self.assertEqual(payload["requestedPresetId"], "")
+        self.assertEqual(payload["resolvedPreset"]["id"], "japanese")
+        self.assertEqual(payload["articleLanguage"], "Japanese")
+
+    def test_debug_prompt_preview_contains_article_language(self) -> None:
+        with tempfile.TemporaryDirectory() as tmpdir, patch.dict(
+            os.environ,
+            {"DESKTOP_CONFIG_PATH": str(Path(tmpdir) / "config.json")},
+        ):
+            self._write_debug_config(Path(tmpdir) / "config.json")
+            result = _main.handle_action(
+                "debugPrompt",
+                {"deckId": "deck-japanese", "presetId": "japanese"},
+            )
+
+        self.assertEqual(result["event"], "debugPrompt")
+        payload = result["payload"]
+        self.assertIn("Japanese", payload["promptPreview"])
+        self.assertTrue(payload["promptContainsArticleLanguage"])
+
+    def test_debug_prompt_does_not_leak_api_key(self) -> None:
+        with tempfile.TemporaryDirectory() as tmpdir, patch.dict(
+            os.environ,
+            {"DESKTOP_CONFIG_PATH": str(Path(tmpdir) / "config.json")},
+        ):
+            self._write_debug_config(Path(tmpdir) / "config.json")
+            result = _main.handle_action(
+                "debugPrompt",
+                {"deckId": "deck-japanese", "presetId": "japanese"},
+            )
+
+        self.assertEqual(result["event"], "debugPrompt")
+        serialized = json.dumps(result["payload"], ensure_ascii=False)
+        self.assertNotIn("super-secret-key", serialized)
+        self.assertNotIn("api_key", serialized.lower())
+
+    def test_debug_prompt_selected_card_ids_affect_card_count(self) -> None:
+        with tempfile.TemporaryDirectory() as tmpdir, patch.dict(
+            os.environ,
+            {"DESKTOP_CONFIG_PATH": str(Path(tmpdir) / "config.json")},
+        ):
+            self._write_debug_config(Path(tmpdir) / "config.json")
+            result = _main.handle_action(
+                "debugPrompt",
+                {
+                    "deckId": "deck-japanese",
+                    "presetId": "japanese",
+                    "cardIds": [1001, 1003],
+                },
+            )
+
+        self.assertEqual(result["event"], "debugPrompt")
+        self.assertEqual(result["payload"]["cardCount"], 2)
+
+    def test_debug_prompt_provider_failure_returns_safe_error(self) -> None:
+        with patch.object(_main, "get_deck_provider", side_effect=Exception("secret")):
+            result = _main.handle_action("debugPrompt", {"deckId": "deck-japanese"})
+
+        self.assertEqual(result["event"], "error")
+        self.assertIn("Failed to build debug prompt", result["payload"]["message"])
+        self.assertNotIn("secret", result["payload"]["message"])
+
+    def _write_debug_config(self, path: Path) -> None:
+        path.write_text(
+            json.dumps(
+                {
+                    "api_key": "super-secret-key",
+                    "ui_language": "en",
+                    "selected_prompt_preset_id": "japanese",
+                    "prompt_presets": [
+                        {
+                            "id": "default",
+                            "name": "Default",
+                            "reader_native_language": "",
+                            "article_language": "",
+                            "difficulty": "",
+                            "max_words": "",
+                            "instructions": "",
+                            "prompt_template": "",
+                        },
+                        {
+                            "id": "japanese",
+                            "name": "Japanese",
+                            "reader_native_language": "English",
+                            "article_language": "Japanese",
+                            "difficulty": "N4",
+                            "max_words": "",
+                            "instructions": "Use short paragraphs.",
+                            "prompt_template": "",
+                        },
+                        {
+                            "id": "english",
+                            "name": "English",
+                            "reader_native_language": "中文",
+                            "article_language": "English",
+                            "difficulty": "B1",
+                            "max_words": "",
+                            "instructions": "",
+                            "prompt_template": "",
+                        },
+                    ],
+                }
+            ),
+            encoding="utf-8",
+        )
 
 
 class TestMockDataShape(unittest.TestCase):

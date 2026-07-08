@@ -20,6 +20,7 @@ from pathlib import Path
 from typing import Any, Mapping
 
 from mock_data import (
+    DEFAULT_CONFIG as MOCK_DEFAULT_CONFIG,
     build_article_list_payload,
     build_article_payload,
     build_deck_cards_payload,
@@ -91,6 +92,7 @@ SUPPORTED_ACTIONS = {
     "load",
     "selectDeck",
     "generate",
+    "debugPrompt",
     "saveArticleCard",
     "saveCollapsedDeckGroups",
     "saveFieldConfig",
@@ -181,6 +183,162 @@ def _deck_cards_payload(deck_id: str, cards_data: dict[str, Any]) -> dict[str, A
     return payload
 
 
+class _GenerationCard:
+    __slots__ = ("cid", "nid", "term", "is_new", "is_failed", "fields")
+
+    def __init__(self, data: dict[str, Any]) -> None:
+        self.cid = data.get("cid")
+        self.nid = data.get("nid")
+        self.term = data.get("term")
+        self.is_new = data.get("is_new")
+        self.is_failed = data.get("is_failed")
+        self.fields = data.get("fields", {})
+
+
+def _desktop_default_config() -> dict[str, Any]:
+    if _DESKTOP_ADAPTERS_AVAILABLE:
+        try:
+            from desktop_adapters import DEFAULT_CONFIG
+            return dict(DEFAULT_CONFIG)
+        except Exception:
+            pass
+    return dict(MOCK_DEFAULT_CONFIG)
+
+
+def _load_generation_config() -> dict[str, Any]:
+    config = _desktop_default_config()
+    loaded = _load_desktop_config()
+    if isinstance(loaded, dict):
+        config.update(loaded)
+    return config
+
+
+def _preset_by_id(presets: list[Any], preset_id: str) -> dict[str, Any] | None:
+    for preset in presets:
+        if isinstance(preset, dict) and str(preset.get("id")) == preset_id:
+            return preset
+    return None
+
+
+def resolve_generation_context(deck_id: str, payload: dict[str, Any]) -> dict[str, Any]:
+    """Resolve cards, fields, config, and preset exactly once for generation.
+
+    This mirrors the standalone generate path and is shared by debugPrompt so
+    the diagnostic prompt is built from the same provider cards and preset
+    resolution as the real LLM request.
+    """
+    cards_data = get_deck_provider().get_deck_cards(deck_id)
+    deck_name = str(cards_data.get("name") or "Desktop Deck")
+    raw_cards = cards_data.get("cards", [])
+    if not isinstance(raw_cards, list):
+        raw_cards = []
+
+    requested_preset_id = str(payload.get("presetId") or "")
+    selected_card_ids = payload.get("cardIds")
+    if selected_card_ids is not None:
+        selected_ids_set = {str(cid) for cid in selected_card_ids}
+        raw_cards = [
+            card for card in raw_cards
+            if isinstance(card, dict) and str(card.get("cid")) in selected_ids_set
+        ]
+
+    config = _load_generation_config()
+    presets = list(config.get("prompt_presets") or [])
+    selected_preset_id = str(config.get("selected_prompt_preset_id") or "")
+    preset = _preset_by_id(presets, requested_preset_id) if requested_preset_id else None
+    if not preset:
+        preset = _preset_by_id(presets, selected_preset_id)
+    if not preset and presets:
+        first_preset = presets[0]
+        preset = first_preset if isinstance(first_preset, dict) else None
+    if not preset:
+        preset = {}
+
+    provider_fields = cards_data.get("selectedFields", cards_data.get("fields"))
+    if not provider_fields:
+        provider_fields = _deck_fields_from_cards(
+            [card for card in raw_cards if isinstance(card, dict)]
+        )
+    selected_fields = [str(field) for field in (provider_fields or [])]
+    cards = [_GenerationCard(card) for card in raw_cards if isinstance(card, dict)]
+
+    return {
+        "config": config,
+        "deckName": deck_name,
+        "cards": cards,
+        "selectedFields": selected_fields,
+        "preset": preset,
+        "requestedPresetId": requested_preset_id,
+        "selectedPromptPresetId": selected_preset_id,
+    }
+
+
+def _safe_debug_value(value: Any) -> Any:
+    if isinstance(value, dict):
+        cleaned: dict[str, Any] = {}
+        for key, item in value.items():
+            key_text = str(key)
+            key_lower = key_text.lower()
+            if key_lower in {"api_key", "apikey"} or "authorization" in key_lower:
+                continue
+            cleaned[key_text] = _safe_debug_value(item)
+        return cleaned
+    if isinstance(value, list):
+        return [_safe_debug_value(item) for item in value]
+    return value
+
+
+def handle_debug_prompt(deck_id: str, payload: dict[str, Any]) -> dict[str, Any]:
+    try:
+        context = resolve_generation_context(deck_id, payload)
+        if _DESKTOP_ADAPTERS_AVAILABLE:
+            from desktop_adapters import _import_core
+            prompt_module = _import_core("prompt")
+        else:
+            raise RuntimeError("Desktop core prompt module is unavailable.")
+
+        config = context["config"]
+        preset = context["preset"]
+        prompt = prompt_module.build_prompt(
+            config,
+            context["deckName"],
+            context["cards"],
+            context["selectedFields"],
+            preset,
+        )
+        ui_language = prompt_module.writing_language_for_ui(
+            str(config.get("ui_language") or "zh")
+        )
+        article_language = str(
+            preset.get("article_language") or "the language being learned"
+        )
+        reader_native_language = str(
+            preset.get("reader_native_language") or ui_language or "English"
+        )
+        return {
+            "event": "debugPrompt",
+            "payload": {
+                "selectedPromptPresetId": context["selectedPromptPresetId"],
+                "requestedPresetId": context["requestedPresetId"],
+                "resolvedPreset": _safe_debug_value(preset),
+                "selectedFields": context["selectedFields"],
+                "cardCount": len(context["cards"]),
+                "promptPreview": prompt[:2000],
+                "promptContainsArticleLanguage": bool(
+                    article_language and article_language in prompt
+                ),
+                "articleLanguage": article_language,
+                "readerNativeLanguage": reader_native_language,
+            },
+        }
+    except Exception as exc:
+        err_type = type(exc).__name__
+        sys.stderr.write(f"[mock] Provider error on debugPrompt: {err_type}\n")
+        return {
+            "event": "error",
+            "payload": {"message": "Failed to build debug prompt from provider data."},
+        }
+
 
 def handle_generate_real(deck_id: str, payload: dict[str, Any]) -> dict[str, Any]:
     """Run the real article generation pipeline using Desktop adapters.
@@ -203,50 +361,18 @@ def handle_generate_real(deck_id: str, payload: dict[str, Any]) -> dict[str, Any
     deck_adapter = DesktopDeckAdapter()
     env_adapter = DesktopEnvironmentAdapter()
 
-    # Build card-like objects from the provider's cards
     try:
-        cards_data = deck_provider.get_deck_cards(deck_id)
-        deck_name = cards_data.get("name", "Desktop Deck")
-        cards = cards_data.get("cards", [])
+        context = resolve_generation_context(deck_id, payload)
     except Exception:
         return _mock_generate(deck_id)
 
+    deck_name = context["deckName"]
+    cards = context["cards"]
     if not cards:
         return {"event": "error", "payload": {"message": "No cards available for generation."}}
 
-    # Read config and preset from the Desktop config
-    config = config_adapter.load() or {}
-    preset_id = str(payload.get("presetId") or "")
-    
-    presets = config.get("prompt_presets", [])
-    preset = next((p for p in presets if str(p.get("id")) == preset_id), None)
-    if not preset:
-        selected_id = str(config.get("selected_prompt_preset_id") or "")
-        preset = next((p for p in presets if str(p.get("id")) == selected_id), None)
-    if not preset and presets:
-        preset = presets[0]
-    if not preset:
-        preset = {}
-
-    selected_fields = cards_data.get("selectedFields", cards_data.get("fields", []))
-
-    # Convert card dicts to stub objects so core logic can access them via attribute
-    class StubCard:
-        def __init__(self, d):
-            self.cid = d.get("cid")
-            self.nid = d.get("nid")
-            self.term = d.get("term")
-            self.is_new = d.get("is_new")
-            self.is_failed = d.get("is_failed")
-            self.fields = d.get("fields", {})
-
-    selected_card_ids = payload.get("cardIds")
-    raw_cards = cards_data.get("cards", [])
-    if selected_card_ids is not None:
-        selected_ids_set = set(str(cid) for cid in selected_card_ids)
-        raw_cards = [c for c in raw_cards if str(c.get("cid")) in selected_ids_set]
-        
-    cards = [StubCard(c) for c in raw_cards if isinstance(c, dict)]
+    preset = context["preset"]
+    selected_fields = context["selectedFields"]
 
     # Use the core_article_generator already imported by desktop_adapters.
     try:
@@ -345,6 +471,9 @@ def handle_action(action: str, payload: dict[str, Any]) -> dict[str, Any]:
     if action == "generate":
         # delegate to real handler which falls back to mock on failure
         return handle_generate_real(str((payload or {}).get("deckId") or ""), payload)
+
+    if action == "debugPrompt":
+        return handle_debug_prompt(str((payload or {}).get("deckId") or ""), payload)
 
     if action == "saveArticleCard":
         if not _DESKTOP_ADAPTERS_AVAILABLE:
