@@ -194,11 +194,27 @@ path and verifies that `suspend` was attempted and accepted.
 
 If a request for Japanese generation produces English output, use the
 development-only `debugPrompt` bridge action to inspect the preset and prompt
-that standalone desktop mode would send to the LLM. There is no UI button for
-this action; call it from a test, browser dev tools, or another local
-development tool against `/api/bridge`.
+that standalone desktop mode would send to the LLM. Start the standalone server
+without opening a browser:
 
-Example payload:
+```bash
+python3 desktop_app.py --provider ankiconnect --no-browser
+```
+
+Then call the diagnostic CLI:
+
+```bash
+python3 tools/debug_prompt.py --deck-id "deck-japanese" --preset-id "japanese"
+```
+
+Pass repeated card ids when you want to inspect the same selected-card path as
+the UI:
+
+```bash
+python3 tools/debug_prompt.py --deck-id "deck-japanese" --preset-id "japanese" --card-id 1001 --card-id 1002
+```
+
+The tool POSTs this bridge envelope to `/api/bridge`:
 
 ```json
 {
@@ -211,14 +227,15 @@ Example payload:
 }
 ```
 
-The response event is `debugPrompt`. Its payload includes the requested preset
-id, saved selected preset id, resolved preset, selected fields, selected card
-count, a 2000-character prompt preview, whether that preview contains the
-resolved article language, and the resolved article/reader languages. This
-helps distinguish UI preset saving problems, missing `presetId` during
-generation, desktop config persistence problems, preset field-name mismatches,
-prompt construction problems, and cases where the LLM ignored a correct prompt.
-The debug payload does not include API keys.
+By default, the CLI prints a short summary containing the requested preset id,
+saved selected preset id, selected fields, selected card count, a prompt preview,
+whether that preview contains the resolved article language, and the resolved
+article/reader languages. If `articleLanguage` is `Japanese` and
+`promptContainsArticleLanguage` is true, the prompt language instruction reached
+the LLM path and the remaining issue is likely downstream model behavior. If
+they are missing or incorrect, inspect preset selection, `presetId` propagation,
+desktop config persistence, or preset field-name mismatches. Use `--json` to
+print the complete debug response. The debug payload does not include API keys.
 
 ## Known Limitations
 
