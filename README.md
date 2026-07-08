@@ -71,6 +71,7 @@ and the manual release checklist.
 
 An optional pywebview native shell scaffold is available via
 `desktop_native.py`; see [Native Shell Scaffold](docs/native_shell.md).
+For future desktop packaging commands, see [Desktop Packaging Scaffold](docs/packaging.md).
 
 ## Config
 
