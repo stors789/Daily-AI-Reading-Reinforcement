@@ -4,7 +4,7 @@ import sys
 import time
 import unittest
 from pathlib import Path
-from unittest.mock import MagicMock, Mock
+from unittest.mock import MagicMock, Mock, patch
 
 sys.path.insert(0, str(Path(__file__).resolve().parent.parent / "addon" / "daily_ai_reading_reinforcement"))
 
@@ -165,6 +165,33 @@ class TestSaveListLoadArticle(unittest.TestCase):
         filename = result["markdown"].name
         self.assertIn("Deck-With-Special-Chars", filename)
         self.assertNotIn("!", filename)
+
+    def test_save_article_same_second_uses_unique_filenames(self):
+        cards = [self._make_mock_card("term")]
+
+        class FakeUUID:
+            def __init__(self, value):
+                self.hex = value
+
+        with (
+            patch.object(article_mod.time, "strftime", side_effect=lambda fmt: {
+                "%Y-%m-%d": "2026-07-08",
+                "%H%M%S": "123456",
+                "%Y-%m-%d %H:%M:%S": "2026-07-08 12:34:56",
+            }.get(fmt, "2026-07-08")),
+            patch.object(article_mod.time, "time", return_value=123456.789),
+            patch.object(
+                article_mod.uuid,
+                "uuid4",
+                side_effect=[FakeUUID("abcdef123456"), FakeUUID("123456abcdef")],
+            ),
+        ):
+            first = save_article("Deck", cards, "First.")
+            second = save_article("Deck", cards, "Second.")
+
+        self.assertNotEqual(first["markdown"], second["markdown"])
+        self.assertTrue(first["markdown"].exists())
+        self.assertTrue(second["markdown"].exists())
 
 
 if __name__ == "__main__":

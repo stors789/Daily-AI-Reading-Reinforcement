@@ -4,6 +4,7 @@
 from __future__ import annotations
 
 import time
+import uuid
 from pathlib import Path
 from typing import Any
 
@@ -35,8 +36,9 @@ def save_article(
     ARTICLES_DIR.mkdir(parents=True, exist_ok=True)
     date_part = time.strftime("%Y-%m-%d")
     time_part = time.strftime("%H%M%S")
+    unique_part = f"{int((time.time() % 1) * 1000):03d}-{uuid.uuid4().hex[:6]}"
     slug = slugify(deck_name_value)
-    basename = f"{date_part}-{slug}-{time_part}"
+    basename = f"{date_part}-{slug}-{time_part}-{unique_part}"
     markdown_path = ARTICLES_DIR / f"{basename}.md"
     html_path = ARTICLES_DIR / f"{basename}.html"
 

@@ -11,6 +11,7 @@ import json
 import time
 import urllib.error
 import urllib.request
+from datetime import datetime
 from pathlib import Path
 from typing import Any, Callable
 
@@ -112,7 +113,7 @@ class AnkiConnectArticleCardSaver:
         html_path: Path,
     ) -> dict[str, Any]:
         deck_name_value = article_deck_name(source_deck_name)
-        date_value = time.strftime("%Y-%m-%d")
+        date_value = article_card_date()
         self._ensure_deck(deck_name_value)
         self._ensure_article_model()
 
@@ -129,7 +130,7 @@ class AnkiConnectArticleCardSaver:
             "deckName": deck_name_value,
             "modelName": ARTICLE_NOTE_TYPE,
             "fields": {field: fields.get(field, "") for field in ARTICLE_FIELDS},
-            "options": {"allowDuplicate": False},
+            "options": {"allowDuplicate": True},
             "tags": ["dairr", "reading-reinforcement"],
         }
         note_id = self._invoke_public(
@@ -248,6 +249,10 @@ def article_deck_name(source_deck_name: str) -> str:
 
 def article_card_title(source_deck_name: str) -> str:
     return f"{time.strftime('%Y-%m-%d')} Reading - {source_deck_name}"
+
+
+def article_card_date() -> str:
+    return datetime.now().strftime("%Y-%m-%d %H:%M:%S.%f")
 
 
 def _card_term(card: Any) -> str:

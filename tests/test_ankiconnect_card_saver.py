@@ -100,7 +100,8 @@ class TestAnkiConnectArticleCardSaver(unittest.TestCase):
         self.assertEqual(note["fields"]["Source Terms"], "komorebi")
         self.assertEqual(note["fields"]["Markdown Path"], "/tmp/article.md")
         self.assertEqual(note["fields"]["HTML Path"], "/tmp/article.html")
-        self.assertFalse(note["options"]["allowDuplicate"])
+        self.assertRegex(note["fields"]["Date"], r"^\d{4}-\d{2}-\d{2} \d{2}:\d{2}:\d{2}\.\d{6}$")
+        self.assertTrue(note["options"]["allowDuplicate"])
 
     def test_success_returns_article_card_identity(self) -> None:
         opener = RecordingOpener()
@@ -117,7 +118,7 @@ class TestAnkiConnectArticleCardSaver(unittest.TestCase):
         self.assertEqual(result["noteId"], 123456)
         self.assertEqual(result["deckName"], "Daily AI Reading Reinforcement::English Vocab")
         self.assertEqual(result["noteType"], ARTICLE_NOTE_TYPE)
-        self.assertRegex(result["date"], r"^\d{4}-\d{2}-\d{2}$")
+        self.assertRegex(result["date"], r"^\d{4}-\d{2}-\d{2} \d{2}:\d{2}:\d{2}\.\d{6}$")
         self.assertNotIn("_desktop_stub", result)
 
     def test_missing_note_type_is_created(self) -> None:

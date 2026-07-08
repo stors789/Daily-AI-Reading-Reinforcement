@@ -52,7 +52,7 @@
  [],
  False,
  False,
- 1783498132,
+ 1783498621,
  [('runw',
    '/Users/eros/.local/lib/python3.13/site-packages/PyInstaller/bootloader/Darwin-64bit/runw',
    'EXECUTABLE')],

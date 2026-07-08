@@ -3,6 +3,7 @@ from __future__ import annotations
 import json
 import time
 from dataclasses import dataclass, replace
+from datetime import datetime
 from pathlib import Path
 from typing import Any
 from uuid import uuid4
@@ -928,7 +929,7 @@ def create_article_card(
     note = mw.col.new_note(model)
     title = article_card_title(source_deck_name)
     values = {
-        "Date": time.strftime("%Y-%m-%d"),
+        "Date": article_card_date(),
         "Source Deck": source_deck_name,
         "Title": title,
         "Article": render_article_fragment_html(article),
@@ -966,6 +967,10 @@ def article_deck_name(source_deck_name: str) -> str:
 
 def article_card_title(source_deck_name: str) -> str:
     return f"{time.strftime('%Y-%m-%d')} Reading - {source_deck_name}"
+
+
+def article_card_date() -> str:
+    return datetime.now().strftime("%Y-%m-%d %H:%M:%S.%f")
 
 
 def get_or_create_deck_id(deck_name_value: str) -> int:
