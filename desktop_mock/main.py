@@ -49,6 +49,10 @@ HOST = "127.0.0.1"
 # 8765 is AnkiConnect's default port; pick a distinct one to avoid clashes
 # when Anki is running alongside the mock.
 PORT = 8755
+APP_NAME = "DAIRR"
+APP_DISPLAY_NAME = "Daily AI Reading Reinforcement"
+APP_VERSION = "0.1.0"
+APP_MODE = "desktop"
 
 
 def _load_provider_config() -> dict[str, Any]:
@@ -131,6 +135,32 @@ def build_deck_provider(environ: Mapping[str, str] | None = None) -> Any:
         return MockMoMoDeckProvider()
     else:
         raise ValueError(f"Unknown DAIRR_DESKTOP_PROVIDER: {provider_type}")
+
+
+def build_health_payload(environ: Mapping[str, str] | None = None) -> dict[str, Any]:
+    """Return a stable health payload for desktop shells.
+
+    Tauri uses this endpoint before reusing port 8755 so it does not attach to
+    an unrelated local service that happens to be listening on the same port.
+    Keep this payload dependency-free and safe to call before providers do any
+    network work.
+    """
+    if environ is None:
+        environ = os.environ
+    provider = str(environ.get("DAIRR_DESKTOP_PROVIDER") or "mock")
+    return {
+        "app": APP_NAME,
+        "name": APP_DISPLAY_NAME,
+        "version": APP_VERSION,
+        "mode": APP_MODE,
+        "provider": provider,
+        "bridge": {
+            "available": True,
+            "type": "http",
+            "endpoint": "/api/bridge",
+            "windowObject": "__DAIRR_BRIDGE__",
+        },
+    }
 
 
 # Single provider instance used by handle_action() for load / selectDeck.
@@ -899,6 +929,9 @@ class MockHandler(BaseHTTPRequestHandler):
         self.wfile.write(body)
 
     def do_GET(self) -> None:
+        if self.path == "/api/health":
+            self._send_json(200, build_health_payload())
+            return
         if self.path == "/" or self.path == "/index.html":
             self._send_html(_build_index_page())
             return

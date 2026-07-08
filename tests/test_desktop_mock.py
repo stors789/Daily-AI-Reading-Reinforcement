@@ -33,6 +33,16 @@ _data = _load("dairr_mock_data", _mock_dir / "mock_data.py")
 
 
 class TestHandleAction(unittest.TestCase):
+    def test_health_payload_identifies_dairr_backend_without_provider_io(self) -> None:
+        payload = _main.build_health_payload({"DAIRR_DESKTOP_PROVIDER": "ankiconnect"})
+
+        self.assertEqual(payload["app"], "DAIRR")
+        self.assertEqual(payload["name"], "Daily AI Reading Reinforcement")
+        self.assertEqual(payload["mode"], "desktop")
+        self.assertEqual(payload["provider"], "ankiconnect")
+        self.assertEqual(payload["bridge"]["endpoint"], "/api/bridge")
+        self.assertTrue(payload["bridge"]["available"])
+
     def test_load_returns_state_with_required_fields(self) -> None:
         result = _main.handle_action("load", {})
         self.assertEqual(result["event"], "state")

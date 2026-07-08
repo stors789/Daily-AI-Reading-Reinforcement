@@ -67,6 +67,14 @@ class TauriAppShellTests(unittest.TestCase):
             config["build"]["additionalWatchFolders"],
         )
 
+    def test_tauri_config_prepares_bundle_sidecar_boundary(self) -> None:
+        config = json.loads((SRC_TAURI_DIR / "tauri.conf.json").read_text())
+        self.assertTrue(config["bundle"]["active"])
+        self.assertEqual(config["bundle"]["externalBin"], ["binaries/dairr-backend"])
+        self.assertNotIn("signingIdentity", config["bundle"].get("macOS", {}))
+        self.assertNotIn("certificateThumbprint", config["bundle"].get("windows", {}))
+        self.assertTrue((SRC_TAURI_DIR / "binaries" / "README.md").exists())
+
     def test_rust_shell_bootstraps_existing_python_backend(self) -> None:
         main_rs = (SRC_TAURI_DIR / "src" / "main.rs").read_text()
         self.assertIn("desktop_app.py", main_rs)
@@ -75,6 +83,24 @@ class TauriAppShellTests(unittest.TestCase):
         self.assertIn("DAIRR_DESKTOP_PROVIDER", main_rs)
         self.assertIn("DAIRR_ANKICONNECT_URL", main_rs)
         self.assertIn("WebviewUrl::External", main_rs)
+
+    def test_rust_shell_requires_health_check_before_reusing_port(self) -> None:
+        main_rs = (SRC_TAURI_DIR / "src" / "main.rs").read_text()
+        self.assertIn("/api/health", main_rs)
+        self.assertIn("request_backend_health", main_rs)
+        self.assertIn("DAIRR_APP_ID", main_rs)
+        self.assertIn("port {} is already in use", main_rs)
+        self.assertIn("bridge_available", main_rs)
+
+    def test_rust_shell_has_dev_python_and_production_sidecar_paths(self) -> None:
+        main_rs = (SRC_TAURI_DIR / "src" / "main.rs").read_text()
+        self.assertIn("DAIRR_BACKEND_MODE", main_rs)
+        self.assertIn("DAIRR_BACKEND_SIDECAR", main_rs)
+        self.assertIn("SIDECAR_BASENAME", main_rs)
+        self.assertIn("SIDECAR_TARGET_TRIPLE", main_rs)
+        self.assertIn("sidecar_target_triple_filename", main_rs)
+        self.assertIn("start_bundled_backend", main_rs)
+        self.assertIn("start_python_backend", main_rs)
 
     def test_shared_web_ui_resources_exist_and_inline_for_desktop_backend(self) -> None:
         for filename in ["index.html", "style.css", "app.js"]:

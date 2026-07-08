@@ -20,8 +20,11 @@
     }
   },
   "bundle": {
-    "active": false,
+    "active": true,
     "targets": "all",
+    "externalBin": [
+      "binaries/dairr-backend"
+    ],
     "macOS": {
       "minimumSystemVersion": "10.13"
     },
