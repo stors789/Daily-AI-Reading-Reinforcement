@@ -1509,3 +1509,64 @@ h2 {
   --btn-secondary-text: #F8F8F2;
   --btn-secondary-hover: #6272A4;
 }
+
+
+/* Theme: Cyber Violet */
+:root[data-theme="cyberviolet"] {
+    /* Base colors */
+    --bg-color: #0F0A1A;
+    --text-color: #FFFFFF;
+    --text-color-secondary: #E0B3FF;
+    --border-color: rgba(255, 0, 255, 0.3);
+
+    /* Surface */
+    --surface-color: rgba(30, 20, 50, 0.7);
+    --surface-hover-color: rgba(50, 30, 80, 0.8);
+
+    /* Accents */
+    --accent-color: #FF00FF;
+    --accent-color-hover: #E600E6;
+    --accent-secondary: #00FFFF;
+    --accent-secondary-hover: #00E6E6;
+
+    /* Semantic */
+    --success-color: #00FFCC;
+    --warning-color: #FFFF00;
+    --error-color: #FF0055;
+
+    /* Typography */
+    --font-family: 'Inter', system-ui, sans-serif;
+
+    /* Extreme neon glowing buttons and ambient blobs */
+    --button-bg: transparent;
+    --button-text-color: #FF00FF;
+    --button-border: 2px solid #FF00FF;
+    --button-hover-bg: #FF00FF;
+    --button-hover-text: #FFFFFF;
+    --button-shadow: 0 0 10px #FF00FF, 0 0 20px #FF00FF, inset 0 0 10px #FF00FF;
+    
+    --button-primary-bg: #FF00FF;
+    --button-primary-text-color: #FFFFFF;
+    --button-primary-border: 2px solid #FF00FF;
+    --button-primary-hover-bg: transparent;
+    --button-primary-hover-text: #FF00FF;
+    --button-primary-shadow: 0 0 15px #FF00FF, 0 0 30px #FF00FF;
+
+    /* Glows */
+    --glow-primary: 0 0 20px rgba(255, 0, 255, 0.6), 0 0 40px rgba(255, 0, 255, 0.4);
+    --glow-secondary: 0 0 20px rgba(0, 255, 255, 0.6), 0 0 40px rgba(0, 255, 255, 0.4);
+    
+    /* Scrollbar */
+    --scrollbar-bg: rgba(30, 20, 50, 0.5);
+    --scrollbar-thumb: rgba(255, 0, 255, 0.5);
+    --scrollbar-thumb-hover: #FF00FF;
+
+    /* Transitions */
+    --transition-fast: 0.15s ease-in-out;
+    --transition-normal: 0.3s ease-in-out;
+    --transition-slow: 0.5s ease-in-out;
+    
+    /* Ambient blobs */
+    --blob-1-color: rgba(255, 0, 255, 0.15);
+    --blob-2-color: rgba(0, 255, 255, 0.15);
+}
