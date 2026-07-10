@@ -1310,6 +1310,11 @@ h2 {
   display: inline-flex !important;
 }
 
+/* A reopened article may belong to a different deck and card selection. */
+.historical-reading #saveArticleToCardButton {
+  display: none !important;
+}
+
 .reading-mode .preset-editor {
   display: none;
 }

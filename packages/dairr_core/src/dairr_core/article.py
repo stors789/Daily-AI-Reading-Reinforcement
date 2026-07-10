@@ -7,7 +7,7 @@ import uuid
 from pathlib import Path
 from typing import Any
 
-from .rendering import render_article_html
+from .rendering import parse_article_response, render_article_html
 from .utils import slugify
 
 # Compatibility default for callers that do not supply a host storage path.
@@ -27,6 +27,38 @@ def parse_article_frontmatter(text: str) -> dict[str, str]:
             key, _, value = line.partition(":")
             meta[key.strip()] = value.strip()
     return meta
+
+
+def _article_title(article: str) -> str:
+    """Return the generated title in a frontmatter-safe, single-line form."""
+    title = str(parse_article_response(article).get("title") or "").strip()
+    return " ".join(title.splitlines())
+
+
+def _legacy_generated_day(generated_at: str) -> str:
+    """Extract a day from historical metadata without browser date parsing.
+
+    Older files only have ``generated_at`` in the local ``YYYY-MM-DD HH:MM:SS``
+    format.  Keep accepting that shape while new files persist the explicit
+    ``generated_day`` field used by the history heatmap.
+    """
+    candidate = str(generated_at or "").strip()[:10]
+    if len(candidate) == 10 and candidate[4] == "-" and candidate[7] == "-":
+        year, month, day = candidate.split("-")
+        if year.isdigit() and month.isdigit() and day.isdigit():
+            return candidate
+    return ""
+
+
+def _article_metadata(text: str, meta: dict[str, str]) -> tuple[str, str]:
+    """Return title and generated day, with compatibility for old Markdown."""
+    title = meta.get("title", "").strip()
+    if not title and "[ARTICLE_TITLE]" in text:
+        title = _article_title(text)
+    generated_day = meta.get("generated_day", "").strip()
+    if not generated_day:
+        generated_day = _legacy_generated_day(meta.get("generated_at", ""))
+    return title, generated_day
 
 
 def save_article(
@@ -50,6 +82,8 @@ def save_article(
         "---",
         f"deck: {deck_name_value}",
         f"generated_at: {time.strftime('%Y-%m-%d %H:%M:%S')}",
+        f"generated_day: {date_part}",
+        f"title: {_article_title(article)}",
         f"card_count: {len(cards)}",
         "---",
         "",
@@ -70,11 +104,14 @@ def list_saved_articles(*, articles_dir: Path | None = None) -> list[dict[str, s
         except Exception:
             continue
         meta = parse_article_frontmatter(text)
+        title, generated_day = _article_metadata(text, meta)
         articles.append({
             "path": str(md_file),
             "filename": md_file.name,
             "deck": meta.get("deck", ""),
             "generated_at": meta.get("generated_at", ""),
+            "generated_day": generated_day,
+            "title": title,
             "card_count": meta.get("card_count", ""),
         })
     return articles
@@ -100,10 +137,13 @@ def load_saved_article(
         if end != -1:
             body = text[end + 3:].strip()
     html_path = article_path.with_suffix(".html")
+    title, generated_day = _article_metadata(body, meta)
     return {
         "path": str(article_path),
         "deck": meta.get("deck", ""),
         "generated_at": meta.get("generated_at", ""),
+        "generated_day": generated_day,
+        "title": title,
         "card_count": meta.get("card_count", ""),
         "article": body,
         "htmlPath": str(html_path) if html_path.is_file() else "",

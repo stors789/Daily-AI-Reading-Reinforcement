@@ -96,8 +96,25 @@ class TestSaveListLoadArticle(unittest.TestCase):
         result = save_article(deck_name, cards, article_text)
         md_content = result["markdown"].read_text(encoding="utf-8")
         self.assertIn("deck: My Deck", md_content)
+        self.assertIn("generated_day: ", md_content)
+        self.assertIn("title: Reading Article", md_content)
         self.assertIn("Article body here.", md_content)
         self.assertIn("---", md_content)
+
+    def test_save_article_records_article_title_metadata(self):
+        result = save_article(
+            "My Deck",
+            [self._make_mock_card("hello")],
+            "[ARTICLE_TITLE]\nA precise reading title\n[MAIN_ARTICLE]\nBody.",
+        )
+
+        listed = list_saved_articles()
+        loaded = load_saved_article(str(result["markdown"]))
+
+        self.assertEqual(listed[0]["title"], "A precise reading title")
+        self.assertRegex(listed[0]["generated_day"], r"^\d{4}-\d{2}-\d{2}$")
+        self.assertEqual(loaded["title"], "A precise reading title")
+        self.assertEqual(loaded["generated_day"], listed[0]["generated_day"])
 
     def test_save_article_html_content(self):
         cards = [self._make_mock_card("hello")]
@@ -140,6 +157,26 @@ class TestSaveListLoadArticle(unittest.TestCase):
         self.assertEqual(loaded["deck"], "Load Test")
         self.assertIn("Load body.", loaded["article"])
         self.assertIn("Load Title", loaded["article"])
+
+    def test_legacy_article_uses_title_and_day_fallbacks(self):
+        legacy_path = self.tmp_dir / "2025-01-01-deck-120000-001-abcdef.md"
+        legacy_path.write_text(
+            "---\n"
+            "deck: Legacy Deck\n"
+            "generated_at: 2025-01-01 12:00:00\n"
+            "card_count: 2\n"
+            "---\n\n"
+            "[ARTICLE_TITLE]\nLegacy reading\n[MAIN_ARTICLE]\nBody.",
+            encoding="utf-8",
+        )
+
+        listed = list_saved_articles()
+        loaded = load_saved_article(str(legacy_path))
+
+        self.assertEqual(listed[0]["title"], "Legacy reading")
+        self.assertEqual(listed[0]["generated_day"], "2025-01-01")
+        self.assertEqual(loaded["title"], "Legacy reading")
+        self.assertEqual(loaded["generated_day"], "2025-01-01")
 
     def test_load_saved_article_not_found(self):
         with self.assertRaises(RuntimeError) as ctx:

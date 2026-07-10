@@ -1,4 +1,6 @@
 (function () {
+  const HISTORY_ALL_DECKS = "__dairr_all_decks__";
+
   const state = {
     selectedDeckId: null,
     decks: [],
@@ -38,7 +40,8 @@
    readingTab: "article",
     historyArticles: [],
     historySelectedDeck: null,
-    historySelectedDate: null,
+   historySelectedDate: null,
+   readingHistoricalArticle: false,
    dayStart: 0,
     dayEnd: 0,
   };
@@ -278,6 +281,7 @@
       historyNoDate: "请选择一个日期。",
       historyArticlesCount: "篇文章",
       historyRecentDate: "最近",
+      historyAllDecks: "全部牌组",
       desktopSettingsTitle: "设置",
       momoApiKey: "墨墨 API",
       clearMomoApiKey: "清除已保存的墨墨 API",
@@ -427,6 +431,7 @@
       historyNoDate: "Choose a date.",
       historyArticlesCount: "articles",
       historyRecentDate: "Recent",
+      historyAllDecks: "All decks",
       desktopSettingsTitle: "Settings",
       momoApiKey: "MoMo API",
       clearMomoApiKey: "Clear saved MoMo API",
@@ -576,6 +581,7 @@
       historyNoDate: "日付を選んでください。",
       historyArticlesCount: "件",
       historyRecentDate: "最近",
+      historyAllDecks: "すべてのデッキ",
       desktopSettingsTitle: "設定",
       momoApiKey: "MoMo API",
       clearMomoApiKey: "保存済み MoMo API を消去",
@@ -1324,7 +1330,9 @@
 
   function renderArticle(payload) {
     const parsed = parseArticleResponse(payload.article);
-    const generatedAt = new Date().toLocaleString();
+    const generatedAt = payload.generatedAt || new Date().toLocaleString();
+    state.readingHistoricalArticle = Boolean(payload.isHistorical);
+    document.body.classList.toggle("historical-reading", state.readingHistoricalArticle);
     const articleCardLine = payload.articleCard
       ? `<div>${tr("articleCardSaved")} ${escapeHtml(payload.articleCard.deckName)}</div>`
       : "";
@@ -1376,6 +1384,8 @@
     state.readingMode = active;
     document.body.classList.toggle("reading-mode", active);
     if (!active) {
+      state.readingHistoricalArticle = false;
+      document.body.classList.remove("historical-reading");
       state.writingMode = "horizontal";
       state.readingTab = "article";
       if (el.articleOutput) el.articleOutput.classList.remove("vertical-rl", "view-article", "view-notes");
@@ -1538,10 +1548,16 @@
           article: payload.article || "",
           markdownPath: payload.path || "",
           htmlPath: payload.htmlPath || "",
+          generatedAt: payload.generated_at || "",
+          generatedDay: payload.generated_day || "",
+          isHistorical: true,
           articleCard: null,
         };
-        state.lastGeneratedArticle = loadedPayload;
-        if (el.saveArticleToCardButton) el.saveArticleToCardButton.disabled = false;
+        // A historical document does not necessarily match the deck/cards
+        // currently selected in the workspace, so it must never be saved as
+        // a new card through that current selection.
+        state.lastGeneratedArticle = null;
+        if (el.saveArticleToCardButton) el.saveArticleToCardButton.disabled = true;
         renderArticle(loadedPayload);
       }
     },
@@ -1550,7 +1566,7 @@
   function openHistoryPanel() {
     if (el.historyPanel) {
       closeDesktopSettingsPanel();
-      state.historySelectedDeck = null;
+      state.historySelectedDeck = HISTORY_ALL_DECKS;
       state.historySelectedDate = null;
       el.historyPanel.style.display = "";
       send("listArticles");
@@ -1571,29 +1587,41 @@
     }
   }
 
-  function dateKeyFromGenerated(generatedAt) {
-    if (!generatedAt) return "";
-    const d = new Date(generatedAt);
-    if (isNaN(d.getTime())) return "";
-    return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, "0")}-${String(d.getDate()).padStart(2, "0")}`;
+  function dateKeyFromArticle(article) {
+    const explicitDay = String(article.generated_day || "").trim();
+    if (/^\d{4}-\d{2}-\d{2}$/.test(explicitDay)) return explicitDay;
+
+    // Historical Markdown stored a local datetime only. Its day is already
+    // unambiguous, so extract it directly instead of relying on WebKit's
+    // implementation-dependent parsing of "YYYY-MM-DD HH:MM:SS".
+    const legacyDay = String(article.generated_at || "").trim().slice(0, 10);
+    return /^\d{4}-\d{2}-\d{2}$/.test(legacyDay) ? legacyDay : "";
+  }
+
+  function makeHistoryGroup(deck, label, articles) {
+    const group = { deck, label, articles, dateCount: new Map(), latest: "" };
+    articles.forEach((item) => {
+      const date = dateKeyFromArticle(item);
+      if (!date) return;
+      group.dateCount.set(date, (group.dateCount.get(date) || 0) + 1);
+      if (!group.latest || date > group.latest) group.latest = date;
+    });
+    return group;
   }
 
   function groupHistoryByDeck(articles) {
     const map = new Map();
     articles.forEach((item) => {
       const deck = item.deck || item.filename || tr("fallbackTitle");
-      const date = dateKeyFromGenerated(item.generated_at);
       if (!map.has(deck)) {
-        map.set(deck, { deck, articles: [], dateCount: new Map(), latest: "" });
+        map.set(deck, []);
       }
-      const entry = map.get(deck);
-      entry.articles.push(item);
-      if (date) {
-        entry.dateCount.set(date, (entry.dateCount.get(date) || 0) + 1);
-        if (!entry.latest || date > entry.latest) entry.latest = date;
-      }
+      map.get(deck).push(item);
     });
-    return Array.from(map.values()).sort((a, b) => b.latest.localeCompare(a.latest));
+    const deckGroups = Array.from(map.entries())
+      .map(([deck, deckArticles]) => makeHistoryGroup(deck, deck, deckArticles))
+      .sort((a, b) => b.latest.localeCompare(a.latest));
+    return [makeHistoryGroup(HISTORY_ALL_DECKS, tr("historyAllDecks"), articles), ...deckGroups];
   }
 
   function renderHistoryDecks(deckGroups) {
@@ -1609,7 +1637,7 @@
         const latest = group.latest ? group.latest : "—";
         return `
           <div class="history-deck-item${selected}" data-deck="${escapeHtml(group.deck)}">
-            <div class="history-deck-name">${escapeHtml(group.deck)}</div>
+            <div class="history-deck-name">${escapeHtml(group.label)}</div>
             <div class="history-deck-meta">
               <span>${count} ${tr("historyArticlesCount")}</span>
               <span>${tr("historyRecentDate")} ${escapeHtml(latest)}</span>
@@ -1634,29 +1662,19 @@
       el.historyHeatmap.innerHTML = `<div class="empty">${tr("historyNoDeck")}</div>`;
       return;
     }
-    const dates = Array.from(group.dateCount.keys()).sort();
-    if (!dates.length) {
-      el.historyHeatmap.innerHTML = `<div class="empty">${tr("historyNoDate")}</div>`;
-      return;
-    }
-    // Build a stable week-grid heatmap. A tiny one-day range looks broken, so
-    // keep at least 13 weeks visible while still expanding to include older history.
-    const first = new Date(dates[0] + "T00:00:00");
-    const last = new Date(dates[dates.length - 1] + "T00:00:00");
-    const end = new Date(last);
-    end.setDate(end.getDate() + (6 - end.getDay()));
-    const firstAligned = new Date(first);
-    firstAligned.setDate(firstAligned.getDate() - firstAligned.getDay());
-    const minimumStart = new Date(end);
-    minimumStart.setDate(minimumStart.getDate() - (13 * 7 - 1));
-    const start = firstAligned < minimumStart ? firstAligned : minimumStart;
+    // Always render the most recent 52 calendar weeks. The range is anchored
+    // to the local current day, rather than the newest saved article, so a
+    // quiet period does not make the heatmap jump around or disappear.
+    const end = new Date();
+    end.setHours(0, 0, 0, 0);
+    const start = new Date(end);
+    start.setDate(start.getDate() - (51 * 7 + end.getDay()));
     const maxCount = Math.max(...group.dateCount.values(), 1);
     const cells = [];
     const weekdayLabels = ["S", "M", "T", "W", "T", "F", "S"];
     const labelCol = weekdayLabels.map((d) => `<div class="heatmap-weekday">${d}</div>`).join("");
     let cursor = new Date(start);
-    let weekCol = 0;
-    while (cursor <= end || weekCol % 7 !== 0) {
+    while (cursor <= end) {
       const key = `${cursor.getFullYear()}-${String(cursor.getMonth() + 1).padStart(2, "0")}-${String(cursor.getDate()).padStart(2, "0")}`;
       const count = group.dateCount.get(key) || 0;
       let level = 0;
@@ -1667,7 +1685,6 @@
       const title = `${key} · ${count} ${tr("historyArticlesCount")}`;
       cells.push(`<div class="heatmap-cell level-${level}${selected}" data-date="${key}" title="${escapeHtml(title)}"></div>`);
       cursor.setDate(cursor.getDate() + 1);
-      weekCol++;
     }
     // Pad trailing cells to complete the last week column.
     while (cells.length % 7 !== 0) {
@@ -1681,7 +1698,9 @@
       `</div>`;
     el.historyHeatmap.querySelectorAll(".heatmap-cell[data-date]").forEach((cell) => {
       cell.addEventListener("click", () => {
-        state.historySelectedDate = cell.dataset.date;
+        state.historySelectedDate = state.historySelectedDate === cell.dataset.date
+          ? null
+          : cell.dataset.date;
         renderHistoryView();
       });
     });
@@ -1696,7 +1715,7 @@
     }
     let items = group.articles;
     if (state.historySelectedDate) {
-      items = items.filter((item) => dateKeyFromGenerated(item.generated_at) === state.historySelectedDate);
+      items = items.filter((item) => dateKeyFromArticle(item) === state.historySelectedDate);
     }
     if (!items.length) {
       el.historyArticles.innerHTML = `<div class="empty">${tr("historyNoDate")}</div>`;
@@ -1709,7 +1728,7 @@
         .map((item) => {
           return `
             <div class="history-item" data-path="${escapeHtml(item.path)}">
-              <div class="history-item-title">${escapeHtml(item.filename || item.deck)}</div>
+              <div class="history-item-title">${escapeHtml(item.title || item.filename || item.deck)}</div>
               <div class="history-item-meta">
                 ${escapeHtml(item.generated_at || "")}
                 ${item.card_count ? ` · ${escapeHtml(item.card_count)} ${tr("historyCards")}` : ""}
@@ -1741,8 +1760,7 @@
   function renderArticleHistory(articles) {
     state.historyArticles = articles || [];
     if (!state.historySelectedDeck && state.historyArticles.length) {
-      const groups = groupHistoryByDeck(state.historyArticles);
-      if (groups.length) state.historySelectedDeck = groups[0].deck;
+      state.historySelectedDeck = HISTORY_ALL_DECKS;
     }
     renderHistoryView();
   }
@@ -1820,6 +1838,7 @@
   if (el.saveArticleToCardButton) {
     el.saveArticleToCardButton.addEventListener("click", () => {
       if (el.saveArticleToCardButton.disabled) return;
+      if (state.readingHistoricalArticle) return;
       if (!state.lastGeneratedArticle) return;
       
       const payload = state.lastGeneratedArticle;
