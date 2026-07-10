@@ -143,6 +143,18 @@
 
   const I18N = {
     zh: {
+      theme_macchiato: "焦糖玛奇朵",
+      theme_rosegold: "玫瑰柔金",
+      theme_forest: "迷雾森林",
+      theme_sunset: "沙丘蜃景",
+      theme_glacier: "极地冰川",
+      theme_neontokyo: "霓虹东京",
+      theme_lunarslate: "月岩暗面",
+      theme_midnightjazz: "午夜爵士",
+      theme_retromac: "老式麦金塔",
+      theme_abyss: "深渊代码",
+      theme_cyberpunk: "赛博朋克 2077",
+
       theme_light: "明亮",
       theme_dark: "暗色",
       theme_oled: "OLED 空境",
@@ -275,6 +287,18 @@
      writingVertical: "竖",
    },
    en: {
+      theme_macchiato: "Macchiato",
+      theme_rosegold: "Rose Gold",
+      theme_forest: "Forest Canopy",
+      theme_sunset: "Sunset Mirage",
+      theme_glacier: "Glacier",
+      theme_neontokyo: "Neon Tokyo",
+      theme_lunarslate: "Lunar Slate",
+      theme_midnightjazz: "Midnight Jazz",
+      theme_retromac: "Retro Mac 1984",
+      theme_abyss: "Abyss",
+      theme_cyberpunk: "Cyberpunk 2077",
+
       theme_light: "Light",
       theme_dark: "Dark",
       theme_oled: "OLED Void",
@@ -407,6 +431,18 @@
      writingVertical: "縦",
     },
     ja: {
+      theme_macchiato: "マキアート",
+      theme_rosegold: "ローズゴールド",
+      theme_forest: "深い森",
+      theme_sunset: "砂丘の蜃気楼",
+      theme_glacier: "氷河",
+      theme_neontokyo: "ネオントーキョー",
+      theme_lunarslate: "月の裏側",
+      theme_midnightjazz: "ミッドナイトジャズ",
+      theme_retromac: "レトロ Mac 1984",
+      theme_abyss: "アビス",
+      theme_cyberpunk: "サイバーパンク 2077",
+
       theme_light: "ライト",
       theme_dark: "ダーク",
       theme_oled: "OLED ヴォイド",
