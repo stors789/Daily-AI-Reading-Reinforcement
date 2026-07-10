@@ -231,7 +231,10 @@ class TestRealMoMoDeckProvider(unittest.TestCase):
     # --- Mapping Tests ---
 
     def test_get_today_decks(self):
+        requests_seen = []
+
         def fake_opener(req, timeout):
+            requests_seen.append(req.full_url)
             mock_resp = MagicMock()
             if "get_today_items" in req.full_url:
                 mock_resp.read.return_value = json.dumps({
@@ -266,6 +269,8 @@ class TestRealMoMoDeckProvider(unittest.TestCase):
         self.assertEqual(decks[0]["newCount"], 1)
         self.assertEqual(decks[0]["failedCount"], 1)
         self.assertFalse(decks[0]["isGroup"])
+        self.assertEqual(len(requests_seen), 1)
+        self.assertIn("get_today_items", requests_seen[0])
 
     def test_get_today_decks_fallback(self):
         self.opener.status = 500
@@ -275,23 +280,6 @@ class TestRealMoMoDeckProvider(unittest.TestCase):
         self.assertEqual(decks[0]["totalCount"], 0) # without progress
         self.assertEqual(decks[0]["newCount"], 0)
         self.assertEqual(decks[0]["failedCount"], 0)
-
-        # with progress fallback
-        self.opener.requests.clear()
-        
-        def fake_opener(req, timeout):
-            if "get_today_items" in req.full_url:
-                raise urllib.error.HTTPError(req.full_url, 403, "Forbidden", {}, None)
-            
-            mock_resp = MagicMock()
-            mock_resp.read.return_value = json.dumps({"progress": {"total": 42}}).encode("utf-8")
-            mock_context = MagicMock()
-            mock_context.__enter__.return_value = mock_resp
-            return mock_context
-            
-        self.provider._opener = fake_opener
-        decks = self.provider.get_today_decks()
-        self.assertEqual(decks[0]["totalCount"], 42)
 
     def test_get_deck_cards_skeleton(self):
         res = self.provider.get_deck_cards("d1")

@@ -198,6 +198,40 @@ h2 {
   padding: 10px;
 }
 
+.source-section {
+  border-bottom: 1px solid var(--line);
+  padding: 10px;
+}
+
+.source-section h3 {
+  color: var(--muted);
+  font-size: 12px;
+  margin: 0 0 8px;
+  text-transform: uppercase;
+}
+
+.source-list {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+}
+
+.source-item {
+  background: var(--surface-strong);
+  border: 1px solid var(--line);
+  border-radius: 999px;
+  color: var(--text);
+  cursor: pointer;
+  font: inherit;
+  padding: 7px 12px;
+}
+
+.source-item:hover,
+.source-item.selected {
+  background: #f4f8f6;
+  border-color: rgba(47, 111, 115, 0.42);
+}
+
 .card-list {
   flex: 1 1 0;
   overflow: auto;

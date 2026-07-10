@@ -86,23 +86,25 @@ class TestHandleActionWithFakeProvider(unittest.TestCase):
     def tearDown(self):
         _main.DECK_PROVIDER = self.original_provider
 
-    def test_load_success_returns_state(self):
-        self.fake_provider.get_today_decks.return_value = [{"id": "test_deck", "name": "Test", "isGroup": False, "totalCount": 10, "newCount": 0, "failedCount": 0}]
+    def test_load_lists_sources_without_provider_request(self):
         result = _main.handle_action("load", {})
         self.assertEqual(result["event"], "state")
-        self.assertEqual(result["payload"]["decks"][0]["id"], "test_deck")
+        self.assertEqual(result["payload"]["decks"], [])
+        self.fake_provider.get_today_decks.assert_not_called()
 
-    def test_load_error_returns_safe_error_event(self):
+    def test_select_source_error_returns_safe_error_event(self):
         self.fake_provider.get_today_decks.side_effect = Exception("Super secret token 123 failed")
-        result = _main.handle_action("load", {})
+        with patch.object(_main, "_provider_for_source", return_value=self.fake_provider):
+            result = _main.handle_action("selectSource", {"sourceId": "primary"})
         self.assertEqual(result["event"], "error")
         # Should not leak the exception message to the payload
         self.assertNotIn("secret", result["payload"]["message"])
         self.assertIn("Failed to load decks", result["payload"]["message"])
 
-    def test_ankiconnect_offline_returns_retryable_provider_event(self):
+    def test_select_source_ankiconnect_offline_returns_retryable_provider_event(self):
         self.fake_provider.get_today_decks.side_effect = AnkiConnectError("secret endpoint detail")
-        result = _main.handle_action("load", {})
+        with patch.object(_main, "_provider_for_source", return_value=self.fake_provider):
+            result = _main.handle_action("selectSource", {"sourceId": "primary"})
         self.assertEqual(result["event"], "providerOffline")
         self.assertEqual(result["payload"]["provider"], "ankiconnect")
         self.assertTrue(result["payload"]["retryable"])

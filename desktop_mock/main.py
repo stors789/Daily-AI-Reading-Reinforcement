@@ -190,37 +190,44 @@ def get_momo_provider() -> Any | None:
     return MOMO_PROVIDER
 
 
-def _momo_deck_rows() -> list[dict[str, Any]]:
-    provider = get_momo_provider()
-    if provider is None:
-        return []
-    try:
-        return list(provider.get_today_decks())
-    except Exception as exc:
-        sys.stderr.write(f"[mock] MoMo provider load skipped: {type(exc).__name__}\n")
-        return []
+def _primary_source() -> dict[str, str]:
+    provider_type = str(os.environ.get("DAIRR_DESKTOP_PROVIDER") or "mock")
+    names = {
+        "ankiconnect": "AnkiConnect",
+        "real_momo": "MoMo",
+        "mock": "Demo",
+    }
+    return {
+        "id": "primary",
+        "name": names.get(provider_type, provider_type),
+        "provider": provider_type,
+    }
 
 
-def _merge_momo_decks(decks: list[dict[str, Any]], deck_provider: Any) -> list[dict[str, Any]]:
-    if isinstance(deck_provider, RealMoMoDeckProvider):
-        return decks
-    momo_decks = _momo_deck_rows()
-    if not momo_decks:
-        return decks
-    seen = {str(deck.get("id") or "") for deck in decks}
-    merged = list(decks)
-    for deck in momo_decks:
-        deck_id = str(deck.get("id") or "")
-        if deck_id and deck_id not in seen:
-            merged.append(deck)
-            seen.add(deck_id)
-    return merged
+def _available_sources() -> list[dict[str, str]]:
+    """List configured sources without requesting study data from them."""
+    primary = _primary_source()
+    sources = [primary]
+    # A MoMo primary source is already represented above. A separately
+    # configured MoMo account is only contacted after it is selected.
+    if primary["provider"] != "real_momo" and _momo_api_key():
+        sources.append({"id": "momo", "name": "MoMo", "provider": "real_momo"})
+    return sources
+
+
+def _provider_for_source(source_id: str) -> Any | None:
+    if source_id == "primary":
+        return get_deck_provider()
+    if source_id == "momo":
+        return get_momo_provider()
+    return None
 
 
 # Actions the mock understands. Anything else returns an error event so the
 # shared UI's error handling path is exercised without crashing the server.
 SUPPORTED_ACTIONS = {
     "load",
+    "selectSource",
     "selectDeck",
     "generate",
     "debugPrompt",
@@ -260,7 +267,13 @@ def _save_desktop_config(config: dict[str, Any]) -> None:
     DesktopConfigAdapter().save(config)
 
 
-def _state_payload(last_selected_deck_id: str, decks: list[dict[str, Any]]) -> dict[str, Any]:
+def _state_payload(
+    last_selected_deck_id: str,
+    decks: list[dict[str, Any]],
+    *,
+    sources: list[dict[str, str]] | None = None,
+    selected_source_id: str = "",
+) -> dict[str, Any]:
     config = _load_desktop_config()
     payload = build_state_payload(last_selected_deck_id, decks=decks)
     active_config = config or _desktop_default_config()
@@ -268,6 +281,8 @@ def _state_payload(last_selected_deck_id: str, decks: list[dict[str, Any]]) -> d
     payload["dayStart"] = day_start
     payload["dayEnd"] = day_end
     payload["desktopSettings"] = _desktop_settings_payload(active_config)
+    payload["sources"] = sources if sources is not None else _available_sources()
+    payload["selectedSourceId"] = selected_source_id
     if not config:
         return payload
     payload["promptPresets"] = list(config.get("prompt_presets") or payload["promptPresets"])
@@ -580,12 +595,33 @@ def handle_action(action: str, payload: dict[str, Any]) -> dict[str, Any]:
     """
     if action == "load":
         last_selected = str((payload or {}).get("lastSelectedDeckId") or "")
+        return {
+            "event": "state",
+            "payload": _state_payload(last_selected, [], sources=_available_sources()),
+        }
+
+    if action == "selectSource":
+        source_id = str((payload or {}).get("sourceId") or "")
+        sources = _available_sources()
+        if source_id not in {source["id"] for source in sources}:
+            return {"event": "error", "payload": {"message": "Unknown or unconfigured source."}}
         try:
-            deck_provider = get_deck_provider()
-            decks = _merge_momo_decks(deck_provider.get_today_decks(), deck_provider)
-            return {"event": "state", "payload": _state_payload(last_selected, decks)}
+            deck_provider = _provider_for_source(source_id)
+            if deck_provider is None:
+                return {"event": "error", "payload": {"message": "MoMo API key is not configured."}}
+            decks = list(deck_provider.get_today_decks())
+            last_selected = str((payload or {}).get("lastSelectedDeckId") or "")
+            return {
+                "event": "state",
+                "payload": _state_payload(
+                    last_selected,
+                    decks,
+                    sources=sources,
+                    selected_source_id=source_id,
+                ),
+            }
         except AnkiConnectError as exc:
-            sys.stderr.write(f"[desktop] AnkiConnect unavailable on load: {type(exc).__name__}\n")
+            sys.stderr.write(f"[desktop] AnkiConnect unavailable on selectSource: {type(exc).__name__}\n")
             return {
                 "event": "providerOffline",
                 "payload": {
@@ -596,7 +632,7 @@ def handle_action(action: str, payload: dict[str, Any]) -> dict[str, Any]:
             }
         except Exception as exc:
             err_type = type(exc).__name__
-            sys.stderr.write(f"[mock] Provider error on load: {err_type}\n")
+            sys.stderr.write(f"[mock] Provider error on selectSource: {err_type}\n")
             return {"event": "error", "payload": {"message": "Failed to load decks from provider."}}
 
     if action == "selectDeck":

@@ -280,17 +280,16 @@ class RealMoMoDeckProvider:
                 "name": MOMO_TODAY_DECK_NAME,
                 "newCount": 0,
                 "failedCount": 0,
-                "totalCount": self._safe_today_total(0),
+                "totalCount": 0,
                 "isGroup": False,
             }]
 
-        records, _records_available = self._query_records_for_today_items(items)
         return [{
             "id": MOMO_TODAY_DECK_ID,
             "name": MOMO_TODAY_DECK_NAME,
             "newCount": sum(1 for item in items if bool(item.get("is_new"))),
             "failedCount": sum(1 for item in items if self._today_item_is_failed(item)),
-            "totalCount": self._safe_today_total(len(items)),
+            "totalCount": len(items),
             "isGroup": False,
         }]
 
@@ -382,15 +381,6 @@ class RealMoMoDeckProvider:
             "fields": ["term", "status", "source", "review_count_status"],
             "selectedFields": ["term"],
         }
-
-    def _safe_today_total(self, fallback: int) -> int:
-        try:
-            prog_raw = self.get_study_progress_raw()
-            prog = parse_study_progress_response(prog_raw)
-            total = prog.get("total")
-            return total if isinstance(total, int) else fallback
-        except MoMoAPIError:
-            return fallback
 
     def _query_records_for_today_items(self, items: list[dict[str, Any]]) -> tuple[dict[str, dict[str, Any]], bool]:
         voc_ids = _unique_nonempty_strings([item.get("voc_id") for item in items])

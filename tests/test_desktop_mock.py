@@ -74,26 +74,32 @@ class TestHandleAction(unittest.TestCase):
         ):
             self.assertIn(key, payload, f"state payload missing {key}")
 
-    def test_load_returns_two_decks(self) -> None:
-        with patch.object(_main, "get_momo_provider", return_value=None):
+    def test_load_lists_sources_without_fetching_decks(self) -> None:
+        with patch.object(_main, "get_deck_provider") as get_provider:
             result = _main.handle_action("load", {})
-        self.assertEqual(len(result["payload"]["decks"]), 2)
 
-    def test_load_merges_saved_momo_deck(self) -> None:
-        fake_momo = type(
-            "FakeMoMo",
+        self.assertEqual(result["payload"]["decks"], [])
+        self.assertEqual(result["payload"]["selectedSourceId"], "")
+        self.assertTrue(result["payload"]["sources"])
+        get_provider.assert_not_called()
+
+    def test_select_source_fetches_only_the_selected_provider(self) -> None:
+        fake_provider = type(
+            "FakeProvider",
             (),
             {
                 "get_today_decks": lambda self: [
-                    {"id": "momo_today", "name": "MoMo Today", "totalCount": 2, "newCount": 1, "failedCount": 0, "isGroup": False}
+                    {"id": "test", "name": "Test", "totalCount": 2, "newCount": 1, "failedCount": 0, "isGroup": False}
                 ]
             },
         )()
-        with patch.object(_main, "get_momo_provider", return_value=fake_momo):
-            result = _main.handle_action("load", {})
+        with patch.object(_main, "_provider_for_source", return_value=fake_provider) as get_provider:
+            result = _main.handle_action("selectSource", {"sourceId": "primary"})
 
-        deck_ids = [deck["id"] for deck in result["payload"]["decks"]]
-        self.assertIn("momo_today", deck_ids)
+        self.assertEqual(result["event"], "state")
+        self.assertEqual(result["payload"]["selectedSourceId"], "primary")
+        self.assertEqual(result["payload"]["decks"][0]["id"], "test")
+        get_provider.assert_called_once_with("primary")
 
     def test_select_momo_deck_routes_to_momo_provider(self) -> None:
         fake_momo = type(
@@ -417,11 +423,11 @@ class TestMockDataShape(unittest.TestCase):
 class TestProviderIntegration(unittest.TestCase):
     """Verify handle_action routes through the provider correctly."""
 
-    def test_load_passes_decks_from_provider(self) -> None:
-        with patch.object(_main, "get_momo_provider", return_value=None):
-            result = _main.handle_action("load", {})
+    def test_select_source_passes_decks_from_provider(self) -> None:
+        result = _main.handle_action("selectSource", {"sourceId": "primary"})
         payload = result["payload"]
         self.assertEqual(len(payload["decks"]), 2)
+        self.assertEqual(payload["selectedSourceId"], "primary")
         names = [d["name"] for d in payload["decks"]]
         self.assertEqual(names, sorted(names, key=str.lower))
 

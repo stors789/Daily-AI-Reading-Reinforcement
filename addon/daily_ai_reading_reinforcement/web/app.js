@@ -2,6 +2,8 @@
   const state = {
     selectedDeckId: null,
     decks: [],
+    sources: [],
+    selectedSourceId: null,
     collapsedDeckGroups: new Set(),
     fields: [],
     selectedFields: [],
@@ -46,6 +48,7 @@
     titleText: document.getElementById("titleText"),
     uiLanguageSelect: document.getElementById("uiLanguageSelect"),
     deckList: document.getElementById("deckList"),
+    sourceList: document.getElementById("sourceList"),
     cardList: document.getElementById("cardList"),
     cardCount: document.getElementById("cardCount"),
     selectFailedCardsButton: document.getElementById("selectFailedCardsButton"),
@@ -54,6 +57,7 @@
     selectVagueCardsButton: document.getElementById("selectVagueCardsButton"),
     clearCardSelectionButton: document.getElementById("clearCardSelectionButton"),
     dayWindow: document.getElementById("dayWindow"),
+    sourcesHeading: document.getElementById("sourcesHeading"),
     decksHeading: document.getElementById("decksHeading"),
     fieldsHeading: document.getElementById("fieldsHeading"),
     cardsHeading: document.getElementById("cardsHeading"),
@@ -141,6 +145,7 @@
     zh: {
       eyebrow: "每日 AI 阅读",
       title: "阅读巩固",
+      sources: "学习来源",
       decks: "今日卡组",
       fields: "AI 字段",
       cards: "卡片",
@@ -255,6 +260,7 @@
    en: {
       eyebrow: "Daily AI Reading",
       title: "Reading Reinforcement",
+      sources: "Learning sources",
       decks: "Studied Decks",
       fields: "AI Fields",
       cards: "Cards",
@@ -369,6 +375,7 @@
     ja: {
       eyebrow: "毎日の AI 読解",
       title: "読解で復習",
+      sources: "学習元",
       decks: "今日のデッキ",
       fields: "AI フィールド",
       cards: "カード",
@@ -504,6 +511,7 @@
   function applyI18n() {
     el.eyebrowText.textContent = tr("eyebrow");
     el.titleText.textContent = tr("title");
+    if (el.sourcesHeading) el.sourcesHeading.textContent = tr("sources");
     el.decksHeading.textContent = tr("decks");
     el.fieldsHeading.textContent = tr("fields");
     el.cardsHeading.textContent = tr("cards");
@@ -572,6 +580,7 @@
     if (state.dayStart && state.dayEnd) {
       el.dayWindow.textContent = `${formatTime(state.dayStart)} - ${formatTime(state.dayEnd)}`;
     }
+    renderSources();
     if (state.decks.length) renderDecks();
     if (state.selectedDeckId) renderFields();
     if (state.selectedDeckId) renderCards(state.currentCards);
@@ -702,6 +711,48 @@
         selectDeck(item.dataset.deckId);
       });
     });
+  }
+
+  function renderSources() {
+    if (!el.sourceList) return;
+    if (!state.sources.length) {
+      el.sourceList.innerHTML = "";
+      return;
+    }
+    el.sourceList.innerHTML = state.sources
+      .map((source) => {
+        const selected = source.id === state.selectedSourceId ? " selected" : "";
+        return `<button class="source-item${selected}" data-source-id="${escapeHtml(source.id)}">${escapeHtml(source.name)}</button>`;
+      })
+      .join("");
+    el.sourceList.querySelectorAll("[data-source-id]").forEach((item) => {
+      item.addEventListener("click", () => selectSource(item.dataset.sourceId));
+    });
+  }
+
+  function resetDeckSelection() {
+    state.selectedDeckId = null;
+    state.autoSelectedDeck = false;
+    state.decks = [];
+    state.fields = [];
+    state.selectedFields = [];
+    state.currentCards = [];
+    state.selectedCardIds = new Set();
+    el.saveFieldsButton.disabled = true;
+    setFieldButtons(false);
+    el.cardList.innerHTML = "";
+    renderFields();
+    updateCardSelectionControls();
+  }
+
+  function selectSource(sourceId) {
+    if (!sourceId) return;
+    state.selectedSourceId = sourceId;
+    resetDeckSelection();
+    renderSources();
+    renderDecks();
+    setStatus("loadingDay");
+    send("selectSource", { sourceId });
   }
 
   function selectDeck(deckId) {
@@ -1254,6 +1305,8 @@
       if (event === "state") {
         setProviderOffline(false);
         state.decks = payload.decks || [];
+        state.sources = payload.sources || [];
+        state.selectedSourceId = payload.selectedSourceId || null;
         state.collapsedDeckGroups = new Set(payload.collapsedDeckGroups || []);
         state.promptPresets = payload.promptPresets || [];
         state.selectedPromptPresetId = payload.selectedPromptPresetId || "default";
@@ -1267,6 +1320,7 @@
         el.dayWindow.textContent = `${formatTime(state.dayStart)} - ${formatTime(state.dayEnd)}`;
         updateGenerateButton();
         applyI18n();
+        renderSources();
         renderDecks();
         renderPresets();
         renderApiSettings();
@@ -1912,24 +1966,23 @@
   });
 
   el.refreshButton.addEventListener("click", () => {
-    state.selectedDeckId = null;
-    state.autoSelectedDeck = false;
-    state.fields = [];
-    state.selectedFields = [];
-    state.currentCards = [];
-    state.selectedCardIds = new Set();
-    el.saveFieldsButton.disabled = true;
-    setFieldButtons(false);
-    el.cardList.innerHTML = "";
-    renderFields();
-    updateCardSelectionControls();
-    send("load");
+    const sourceId = state.selectedSourceId;
+    resetDeckSelection();
+    if (sourceId) {
+      selectSource(sourceId);
+    } else {
+      send("load");
+    }
   });
 
   if (el.providerRetryButton) {
     el.providerRetryButton.addEventListener("click", () => {
       setStatus("loadingDay");
-      send("load");
+      if (state.selectedSourceId) {
+        send("selectSource", { sourceId: state.selectedSourceId });
+      } else {
+        send("load");
+      }
     });
   }
 
