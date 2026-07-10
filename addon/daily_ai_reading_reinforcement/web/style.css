@@ -278,6 +278,7 @@ h2 {
   background: var(--btn-secondary-bg);
   color: var(--ink);
   font-weight: 700;
+  min-height: 36px;
   padding: 0 12px;
   white-space: normal;
   border-radius: var(--btn-radius);
@@ -484,9 +485,11 @@ h2 {
 .icon-button,
 .primary-button,
 .secondary-button {
+  box-sizing: border-box;
   background: var(--btn-secondary-bg);
   color: var(--ink);
   font-weight: 700;
+  min-height: 36px;
   padding: 0 12px;
   white-space: normal;
   border-radius: var(--btn-radius);
@@ -514,6 +517,7 @@ h2 {
   background: var(--btn-primary-bg);
   color: var(--btn-primary-color);
   font-weight: 700;
+  min-height: 36px;
   padding: 0 16px;
   white-space: normal;
   border-radius: var(--btn-radius);
@@ -530,6 +534,7 @@ h2 {
   background: var(--btn-secondary-bg);
   color: var(--ink);
   font-weight: 700;
+  min-height: 36px;
   padding: 0 12px;
   white-space: normal;
   border-radius: var(--btn-radius);
@@ -594,6 +599,7 @@ h2 {
 
 .form-field input,
 .form-field select {
+  box-sizing: border-box;
   background: var(--surface-strong);
   border: 1px solid var(--line);
   border-width: 1px;
@@ -1268,6 +1274,7 @@ h2 {
   background: var(--btn-secondary-bg);
   color: var(--ink);
   font-weight: 700;
+  min-height: 36px;
   padding: 0 12px;
   white-space: normal;
   border-radius: var(--btn-radius);
