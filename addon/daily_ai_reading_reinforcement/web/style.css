@@ -1600,3 +1600,14 @@ h2 {
   --shadow-base: 0 4px 12px rgba(46, 16, 101, 0.04);
   --shadow-hover: 0 8px 24px rgba(46, 16, 101, 0.08);
 }
+
+
+/* Theme: Gruvbox Retro */
+:root[data-theme="gruvbox"] {
+  --background: #282828;
+  --surface: #3C3836;
+  --ink: #EBDBB2;
+  --accent: #FABD2F;
+  --warn: #CC241D;
+  --glow: transparent;
+}
