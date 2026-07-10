@@ -57,8 +57,15 @@ _anki_cfg = importlib.util.module_from_spec(_spec)
 _spec.loader.exec_module(_anki_cfg)
 AnkiConfigStore = _anki_cfg.AnkiConfigStore
 
-# Import core.config for DEFAULT_CONFIG (pure Python, no aqt deps)
-_core_cfg_path = _addon_root / "core" / "config.py"
+# Import the independently installable core config (pure Python, no aqt deps).
+_core_cfg_path = (
+    Path(__file__).resolve().parent.parent
+    / "packages"
+    / "dairr_core"
+    / "src"
+    / "dairr_core"
+    / "config.py"
+)
 _core_spec = importlib.util.spec_from_file_location(
     "core_config", _core_cfg_path
 )

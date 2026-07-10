@@ -47,7 +47,7 @@ class TestPackageDesktopCommand(unittest.TestCase):
         self.assertIn("--hidden-import urllib.error", output)
         self.assertIn("--hidden-import urllib.request", output)
         self.assertIn("--hidden-import uuid", output)
-        self.assertIn("addon/daily_ai_reading_reinforcement/core", output)
+        self.assertIn("packages/dairr_core/src/dairr_core", output)
         self.assertIn("addon/daily_ai_reading_reinforcement/web", output)
         self.assertIn("desktop_mock/main.py", output)
         self.assertIn("desktop_mock/diagnostics.py", output)

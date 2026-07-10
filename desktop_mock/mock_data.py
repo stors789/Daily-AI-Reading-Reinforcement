@@ -10,29 +10,17 @@
 
 from __future__ import annotations
 
-import importlib.util
-import sys
-from pathlib import Path
 from typing import Any
 
-_ADDON_ROOT = (
-    Path(__file__).resolve().parent.parent
-    / "addon" / "daily_ai_reading_reinforcement"
-)
+from dairr_core_runtime import enable_dairr_core_imports
 
+enable_dairr_core_imports()
 
-def _load_core_config() -> tuple[list[dict[str, Any]], dict[str, Any]]:
-    """Load core.config (pure module, no aqt) without importing the addon package."""
-    mod_path = _ADDON_ROOT / "core" / "config.py"
-    spec = importlib.util.spec_from_file_location("dairr_core_config", mod_path)
-    assert spec is not None and spec.loader is not None
-    mod = importlib.util.module_from_spec(spec)
-    sys.modules["dairr_core_config"] = mod
-    spec.loader.exec_module(mod)
-    return list(mod.PROVIDER_PROFILES), dict(mod.DEFAULT_CONFIG)
+from dairr_core.config import DEFAULT_CONFIG as _DEFAULT_CONFIG
+from dairr_core.config import PROVIDER_PROFILES as _PROVIDER_PROFILES
 
-
-_PROVIDER_PROFILES, DEFAULT_CONFIG = _load_core_config()
+DEFAULT_CONFIG = dict(_DEFAULT_CONFIG)
+_PROVIDER_PROFILES = list(_PROVIDER_PROFILES)
 
 
 # Article card destination constants mirror the addon's module-level values.

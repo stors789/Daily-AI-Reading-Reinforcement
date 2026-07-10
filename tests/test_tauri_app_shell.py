@@ -229,7 +229,7 @@ class TauriSidecarTests(unittest.TestCase):
         self.assertIn("--onedir", output)
         self.assertIn("--console", output)
         self.assertIn("desktop_app.py", output)
-        self.assertIn("addon/daily_ai_reading_reinforcement/core", output)
+        self.assertIn("packages/dairr_core/src/dairr_core", output)
         self.assertIn("desktop_mock/main.py", output)
 
     def test_sidecar_script_known_target_triples_are_valid(self) -> None:

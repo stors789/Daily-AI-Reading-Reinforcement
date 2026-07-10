@@ -1,7 +1,7 @@
 """Desktop-specific adapter implementations for DAIRR.
 
 These concrete adapters implement the Protocol interfaces defined in
-core/adapters.py without importing aqt / mw / Anki.  They let the
+dairr_core.adapters without importing aqt / mw / Anki. They let the
 desktop mock server run the real article generation pipeline.
 
 IMPORTANT: This file must NEVER import aqt, mw, or any Anki module.
@@ -9,104 +9,22 @@ IMPORTANT: This file must NEVER import aqt, mw, or any Anki module.
 
 from __future__ import annotations
 
+import importlib
 import json
 import os
 import threading
 from pathlib import Path
 from typing import Any, Callable, TypeVar
 
+from dairr_core_runtime import enable_dairr_core_imports
 from desktop_paths import app_config_path, app_output_dir, legacy_config_path
 
-_REPO_ROOT = Path(__file__).resolve().parent.parent
-_ADDON_ROOT = _REPO_ROOT / "addon" / "daily_ai_reading_reinforcement"
-
-# Import the core modules (pure, no Anki deps).
-import importlib.util as _iu
-import sys as _sys
-
-
-# Meta-path finder so that core modules can use relative imports (e.g. from .rendering).
-# Core modules live in addon/.../core/ and use a virtual package "dairr_core".
-_CORE_DIR = _ADDON_ROOT / "core"
-
-
-class _CoreModuleFinder:
-    """sys.meta_path finder that resolves dairr_core.* module names.
-
-    When a relative import like `from .rendering import ...` triggers,
-    Python resolves it to `dairr_core.rendering`.  This finder locates
-    the corresponding .py file in _CORE_DIR and loads it.
-    """
-    __slots__ = ()
-
-    def _stem_from_fullname(self, fullname: str) -> str | None:
-        prefix = "dairr_core."
-        if not fullname.startswith(prefix):
-            if fullname == "dairr_core":
-                return "__init__"
-            return None
-        return fullname[len(prefix):]
-
-    def find_spec(self, fullname: str, path: Any = None, target: Any = None) -> Any:
-        stem = self._stem_from_fullname(fullname)
-        if stem is None:
-            return None
-
-        # Already loaded? Return None to let the normal mechanism take over.
-        if fullname in _sys.modules:
-            return None
-
-        # Core modules are flat; "__init__" for the package itself.
-        if stem == "__init__":
-            path = _CORE_DIR / "__init__.py"
-        else:
-            path = _CORE_DIR / f"{stem}.py"
-
-        if not path.is_file():
-            return None
-
-        return _iu.spec_from_file_location(fullname, path)
-
-    def exec_module(self, mod: Any) -> None:
-        # __package__ must match our virtual package name so that
-        # relative imports resolve correctly.
-        if hasattr(mod, "__package__"):
-            mod.__package__ = "dairr_core"
-
-
-_CORE_FINDER = _CoreModuleFinder()
-_sys.meta_path.insert(0, _CORE_FINDER)
+enable_dairr_core_imports()
 
 
 def _import_core(stem: str) -> Any:
-    """Lazy-import a core module without touching the addon package __init__.
-
-    All core modules share the virtual package 'dairr_core', so that
-    relative imports (e.g. from .rendering) work correctly.
-    """
-    module_name = f"dairr_core.{stem}"
-    if module_name in _sys.modules:
-        return _sys.modules[module_name]
-
-    path = _CORE_DIR / f"{stem}.py"
-    spec = _iu.spec_from_file_location(module_name, path)
-    if spec is None or spec.loader is None:
-        raise ImportError(f"Cannot load {path}")
-    mod = _iu.module_from_spec(spec)
-    mod.__package__ = "dairr_core"
-
-    # Register the virtual package itself so relative imports resolve.
-    if "dairr_core" not in _sys.modules:
-        import types
-        _pkg = types.ModuleType("dairr_core")
-        _pkg.__package__ = "dairr_core"
-        _pkg.__path__ = []
-        _sys.modules["dairr_core"] = _pkg
-
-    _sys.modules[module_name] = mod
-    _CORE_FINDER.exec_module(mod)
-    spec.loader.exec_module(mod)
-    return mod
+    """Import a named DAIRR core module through Python's standard importer."""
+    return importlib.import_module(f"dairr_core.{stem}")
 
 
 _core_config = _import_core("config")
@@ -162,7 +80,7 @@ class DesktopConfigAdapter:
       2. A JSON config file at DESKTOP_CONFIG_PATH
       3. Legacy ~/.dairr_config.json, when it already exists
       4. Packaged-app config path under the user's application data directory
-      5. DEFAULT_CONFIG from core/config.py
+      5. DEFAULT_CONFIG from dairr_core.config
     """
 
     ENV_MAP: dict[str, str] = {

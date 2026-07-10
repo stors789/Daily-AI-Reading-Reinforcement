@@ -1,0 +1,13 @@
+[build-system]
+requires = ["setuptools>=68"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "dairr-core"
+version = "0.1.0"
+description = "Platform-agnostic core for Daily AI Reading Reinforcement"
+requires-python = ">=3.11"
+authors = [{ name = "DAIRR" }]
+
+[tool.setuptools.packages.find]
+where = ["src"]

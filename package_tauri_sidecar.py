@@ -46,6 +46,7 @@ DESKTOP_MOCK_FILES = (
     "ankiconnect_card_saver.py",
     "ankiconnect_provider.py",
     "desktop_adapters.py",
+    "dairr_core_runtime.py",
     "desktop_paths.py",
     "diagnostics.py",
     "main.py",
@@ -55,8 +56,7 @@ DESKTOP_MOCK_FILES = (
 )
 
 DATA_PATHS = (
-    (ROOT / "addon" / "daily_ai_reading_reinforcement" / "core",
-     Path("addon/daily_ai_reading_reinforcement/core")),
+    (ROOT / "packages" / "dairr_core" / "src" / "dairr_core", Path("dairr_core")),
     (ROOT / "addon" / "daily_ai_reading_reinforcement" / "web",
      Path("addon/daily_ai_reading_reinforcement/web")),
 ) + tuple(
