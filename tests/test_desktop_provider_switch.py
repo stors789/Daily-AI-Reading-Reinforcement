@@ -94,8 +94,7 @@ class TestHandleActionWithFakeProvider(unittest.TestCase):
 
     def test_select_source_error_returns_safe_error_event(self):
         self.fake_provider.get_today_decks.side_effect = Exception("Super secret token 123 failed")
-        with patch.object(_main, "_provider_for_source", return_value=self.fake_provider):
-            result = _main.handle_action("selectSource", {"sourceId": "primary"})
+        result = _main.handle_action("selectSource", {"sourceId": "primary"})
         self.assertEqual(result["event"], "error")
         # Should not leak the exception message to the payload
         self.assertNotIn("secret", result["payload"]["message"])
@@ -103,8 +102,7 @@ class TestHandleActionWithFakeProvider(unittest.TestCase):
 
     def test_select_source_ankiconnect_offline_returns_retryable_provider_event(self):
         self.fake_provider.get_today_decks.side_effect = AnkiConnectError("secret endpoint detail")
-        with patch.object(_main, "_provider_for_source", return_value=self.fake_provider):
-            result = _main.handle_action("selectSource", {"sourceId": "primary"})
+        result = _main.handle_action("selectSource", {"sourceId": "primary"})
         self.assertEqual(result["event"], "providerOffline")
         self.assertEqual(result["payload"]["provider"], "ankiconnect")
         self.assertTrue(result["payload"]["retryable"])
@@ -118,7 +116,7 @@ class TestHandleActionWithFakeProvider(unittest.TestCase):
         self.fake_provider.get_deck_cards.return_value = {"deckId": "test_deck", "cards": [], "fields": ["term"], "selectedFields": ["term"]}
         result = _main.handle_action("selectDeck", {"deckId": "test_deck"})
         self.assertEqual(result["event"], "deckCards")
-        self.assertEqual(result["payload"]["deckId"], "test_deck")
+        self.assertEqual(result["payload"]["deckId"], "dairr:v1:primary:test_deck")
 
     @patch('sys.stderr')
     def test_select_deck_error_returns_safe_error_event(self, mock_stderr):

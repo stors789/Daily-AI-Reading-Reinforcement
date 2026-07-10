@@ -81,6 +81,8 @@ class TestHandleAction(unittest.TestCase):
         self.assertEqual(result["payload"]["decks"], [])
         self.assertEqual(result["payload"]["selectedSourceId"], "")
         self.assertTrue(result["payload"]["sources"])
+        self.assertEqual(result["payload"]["sources"][0]["contractVersion"], "v1")
+        self.assertIn("read_today_decks", result["payload"]["sources"][0]["capabilities"])
         get_provider.assert_not_called()
 
     def test_select_source_fetches_only_the_selected_provider(self) -> None:
@@ -93,15 +95,15 @@ class TestHandleAction(unittest.TestCase):
                 ]
             },
         )()
-        with patch.object(_main, "_provider_for_source", return_value=fake_provider) as get_provider:
+        with patch.object(_main, "get_deck_provider", return_value=fake_provider) as get_provider:
             result = _main.handle_action("selectSource", {"sourceId": "primary"})
 
         self.assertEqual(result["event"], "state")
         self.assertEqual(result["payload"]["selectedSourceId"], "primary")
-        self.assertEqual(result["payload"]["decks"][0]["id"], "test")
-        get_provider.assert_called_once_with("primary")
+        self.assertEqual(result["payload"]["decks"][0]["id"], "dairr:v1:primary:test")
+        get_provider.assert_called_once()
 
-    def test_select_momo_deck_routes_to_momo_provider(self) -> None:
+    def test_select_momo_deck_routes_to_momo_provider_by_scoped_id(self) -> None:
         fake_momo = type(
             "FakeMoMo",
             (),
@@ -114,11 +116,13 @@ class TestHandleAction(unittest.TestCase):
                 }
             },
         )()
-        with patch.object(_main, "get_momo_provider", return_value=fake_momo):
-            result = _main.handle_action("selectDeck", {"deckId": "momo_today"})
+        with patch.object(_main, "_momo_api_key", return_value="configured"), patch.object(
+            _main, "get_momo_provider", return_value=fake_momo
+        ):
+            result = _main.handle_action("selectDeck", {"deckId": "dairr:v1:momo:momo_today"})
 
         self.assertEqual(result["event"], "deckCards")
-        self.assertEqual(result["payload"]["deckId"], "momo_today")
+        self.assertEqual(result["payload"]["deckId"], "dairr:v1:momo:momo_today")
         self.assertEqual(len(result["payload"]["cards"]), 1)
 
     def test_save_desktop_settings_persists_safe_payload(self) -> None:
@@ -156,7 +160,7 @@ class TestHandleAction(unittest.TestCase):
         result = _main.handle_action("selectDeck", {"deckId": "deck-japanese"})
         self.assertEqual(result["event"], "deckCards")
         payload = result["payload"]
-        self.assertEqual(payload["deckId"], "deck-japanese")
+        self.assertEqual(payload["deckId"], "dairr:v1:primary:deck-japanese")
         self.assertEqual(len(payload["cards"]), 3)
         self.assertTrue(payload["fields"])
         self.assertTrue(payload["selectedFields"])
@@ -434,7 +438,7 @@ class TestProviderIntegration(unittest.TestCase):
     def test_select_deck_passes_cards_from_provider(self) -> None:
         result = _main.handle_action("selectDeck", {"deckId": "deck-japanese"})
         payload = result["payload"]
-        self.assertEqual(payload["deckId"], "deck-japanese")
+        self.assertEqual(payload["deckId"], "dairr:v1:primary:deck-japanese")
         self.assertEqual(len(payload["cards"]), 3)
 
 
