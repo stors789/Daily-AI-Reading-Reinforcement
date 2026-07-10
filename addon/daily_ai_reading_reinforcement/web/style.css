@@ -1446,3 +1446,32 @@ h2 {
 :root[data-theme="dark"] ::-webkit-scrollbar-thumb:hover {
   background: rgba(255, 255, 255, 0.3);
 }
+
+
+/* Theme: OLED Void */
+:root[data-theme="oled"] {
+  --bg-color: #000000;
+  --surface-color: #111111;
+  --surface-hover: #1A1A1A;
+  --text-primary: #E5E5E5;
+  --text-secondary: #AAAAAA;
+  --text-muted: #777777;
+  --border-color: #333333;
+  
+  --accent-color: #FFFFFF;
+  --accent-hover: #E5E5E5;
+  --accent-text: #000000;
+  
+  --shadow-sm: none;
+  --shadow-md: none;
+  --shadow-lg: none;
+  
+  --selection-bg: #444444;
+  --selection-text: #FFFFFF;
+  
+  --focus-ring: 0 0 0 2px rgba(255, 255, 255, 0.5);
+  
+  --success-color: #AAAAAA;
+  --warning-color: #AAAAAA;
+  --danger-color: #E5E5E5;
+}
