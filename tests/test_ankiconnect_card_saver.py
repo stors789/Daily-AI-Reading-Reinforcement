@@ -101,7 +101,31 @@ class TestAnkiConnectArticleCardSaver(unittest.TestCase):
         self.assertEqual(note["fields"]["Markdown Path"], "/tmp/article.md")
         self.assertEqual(note["fields"]["HTML Path"], "/tmp/article.html")
         self.assertRegex(note["fields"]["Date"], r"^\d{4}-\d{2}-\d{2} \d{2}:\d{2}:\d{2}\.\d{6}$")
+        self.assertRegex(
+            note["fields"]["Title"],
+            r"^\d{4}-\d{2}-\d{2} \d{2}:\d{2}:\d{2} · Reading Article$",
+        )
         self.assertTrue(note["options"]["allowDuplicate"])
+
+    def test_title_uses_article_title_and_distinguishes_same_day_articles(self) -> None:
+        opener = RecordingOpener()
+        saver = AnkiConnectArticleCardSaver(opener=opener)
+        first_article = "[ARTICLE_TITLE]\nFirst reading\n[MAIN_ARTICLE]\nBody."
+        second_article = "[ARTICLE_TITLE]\nSecond <b>reading</b>\n[MAIN_ARTICLE]\nBody."
+
+        with patch.object(
+            _saver_mod,
+            "article_card_date",
+            side_effect=["2026-07-11 10:20:30.000001", "2026-07-11 10:20:31.000001"],
+        ):
+            saver.save_article_card("Deck", [], first_article, Path("/tmp/a.md"), Path("/tmp/a.html"))
+            saver.save_article_card("Deck", [], second_article, Path("/tmp/b.md"), Path("/tmp/b.html"))
+
+        notes = [request["params"]["note"] for request in opener.requests if request["action"] == "addNote"]
+        self.assertEqual(notes[0]["fields"]["Date"], "2026-07-11 10:20:30.000001")
+        self.assertEqual(notes[1]["fields"]["Date"], "2026-07-11 10:20:31.000001")
+        self.assertEqual(notes[0]["fields"]["Title"], "2026-07-11 10:20:30 · First reading")
+        self.assertEqual(notes[1]["fields"]["Title"], "2026-07-11 10:20:31 · Second reading")
 
     def test_success_returns_article_card_identity(self) -> None:
         opener = RecordingOpener()

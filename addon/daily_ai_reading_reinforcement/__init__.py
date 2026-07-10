@@ -33,6 +33,7 @@ from .core.prompt import build_prompt
 from .core.article_generator import run_article_generation
 from .anki_adapters import AnkiConfigAdapter, AnkiDeckAdapter
 from .core.rendering import (
+    article_card_title,
     render_article_fragment_html,
     render_article_html,
     render_paragraph_html,
@@ -927,9 +928,10 @@ def create_article_card(
     deck_id = get_or_create_deck_id(deck_name_value)
     model = get_or_create_article_model()
     note = mw.col.new_note(model)
-    title = article_card_title(source_deck_name)
+    date_value = article_card_date()
+    title = article_card_title(article, date_value)
     values = {
-        "Date": article_card_date(),
+        "Date": date_value,
         "Source Deck": source_deck_name,
         "Title": title,
         "Article": render_article_fragment_html(article),
@@ -963,10 +965,6 @@ ANKI_DECK_ADAPTER = AnkiDeckAdapter(CARD_SAVER)
 def article_deck_name(source_deck_name: str) -> str:
     source = clean_text(source_deck_name).replace("::", "::")
     return f"{ARTICLE_PARENT_DECK}::{source or 'Generated Articles'}"
-
-
-def article_card_title(source_deck_name: str) -> str:
-    return f"{time.strftime('%Y-%m-%d')} Reading - {source_deck_name}"
 
 
 def article_card_date() -> str:

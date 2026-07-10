@@ -11,6 +11,8 @@ import re
 import time
 from typing import Any
 
+from .utils import clean_text
+
 
 def extract_article_block(raw: str, start_marker: str, end_marker: str = "") -> str:
     start = raw.find(start_marker)
@@ -55,6 +57,19 @@ def parse_article_response(article: str) -> dict[str, Any]:
         "main_article": main_article or raw,
         "review_notes": parse_review_notes(review_raw),
     }
+
+
+def article_card_title(article: str, date_value: str) -> str:
+    """Build the plain-text Anki title for one generated article.
+
+    ``Date`` remains the source of uniqueness and keeps microseconds.  The
+    card heading deliberately retains its second-level timestamp so articles
+    generated on the same day are still distinguishable in Anki, while the
+    actual generated title remains visible and searchable.
+    """
+    generated_at = str(date_value or "").strip().split(".", 1)[0]
+    article_title = clean_text(parse_article_response(article).get("title"))
+    return f"{generated_at or 'Unknown time'} · {article_title or 'Reading Article'}"
 
 
 def render_paragraph_html(text: str) -> str:

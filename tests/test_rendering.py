@@ -8,6 +8,7 @@ from unittest.mock import Mock
 sys.path.insert(0, str(Path(__file__).resolve().parent.parent / "addon" / "daily_ai_reading_reinforcement"))
 
 from core.rendering import (
+    article_card_title,
     extract_article_block,
     parse_article_response,
     parse_review_notes,
@@ -152,6 +153,27 @@ class TestParseArticleResponse(unittest.TestCase):
         self.assertEqual(result["title"], "Reading Article")
         self.assertEqual(result["main_article"], "")
         self.assertEqual(result["review_notes"], [])
+
+
+class TestArticleCardTitle(unittest.TestCase):
+
+    def test_includes_second_precision_timestamp_and_article_title(self):
+        result = article_card_title(
+            "[ARTICLE_TITLE]\nA focused reading\n[MAIN_ARTICLE]\nBody.",
+            "2026-07-11 10:20:30.123456",
+        )
+        self.assertEqual(result, "2026-07-11 10:20:30 · A focused reading")
+
+    def test_falls_back_when_article_title_is_missing(self):
+        result = article_card_title("[MAIN_ARTICLE]\nBody.", "2026-07-11 10:20:30.123456")
+        self.assertEqual(result, "2026-07-11 10:20:30 · Reading Article")
+
+    def test_strips_markup_and_collapses_whitespace_in_title(self):
+        result = article_card_title(
+            "[ARTICLE_TITLE]\n  <b>Safe</b>   &amp;\n reading \n[MAIN_ARTICLE]\nBody.",
+            "2026-07-11 10:20:30.123456",
+        )
+        self.assertEqual(result, "2026-07-11 10:20:30 · Safe & reading")
 
 
 class TestRenderParagraphHtml(unittest.TestCase):

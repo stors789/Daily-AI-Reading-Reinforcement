@@ -8,7 +8,6 @@ conventions through AnkiConnect.
 from __future__ import annotations
 
 import json
-import time
 import urllib.error
 import urllib.request
 from datetime import datetime
@@ -16,6 +15,11 @@ from pathlib import Path
 from typing import Any, Callable
 
 from ankiconnect_provider import ANKICONNECT_VERSION, DEFAULT_ANKICONNECT_URL
+from dairr_core_runtime import enable_dairr_core_imports
+
+enable_dairr_core_imports()
+
+from dairr_core.rendering import article_card_title
 
 
 ARTICLE_PARENT_DECK = "Daily AI Reading Reinforcement"
@@ -120,7 +124,7 @@ class AnkiConnectArticleCardSaver:
         fields = {
             "Date": date_value,
             "Source Deck": source_deck_name,
-            "Title": article_card_title(source_deck_name),
+            "Title": article_card_title(article, date_value),
             "Article": self._render_article_fragment_html(article),
             "Source Terms": "\n".join(term for term in (_card_term(card) for card in cards) if term),
             "Markdown Path": str(markdown_path),
@@ -245,10 +249,6 @@ class AnkiConnectArticleCardSaver:
 def article_deck_name(source_deck_name: str) -> str:
     source = _clean_text(source_deck_name).replace("::", "::")
     return f"{ARTICLE_PARENT_DECK}::{source or 'Generated Articles'}"
-
-
-def article_card_title(source_deck_name: str) -> str:
-    return f"{time.strftime('%Y-%m-%d')} Reading - {source_deck_name}"
 
 
 def article_card_date() -> str:
