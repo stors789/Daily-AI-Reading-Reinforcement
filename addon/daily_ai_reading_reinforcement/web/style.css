@@ -1638,3 +1638,24 @@ h2 {
   --shadow-base: none;
   --shadow-hover: none;
 }
+
+
+/* Theme: Matcha (Zen) */
+:root[data-theme="matcha"] {
+  --bg-base: #FAFAF5;
+  --bg-panel: #F2EFE9;
+  --bg-overlay: rgba(250, 250, 245, 0.8);
+  --text-primary: #2C3E35;
+  --text-secondary: rgba(44, 62, 53, 0.7);
+  --text-tertiary: rgba(44, 62, 53, 0.4);
+  --accent-color: #2D6A4F;
+  --accent-hover: #1B4332;
+  --accent-light: rgba(45, 106, 79, 0.1);
+  --border-color: rgba(44, 62, 53, 0.1);
+  --hover-bg: rgba(44, 62, 53, 0.05);
+  --ambient-opacity: 0;
+  --shadow-sm: 0 2px 4px rgba(44, 62, 53, 0.05);
+  --shadow-md: 0 4px 12px rgba(44, 62, 53, 0.08);
+  --shadow-lg: 0 8px 24px rgba(44, 62, 53, 0.12);
+  --panel-border: 1px solid var(--border-color);
+}
