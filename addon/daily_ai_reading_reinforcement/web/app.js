@@ -66,6 +66,9 @@
     invertFieldsButton: document.getElementById("invertFieldsButton"),
     saveFieldsButton: document.getElementById("saveFieldsButton"),
     refreshButton: document.getElementById("refreshButton"),
+    providerOffline: document.getElementById("providerOffline"),
+    providerOfflineMessage: document.getElementById("providerOfflineMessage"),
+    providerRetryButton: document.getElementById("providerRetryButton"),
     fieldList: document.getElementById("fieldList"),
     presetSelect: document.getElementById("presetSelect"),
     presetName: document.getElementById("presetName"),
@@ -144,6 +147,8 @@
       article: "文章",
       settings: "API 设置",
       refresh: "刷新",
+      retry: "重试",
+      ankiConnectOffline: "无法连接 AnkiConnect。请启动 Anki，并确认 AnkiConnect 已安装和启用。",
       all: "全选",
       invert: "反选",
       save: "保存",
@@ -256,6 +261,8 @@
       article: "Article",
       settings: "API Settings",
       refresh: "Refresh",
+      retry: "Retry",
+      ankiConnectOffline: "Cannot connect to AnkiConnect. Start Anki and confirm that AnkiConnect is installed and enabled.",
       all: "All",
       invert: "Invert",
       save: "Save",
@@ -368,6 +375,8 @@
       article: "文章",
       settings: "API 設定",
       refresh: "更新",
+      retry: "再試行",
+      ankiConnectOffline: "AnkiConnect に接続できません。Anki を起動し、AnkiConnect がインストールされ有効になっていることを確認してください。",
       all: "全選択",
       invert: "反転",
       save: "保存",
@@ -1010,6 +1019,15 @@
     renderStatus();
   }
 
+  function setProviderOffline(isOffline, message = "") {
+    if (!el.providerOffline) return;
+    el.providerOffline.hidden = !isOffline;
+    if (isOffline && el.providerOfflineMessage) {
+      el.providerOfflineMessage.textContent = message || tr("ankiConnectOffline");
+    }
+    if (el.providerRetryButton) el.providerRetryButton.textContent = tr("retry");
+  }
+
   function extractBlock(raw, startMarker, endMarker) {
     const start = raw.indexOf(startMarker);
     if (start === -1) return "";
@@ -1234,6 +1252,7 @@
     receive(message) {
       const { event, payload } = message;
       if (event === "state") {
+        setProviderOffline(false);
         state.decks = payload.decks || [];
         state.collapsedDeckGroups = new Set(payload.collapsedDeckGroups || []);
         state.promptPresets = payload.promptPresets || [];
@@ -1323,6 +1342,19 @@
         } else {
           setStatus("articleCardSkipped", false);
         }
+      }
+      if (event === "providerOffline") {
+        state.decks = [];
+        state.selectedDeckId = null;
+        state.fields = [];
+        state.currentCards = [];
+        state.selectedCardIds = new Set();
+        renderDecks();
+        renderFields();
+        renderCards([]);
+        updateGenerateButton();
+        setProviderOffline(true, payload.message || tr("ankiConnectOffline"));
+        setStatus("ankiConnectOffline", true);
       }
       if (event === "error") {
         updateGenerateButton();
@@ -1891,6 +1923,13 @@
     updateCardSelectionControls();
     send("load");
   });
+
+  if (el.providerRetryButton) {
+    el.providerRetryButton.addEventListener("click", () => {
+      setStatus("loadingDay");
+      send("load");
+    });
+  }
 
   send("load");
 })();
