@@ -1055,6 +1055,7 @@ h2 {
 
 .reading-mode .article-panel {
   min-height: 80vh;
+  max-height: calc(100dvh - 100px);
 }
 
 /* Reading mode layout: header and tabs are independent rows; the article
