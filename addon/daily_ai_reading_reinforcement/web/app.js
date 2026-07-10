@@ -2117,7 +2117,27 @@ function initTheme() {
     const newTheme = e.target.value;
     document.documentElement.setAttribute('data-theme', newTheme);
     localStorage.setItem('dairr_theme', newTheme);
+    
+    // Update color-scheme so native OS elements (like dropdown scrollbars) match theme
+    setTimeout(() => {
+      const bg = getComputedStyle(document.body).backgroundColor;
+      const rgb = bg.match(/\d+/g);
+      if (rgb && rgb.length >= 3) {
+        const luma = 0.2126 * rgb[0] + 0.7152 * rgb[1] + 0.0722 * rgb[2];
+        document.documentElement.style.colorScheme = luma < 128 ? 'dark' : 'light';
+      }
+    }, 50);
   });
+  
+  // Also run on initial load
+  setTimeout(() => {
+    const bg = getComputedStyle(document.body).backgroundColor;
+    const rgb = bg.match(/\d+/g);
+    if (rgb && rgb.length >= 3) {
+      const luma = 0.2126 * rgb[0] + 0.7152 * rgb[1] + 0.0722 * rgb[2];
+      document.documentElement.style.colorScheme = luma < 128 ? 'dark' : 'light';
+    }
+  }, 50);
 }
 
 // Initialize theme as soon as DOM is ready
