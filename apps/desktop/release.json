@@ -1,0 +1,4 @@
+{
+  "version": "0.1.0",
+  "updater_endpoint": "https://github.com/stors789/Daily-AI-Reading-Reinforcement/releases/latest/download/latest.json"
+}

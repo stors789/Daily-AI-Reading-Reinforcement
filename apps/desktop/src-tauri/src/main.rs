@@ -20,6 +20,7 @@ use std::os::unix::process::CommandExt;
 
 use serde_json::Value;
 use tauri::Manager;
+use tauri_plugin_updater::UpdaterExt;
 
 const BACKEND_HOST: &str = "127.0.0.1";
 const BACKEND_PORT: u16 = 8755;
@@ -507,6 +508,82 @@ fn set_startup_state(window: &tauri::WebviewWindow, kind: &str, message: &str) {
     ));
 }
 
+fn update_description(version: &str, notes: Option<&str>) -> String {
+    let mut description = format!("发现 DAIRR {version}。下载并安装更新后，应用会自动重新启动。");
+    if let Some(notes) = notes.map(str::trim).filter(|notes| !notes.is_empty()) {
+        description.push_str("\n\n更新说明：\n");
+        description.push_str(notes);
+    }
+    description
+}
+
+async fn check_and_install_update(app: tauri::AppHandle, logger: Arc<ShellLogger>) {
+    if cfg!(debug_assertions) {
+        logger.log("Skipping automatic update check in a debug build");
+        return;
+    }
+
+    let updater = match app.updater() {
+        Ok(updater) => updater,
+        Err(exc) => {
+            logger.log(&format!("Automatic updater initialization failed: {exc}"));
+            return;
+        }
+    };
+    let update = match updater.check().await {
+        Ok(update) => update,
+        Err(exc) => {
+            logger.log(&format!("Automatic update check failed: {exc}"));
+            return;
+        }
+    };
+
+    let Some(update) = update else {
+        logger.log("No DAIRR update is available");
+        return;
+    };
+
+    logger.log(&format!("DAIRR update {} is available", update.version));
+    let install = rfd::MessageDialog::new()
+        .set_level(rfd::MessageLevel::Info)
+        .set_title("DAIRR 有可用更新")
+        .set_description(update_description(&update.version, update.body.as_deref()))
+        .set_buttons(rfd::MessageButtons::YesNo)
+        .show();
+    if install != rfd::MessageDialogResult::Yes {
+        logger.log("User deferred the DAIRR update");
+        return;
+    }
+
+    logger.log(&format!("Downloading DAIRR update {}", update.version));
+    let mut downloaded = 0_usize;
+    let result = update
+        .download_and_install(
+            |chunk_length, content_length| {
+                downloaded += chunk_length;
+                match content_length {
+                    Some(total) => eprintln!("DAIRR update download: {downloaded}/{total} bytes"),
+                    None => eprintln!("DAIRR update download: {downloaded} bytes"),
+                }
+            },
+            || eprintln!("DAIRR update download finished; installing"),
+        )
+        .await;
+    if let Err(exc) = result {
+        logger.log(&format!("DAIRR update installation failed: {exc}"));
+        let _ = rfd::MessageDialog::new()
+            .set_level(rfd::MessageLevel::Error)
+            .set_title("DAIRR 更新未完成")
+            .set_description("更新下载或验证失败；当前版本没有被更改。请稍后重试。")
+            .set_buttons(rfd::MessageButtons::Ok)
+            .show();
+        return;
+    }
+
+    logger.log("DAIRR update installed; restarting application");
+    app.restart();
+}
+
 fn main() {
     let backend_state: BackendState = Arc::new(Mutex::new(None));
     let shutting_down = Arc::new(AtomicBool::new(false));
@@ -516,6 +593,7 @@ fn main() {
     let setup_logger_slot = Arc::clone(&logger_slot);
 
     let app = tauri::Builder::default()
+        .plugin(tauri_plugin_updater::Builder::new().build())
         .register_uri_scheme_protocol("dairr-startup", |_context, _request| {
             tauri::http::Response::builder()
                 .header("Content-Type", "text/html; charset=utf-8")
@@ -586,6 +664,11 @@ fn main() {
                             }
                             Err(exc) => logger.log(&format!("Invalid backend URL: {exc}")),
                         }
+                        let update_app = handle.clone();
+                        let update_logger = Arc::clone(&logger);
+                        tauri::async_runtime::spawn(async move {
+                            check_and_install_update(update_app, update_logger).await;
+                        });
                     }
                     Err(exc) => {
                         logger.log(&format!("Backend readiness failed: {exc}"));
