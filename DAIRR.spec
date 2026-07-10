@@ -2,10 +2,10 @@
 
 
 a = Analysis(
-    ['/Users/eros/Documents/Daily AI Reading Reinforcement/desktop_native.py'],
+    ['E:\\coding\\Daily-AI-Reading-Reinforcement\\desktop_native.py'],
     pathex=[],
     binaries=[],
-    datas=[('/Users/eros/Documents/Daily AI Reading Reinforcement/packages/dairr_core/src/dairr_core', 'dairr_core'), ('/Users/eros/Documents/Daily AI Reading Reinforcement/addon/daily_ai_reading_reinforcement/web', 'addon/daily_ai_reading_reinforcement/web'), ('/Users/eros/Documents/Daily AI Reading Reinforcement/desktop_mock/ankiconnect_card_saver.py', 'desktop_mock'), ('/Users/eros/Documents/Daily AI Reading Reinforcement/desktop_mock/ankiconnect_provider.py', 'desktop_mock'), ('/Users/eros/Documents/Daily AI Reading Reinforcement/desktop_mock/desktop_adapters.py', 'desktop_mock'), ('/Users/eros/Documents/Daily AI Reading Reinforcement/desktop_mock/dairr_core_runtime.py', 'desktop_mock'), ('/Users/eros/Documents/Daily AI Reading Reinforcement/desktop_mock/desktop_paths.py', 'desktop_mock'), ('/Users/eros/Documents/Daily AI Reading Reinforcement/desktop_mock/diagnostics.py', 'desktop_mock'), ('/Users/eros/Documents/Daily AI Reading Reinforcement/desktop_mock/learning_sources.py', 'desktop_mock'), ('/Users/eros/Documents/Daily AI Reading Reinforcement/desktop_mock/main.py', 'desktop_mock'), ('/Users/eros/Documents/Daily AI Reading Reinforcement/desktop_mock/mock_data.py', 'desktop_mock'), ('/Users/eros/Documents/Daily AI Reading Reinforcement/desktop_mock/momo_provider.py', 'desktop_mock'), ('/Users/eros/Documents/Daily AI Reading Reinforcement/desktop_mock/real_momo_provider.py', 'desktop_mock')],
+    datas=[('E:\\coding\\Daily-AI-Reading-Reinforcement\\packages\\dairr_core\\src\\dairr_core', 'dairr_core'), ('E:\\coding\\Daily-AI-Reading-Reinforcement\\addon\\daily_ai_reading_reinforcement\\web', 'addon/daily_ai_reading_reinforcement/web'), ('E:\\coding\\Daily-AI-Reading-Reinforcement\\desktop_mock\\ankiconnect_card_saver.py', 'desktop_mock'), ('E:\\coding\\Daily-AI-Reading-Reinforcement\\desktop_mock\\ankiconnect_provider.py', 'desktop_mock'), ('E:\\coding\\Daily-AI-Reading-Reinforcement\\desktop_mock\\desktop_adapters.py', 'desktop_mock'), ('E:\\coding\\Daily-AI-Reading-Reinforcement\\desktop_mock\\dairr_core_runtime.py', 'desktop_mock'), ('E:\\coding\\Daily-AI-Reading-Reinforcement\\desktop_mock\\desktop_paths.py', 'desktop_mock'), ('E:\\coding\\Daily-AI-Reading-Reinforcement\\desktop_mock\\diagnostics.py', 'desktop_mock'), ('E:\\coding\\Daily-AI-Reading-Reinforcement\\desktop_mock\\learning_sources.py', 'desktop_mock'), ('E:\\coding\\Daily-AI-Reading-Reinforcement\\desktop_mock\\main.py', 'desktop_mock'), ('E:\\coding\\Daily-AI-Reading-Reinforcement\\desktop_mock\\mock_data.py', 'desktop_mock'), ('E:\\coding\\Daily-AI-Reading-Reinforcement\\desktop_mock\\momo_provider.py', 'desktop_mock'), ('E:\\coding\\Daily-AI-Reading-Reinforcement\\desktop_mock\\real_momo_provider.py', 'desktop_mock')],
     hiddenimports=['datetime', 'http.server', 'urllib.error', 'urllib.request', 'uuid', 'webview'],
     hookspath=[],
     hooksconfig={},
@@ -32,6 +32,7 @@ exe = EXE(
     target_arch=None,
     codesign_identity=None,
     entitlements_file=None,
+    icon=['assets\\branding\\icon.ico'],
 )
 coll = COLLECT(
     exe,
@@ -41,10 +42,4 @@ coll = COLLECT(
     upx=True,
     upx_exclude=[],
     name='DAIRR',
-)
-app = BUNDLE(
-    coll,
-    name='DAIRR.app',
-    icon=None,
-    bundle_identifier=None,
 )

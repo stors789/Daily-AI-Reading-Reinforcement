@@ -167,19 +167,14 @@ optgroup {
 
 .language-select {
   background-color: color-mix(in srgb, var(--ink) 5%, var(--bg));
-  background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='16' height='16' viewBox='0 0 24 24' fill='none' stroke='%23888888' stroke-width='2' stroke-linecap='round' stroke-linejoin='round'%3E%3Cpolyline points='6 9 12 15 18 9'%3E%3C/polyline%3E%3C/svg%3E");
-  background-repeat: no-repeat;
-  background-position: right 10px center;
-  background-size: 16px;
   border: 1px solid var(--line);
   border-width: 1px;
   border-radius: var(--panel-radius);
   color: var(--ink);
   font: inherit;
   min-height: 36px;
-  padding: 6px 30px 6px 10px;
-  appearance: none;
-  -webkit-appearance: none;
+  padding: 6px 10px;
+  -webkit-
 }
 
 .eyebrow {
@@ -646,10 +641,6 @@ h2 {
 .form-field select {
   box-sizing: border-box;
   background-color: color-mix(in srgb, var(--ink) 5%, var(--bg));
-  background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='16' height='16' viewBox='0 0 24 24' fill='none' stroke='%23888888' stroke-width='2' stroke-linecap='round' stroke-linejoin='round'%3E%3Cpolyline points='6 9 12 15 18 9'%3E%3C/polyline%3E%3C/svg%3E");
-  background-repeat: no-repeat;
-  background-position: right 10px center;
-  background-size: 16px;
   border: 1px solid var(--line);
   border-width: 1px;
   border-radius: var(--panel-radius);
@@ -657,10 +648,9 @@ h2 {
   font: inherit;
   min-height: 36px;
   min-width: 0;
-  padding: 8px 30px 8px 10px;
+  padding: 8px 10px;
   width: 100%;
-  appearance: none;
-  -webkit-appearance: none;
+  -webkit-
 }
 
 .model-tools {
@@ -671,10 +661,6 @@ h2 {
 
 .model-tools select {
   background-color: color-mix(in srgb, var(--ink) 5%, var(--bg));
-  background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='16' height='16' viewBox='0 0 24 24' fill='none' stroke='%23888888' stroke-width='2' stroke-linecap='round' stroke-linejoin='round'%3E%3Cpolyline points='6 9 12 15 18 9'%3E%3C/polyline%3E%3C/svg%3E");
-  background-repeat: no-repeat;
-  background-position: right 10px center;
-  background-size: 16px;
   border: 1px solid var(--line);
   border-width: 1px;
   border-radius: var(--panel-radius);
@@ -682,10 +668,9 @@ h2 {
   font: inherit;
   min-height: 36px;
   min-width: 0;
-  padding: 8px 30px 8px 10px;
+  padding: 8px 10px;
   width: 100%;
-  appearance: none;
-  -webkit-appearance: none;
+  -webkit-
 }
 
 .inline-check {

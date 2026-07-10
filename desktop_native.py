@@ -125,7 +125,7 @@ def run_native(
     url = f"http://{args.host}:{args.port}"
     _server_thread(server_runner, args.host, args.port)
     webview.create_window("Daily AI Reading Reinforcement", url)
-    webview.start()
+    webview.start(private_mode=False)
     return 0
 
 
