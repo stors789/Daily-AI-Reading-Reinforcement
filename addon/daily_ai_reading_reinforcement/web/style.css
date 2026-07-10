@@ -511,6 +511,7 @@ h2 {
 .icon-button,
 .primary-button,
 .secondary-button {
+  line-height: 1.2;
   appearance: none;
   -webkit-appearance: none;
   box-sizing: border-box;
