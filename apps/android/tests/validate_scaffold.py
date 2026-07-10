@@ -36,6 +36,7 @@ def main() -> None:
         "window.__DAIRR_BRIDGE__.send(action, payload)",
         "window.DAIRR.receive({ event, payload })",
         "supportedActions",
+        "\"selectSource\"",
     )
     require(
         "app/src/main/java/com/dairr/android/security/CredentialStore.kt",

@@ -32,6 +32,7 @@ object BridgeContract {
     // Keep it aligned with the portable web UI while the provider layer evolves.
     val supportedActions = setOf(
         "load",
+        "selectSource",
         "selectDeck",
         "saveCollapsedDeckGroups",
         "saveFieldConfig",
