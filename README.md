@@ -1,120 +1,97 @@
 # Daily AI Reading Reinforcement
 
-An Anki add-on that generates a short reading passage from the cards you studied today.
+**Turn today's flashcards into a reading habit.**
 
-## Introduction
+Daily AI Reading Reinforcement (DAIRR) turns the vocabulary and cards you studied today into a short, level-appropriate AI reading article. It is available as an Anki add-on and is evolving into a standalone macOS and Windows app that works with AnkiConnect and MoMo.
 
-Daily AI Reading Reinforcement is an Anki add-on designed to bridge the gap between rote memorization and practical language application. It automatically extracts the vocabulary or flashcards you've studied today and leverages AI (like OpenAI, DeepSeek, etc.) to generate a short, engaging reading passage incorporating those exact terms.
+![DAIRR reading workspace](assets/screenshot1.png)
 
-![Interface Screenshot 1](assets/screenshot1.png)
+## What it does
 
-![Interface Screenshot 2](assets/screenshot2.png)
+- Builds a focused article from the cards you studied or missed today.
+- Works with OpenAI-compatible models and configurable prompts, languages, difficulty levels, and article length.
+- Keeps the original article title, source deck, generated time, source terms, Markdown, and HTML output together.
+- Lets you revisit saved articles through a 52-week activity heatmap, filter by deck or day, and reopen an article in read-only mode.
+- Can save generated articles as suspended Anki reading cards. Card titles include the precise generation time and the AI-generated article title, so multiple articles from the same day stay distinct.
+- Supports Anki-native use today, plus standalone desktop providers for AnkiConnect and MoMo.
 
-By reading a coherent story or article constructed from your daily study material, you naturally reinforce your memory through context, shifting from isolated flashcard drilling to active reading comprehension.
+## Product surfaces
 
-## Key Benefits
+| Surface | Status | Use it when |
+| --- | --- | --- |
+| Anki add-on | Supported | You want DAIRR inside Anki and its native collection workflow. |
+| Standalone desktop | In active development | You want a native macOS/Windows window with AnkiConnect or MoMo. |
+| Browser launcher | Development fallback | You are testing the standalone backend without a native shell. |
 
-- **Contextual Reinforcement**: Move beyond isolated rote learning. Seeing your newly learned vocabulary in a natural context dramatically improves retention and deeper understanding.
-- **Tailored to Your Progress**: The add-on strictly follows your Anki study history. It generates reading materials based only on the cards you learned or failed *today*, ensuring the content is perfectly aligned with your immediate learning curve.
-- **Fully Customizable**: Support for custom prompt presets allows you to dictate the language, difficulty level, and specific formatting requirements for the generated articles.
-- **Closed-Loop Learning**: You can seamlessly save the AI-generated articles back into Anki as new reading cards. By default, these reading cards are suspended, allowing you to manually review them whenever you want to test your reading comprehension.
-- **Flexible AI Integration**: Works with any OpenAI-compatible API provider, giving you the freedom to choose your preferred AI model.
+The desktop shell is built with Tauri and packages the existing Python backend as a sidecar. Its release pipeline prepares signed macOS and Windows update bundles; publishing the first public update still requires Apple, Windows, and Tauri signing credentials. See [desktop auto updates](docs/desktop_auto_updates.md).
 
-## Installation
+## Install the Anki add-on
 
-The easiest way to install this add-on is through AnkiWeb.
+Install from AnkiWeb:
 
-1. Open Anki and go to **Tools** > **Add-ons** (or **Anki** > **Add-ons** on Mac).
-2. Click **Get Add-ons...**
-3. Enter the code: **`842038474`**
-4. Click **OK** and wait for the download to finish.
-5. Restart Anki to complete the installation.
+1. In Anki, open **Tools → Add-ons → Get Add-ons…**.
+2. Enter **`842038474`**.
+3. Restart Anki.
+4. Open the add-on configuration and set an OpenAI-compatible API key, base URL, and model.
 
-## Layout
+## Run the standalone app for development
 
-```text
-addon/daily_ai_reading_reinforcement/
-  __init__.py
-  core/           # Pure, reusable business logic and Adapter interfaces
-  web/            # Cross-platform HTML/CSS/JS UI
-desktop_mock/     # Standalone HTTP server & external API providers (e.g., MoMo)
-tests/            # Unit tests
-```
-
-## Install for Development
-
-Copy or symlink `addon/daily_ai_reading_reinforcement` into your Anki add-ons directory, then restart Anki.
-
-On macOS, the target is usually:
-
-```text
-~/Library/Application Support/Anki2/addons21/daily_ai_reading_reinforcement
-```
-
-Then open Anki, find the add-on config, and set your API key.
-
-## Desktop Standalone Development
-
-DAIRR can also run as a dependency-free standalone desktop launcher that reuses
-the same shared web UI and core logic as the Anki add-on.
+### Browser fallback
 
 ```bash
 python3 desktop_app.py --provider mock
 python3 desktop_app.py --provider ankiconnect
 python3 desktop_app.py --provider ankiconnect --check
-python3 desktop_app.py --provider ankiconnect --check-write
 ```
 
-See [Desktop Standalone Mode](docs/desktop_standalone.md) for provider modes,
-AnkiConnect data flow, diagnostics, environment variables, known limitations,
-and the manual release checklist.
+### Native Tauri shell
 
-An optional pywebview native shell scaffold is available via
-`desktop_native.py`; see [Native Shell Scaffold](docs/native_shell.md).
-For future desktop packaging commands, see [Desktop Packaging Scaffold](docs/packaging.md).
-
-## Config
-
-The add-on uses an OpenAI-compatible chat completions API:
-
-```json
-{
-  "api_key": "",
-  "base_url": "https://api.openai.com/v1",
-  "model": "gpt-4.1-mini",
-  "selected_provider_profile": "openai",
-  "temperature": 0.7,
-  "max_tokens": 30000,
-  "prompt_template": "",
-  "deck_field_config": {},
-  "create_article_cards": false,
-  "last_selected_deck_id": "",
-  "collapsed_deck_groups": [],
-  "ui_language": "zh",
-  "prompt_presets": [
-    {
-      "id": "default",
-      "name": "Default",
-      "reader_native_language": "",
-      "article_language": "",
-      "difficulty": "",
-      "max_words": "",
-      "instructions": "",
-      "prompt_template": ""
-    }
-  ],
-  "selected_prompt_preset_id": "default"
-}
-```
-
-If `prompt_template` is empty, the add-on uses a built-in prompt.
-
-## Package
-
-Run:
+Requirements: Python 3.11+, Node.js, Rust, and the native dependencies required by Tauri for your platform.
 
 ```bash
-python3 package_addon.py
+cd apps/desktop
+npm install
+npm run dev
 ```
 
-The package will be written to `dist/daily_ai_reading_reinforcement.ankiaddon`.
+Choose a provider before launch when needed:
+
+```bash
+DAIRR_DESKTOP_PROVIDER=ankiconnect npm run dev
+DAIRR_DESKTOP_PROVIDER=real_momo MOMO_TOKEN=your-token npm run dev
+```
+
+Read [Desktop Standalone Mode](docs/desktop_standalone.md) for provider behavior, diagnostics, environment variables, and known limits. The architectural boundary is documented in [Tauri App Shell](docs/architecture/tauri_app_shell.md).
+
+## Configure AI generation
+
+DAIRR uses an OpenAI-compatible chat-completions API. Configure the API key, base URL, model, and prompt presets from the add-on or desktop settings. Prompt presets can control:
+
+- the learner's native language;
+- the article language and difficulty;
+- article length and additional instructions; and
+- which card fields are sent as context.
+
+See [the add-on configuration reference](addon/daily_ai_reading_reinforcement/config.md) for the available configuration values.
+
+## Development and packaging
+
+```bash
+# Build the Anki add-on
+python3 package_addon.py
+
+# Package the legacy browser-style desktop launcher
+python3 package_desktop.py --entry browser --windowed --clean
+
+# Package the pywebview transition shell
+python3 package_desktop.py --entry native --windowed --clean
+
+# Build the Tauri sidecar for the current platform
+python3 package_tauri_sidecar.py --clean
+```
+
+The repository keeps the learning and rendering logic in `packages/dairr_core/`; Anki-specific APIs are isolated in the add-on wrapper. Tests live in `tests/`.
+
+## License and contributions
+
+Issues and pull requests are welcome. When reporting a provider problem, please remove API keys and tokens from logs before sharing them.
