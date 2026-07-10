@@ -143,6 +143,11 @@
 
   const I18N = {
     zh: {
+      group_light: "🌞 浅色与清新",
+      group_retro: "☕ 护眼与复古",
+      group_dark: "🌑 深邃与极简",
+      group_neon: "⚡ 赛博与霓虹",
+
       theme_macchiato: "焦糖玛奇朵",
       theme_rosegold: "玫瑰柔金",
       theme_forest: "迷雾森林",
@@ -287,6 +292,11 @@
      writingVertical: "竖",
    },
    en: {
+      group_light: "🌞 Light & Bright",
+      group_retro: "☕ Warm & Retro",
+      group_dark: "🌑 Dark & Minimal",
+      group_neon: "⚡ Cyberpunk & Neon",
+
       theme_macchiato: "Macchiato",
       theme_rosegold: "Rose Gold",
       theme_forest: "Forest Canopy",
@@ -431,6 +441,11 @@
      writingVertical: "縦",
     },
     ja: {
+      group_light: "🌞 ライト＆フレッシュ",
+      group_retro: "☕ ウォーム＆レトロ",
+      group_dark: "🌑 ダーク＆ミニマル",
+      group_neon: "⚡ サイバー＆ネオン",
+
       theme_macchiato: "マキアート",
       theme_rosegold: "ローズゴールド",
       theme_forest: "深い森",
@@ -664,7 +679,11 @@
     document.querySelectorAll('[data-i18n]').forEach(element => {
       const key = element.getAttribute('data-i18n');
       if (tr(key)) {
-        element.textContent = tr(key);
+        if (element.tagName === 'OPTGROUP') {
+          element.label = tr(key);
+        } else {
+          element.textContent = tr(key);
+        }
       }
     });
    renderModelOptions();
