@@ -72,14 +72,16 @@ The sidecar boundary is intentionally at the process and HTTP bridge level.
 MoMo, AnkiConnect, article generation, config storage, and card saving remain
 inside the Python backend. This phase does not migrate provider logic to Rust.
 
-The Tauri config now enables bundling and declares:
+The Tauri config now enables bundling and declares the onedir runtime as a
+resource:
 
 ```json
-"externalBin": ["binaries/dairr-backend"]
+"resources": ["binaries/dairr-backend"]
 ```
 
-At bundle time, platform-specific sidecar files must be created using Tauri's
-target-triple convention, for example:
+The packaged runtime entry is `binaries/dairr-backend/dairr-backend` (or
+`dairr-backend.exe` on Windows). Legacy target-triple files remain available
+as compatibility fallbacks, for example:
 
 - `dairr-backend-aarch64-apple-darwin`
 - `dairr-backend-x86_64-apple-darwin`
@@ -216,3 +218,119 @@ DAIRR_BACKEND_MODE=sidecar DAIRR_BACKEND_SIDECAR=/path/to/dairr-backend npm run 
   for multiple running instances.
 - The sidecar must include or locate the shared web UI and Python modules in a
   way that does not rely on the source checkout.
+
+## Sidecar Build Pipeline (Phase 3)
+
+### Build Script
+
+`package_tauri_sidecar.py` (repository root) generates platform-specific
+sidecar binaries from the existing Python backend using PyInstaller.
+
+The script:
+
+1. Auto-detects the current platform's target triple
+2. Builds a PyInstaller onedir runtime containing `desktop_app.py`,
+   `desktop_mock/`, shared core, and shared web UI
+3. Writes it to `apps/desktop/src-tauri/binaries/dairr-backend/`
+4. Lets Tauri copy that directory into the application resources
+
+Onedir is deliberate: the previous onefile build took about 15 seconds to
+unpack on every cold launch, while the same backend starts from onedir in about
+0.13 seconds on the ARM64 development machine.
+
+### Supported Target Triples
+
+| Triple                      | Build environment     | Status (2026-07-08)            |
+|-----------------------------|-----------------------|--------------------------------|
+| `aarch64-apple-darwin`      | macOS ARM64           | Real binary, smoke-tested      |
+| `x86_64-apple-darwin`       | macOS Intel           | Placeholder — build on Intel   |
+| `x86_64-pc-windows-msvc`    | Windows               | Placeholder — build on Windows |
+
+### Build Commands
+
+```bash
+# macOS ARM64 (auto-detected)
+python3 package_tauri_sidecar.py
+
+# macOS Intel
+python3 package_tauri_sidecar.py --target-triple x86_64-apple-darwin
+
+# Windows
+python3 package_tauri_sidecar.py --target-triple x86_64-pc-windows-msvc
+
+# Dry-run, check placeholder, clean rebuild
+python3 package_tauri_sidecar.py --dry-run
+python3 package_tauri_sidecar.py --check-placeholder
+python3 package_tauri_sidecar.py --clean
+```
+
+### Sidecar Verification
+
+The sidecar exposes the same three endpoints as `desktop_mock/main.py`:
+
+- `GET /api/health` — returns `{"app":"DAIRR","bridge":{"available":true}}`
+- `POST /api/bridge` — handles all `load`, `generate`, `saveArticleCard`, etc.
+- `GET /` — serves the full DAIRR web UI with injected `__DAIRR_BRIDGE__`
+
+Smoke test procedure:
+
+```bash
+python3 package_tauri_sidecar.py --check-placeholder
+./apps/desktop/src-tauri/binaries/dairr-backend/dairr-backend \
+  --provider mock --host 127.0.0.1 --port 8755 --no-browser
+curl http://127.0.0.1:8755/api/health
+curl -X POST http://127.0.0.1:8755/api/bridge \
+  -H 'Content-Type: application/json' -d '{"action":"load","payload":{}}'
+```
+
+### Running Tauri with Sidecar Mode
+
+```bash
+cd apps/desktop
+DAIRR_BACKEND_MODE=sidecar npm run dev
+DAIRR_BACKEND_SIDECAR=/path/to/dairr-backend-aarch64-apple-darwin \
+  DAIRR_BACKEND_MODE=sidecar npm run dev
+```
+
+### Sandbox Note
+
+The PyInstaller bootloader calls `nice(5)` and `semctl` during startup.
+These calls are blocked by macOS application sandboxing, which means the
+sidecar binary cannot run inside a strict sandbox. This affects the
+`npm run dev` and `cargo test` development flows when using `direnv` or
+sandboxed environments.
+
+In production, the Tauri bundle includes the runtime under
+`Resources/binaries/dairr-backend/` and starts it while the startup window is
+visible. The Tauri process itself will have the necessary entitlements.
+
+The Desktop dev flow (`python3 desktop_app.py` and `npm run dev` with the
+default Python launcher) is unaffected since it runs `python3` directly
+without a PyInstaller wrapper.
+
+### Testing
+
+Sidecar-specific tests live in `tests/test_tauri_app_shell.py` class
+`TauriSidecarTests`:
+
+- Placeholder detection for all three target triples
+- `package_tauri_sidecar.py` build script exists and is runnable
+- Target triple naming rules produce correct filenames
+- Dry-run mode outputs expected PyInstaller command
+- Known target triples are in the valid set
+- `is_placeholder()` correctly detects known placeholder files
+
+Run with:
+
+```bash
+python3 -m pytest tests/test_tauri_app_shell.py -v -k Sidecar
+```
+
+### Next Steps
+
+- Build macOS Intel sidecar on Intel hardware
+- Build Windows sidecar on Windows
+- Sign and notarize macOS sidecar for distribution
+- Verify the full `npm run build` pipeline with real sidecar binaries
+- Consider caching the PyInstaller build output in CI to avoid repeated
+  Python bundling

@@ -9,4 +9,9 @@ addon/daily_ai_reading_reinforcement/user_files/
 !addon/daily_ai_reading_reinforcement/user_files/
 !addon/daily_ai_reading_reinforcement/user_files/README.txt
 addon/daily_ai_reading_reinforcement/user_files/articles/
+
+# Tauri desktop sidecar build artifacts
+apps/desktop/src-tauri/binaries/.build/
 apps/desktop/src-tauri/binaries/dairr-backend/
+apps/desktop/src-tauri/binaries/*.spec
+apps/desktop/node_modules/
