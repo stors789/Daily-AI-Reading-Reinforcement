@@ -1,80 +1,69 @@
-('E:\\coding\\Daily-AI-Reading-Reinforcement\\build\\DAIRR\\DAIRR.exe',
+('/Users/eros/Documents/Daily AI Reading Reinforcement/build/DAIRR/DAIRR',
  False,
  False,
  True,
- ['E:\\coding\\Daily-AI-Reading-Reinforcement\\assets\\branding\\icon.ico'],
+ ['/Users/eros/Documents/Daily AI Reading '
+  'Reinforcement/assets/branding/icon.icns'],
  None,
  False,
  False,
- b'<?xml version="1.0" encoding="UTF-8" standalone="yes"?>\n<assembly xmlns='
- b'"urn:schemas-microsoft-com:asm.v1" manifestVersion="1.0">\n  <trustInfo x'
- b'mlns="urn:schemas-microsoft-com:asm.v3">\n    <security>\n      <requested'
- b'Privileges>\n        <requestedExecutionLevel level="asInvoker" uiAccess='
- b'"false"/>\n      </requestedPrivileges>\n    </security>\n  </trustInfo>\n  '
- b'<compatibility xmlns="urn:schemas-microsoft-com:compatibility.v1">\n    <'
- b'application>\n      <supportedOS Id="{e2011457-1546-43c5-a5fe-008deee3d3f'
- b'0}"/>\n      <supportedOS Id="{35138b9a-5d96-4fbd-8e2d-a2440225f93a}"/>\n '
- b'     <supportedOS Id="{4a2f28e3-53b9-4441-ba9c-d69d4a4a6e38}"/>\n      <s'
- b'upportedOS Id="{1f676c76-80e1-4239-95bb-83d0f6d0da78}"/>\n      <supporte'
- b'dOS Id="{8e0f7a12-bfb3-4fe8-b9a5-48fd50a15a9a}"/>\n    </application>\n  <'
- b'/compatibility>\n  <application xmlns="urn:schemas-microsoft-com:asm.v3">'
- b'\n    <windowsSettings>\n      <longPathAware xmlns="http://schemas.micros'
- b'oft.com/SMI/2016/WindowsSettings">true</longPathAware>\n    </windowsSett'
- b'ings>\n  </application>\n  <dependency>\n    <dependentAssembly>\n      <ass'
- b'emblyIdentity type="win32" name="Microsoft.Windows.Common-Controls" version='
- b'"6.0.0.0" processorArchitecture="*" publicKeyToken="6595b64144ccf1df" langua'
- b'ge="*"/>\n    </dependentAssembly>\n  </dependency>\n</assembly>',
+ None,
  True,
  False,
+ 'arm64',
  None,
  None,
- None,
- 'E:\\coding\\Daily-AI-Reading-Reinforcement\\build\\DAIRR\\DAIRR.pkg',
+ '/Users/eros/Documents/Daily AI Reading Reinforcement/build/DAIRR/DAIRR.pkg',
  [('pyi-contents-directory _internal', '', 'OPTION'),
   ('PYZ-00.pyz',
-   'E:\\coding\\Daily-AI-Reading-Reinforcement\\build\\DAIRR\\PYZ-00.pyz',
+   '/Users/eros/Documents/Daily AI Reading '
+   'Reinforcement/build/DAIRR/PYZ-00.pyz',
    'PYZ'),
+  ('python3.13/lib-dynload/_struct.cpython-313-darwin.so',
+   '/opt/miniconda3/lib/python3.13/lib-dynload/_struct.cpython-313-darwin.so',
+   'EXTENSION'),
+  ('python3.13/lib-dynload/zlib.cpython-313-darwin.so',
+   '/opt/miniconda3/lib/python3.13/lib-dynload/zlib.cpython-313-darwin.so',
+   'EXTENSION'),
   ('struct',
-   'E:\\coding\\Daily-AI-Reading-Reinforcement\\build\\DAIRR\\localpycs\\struct.pyc',
+   '/Users/eros/Documents/Daily AI Reading '
+   'Reinforcement/build/DAIRR/localpycs/struct.pyc',
    'PYMODULE'),
   ('pyimod01_archive',
-   'E:\\coding\\Daily-AI-Reading-Reinforcement\\build\\DAIRR\\localpycs\\pyimod01_archive.pyc',
+   '/Users/eros/Documents/Daily AI Reading '
+   'Reinforcement/build/DAIRR/localpycs/pyimod01_archive.pyc',
    'PYMODULE'),
   ('pyimod02_importers',
-   'E:\\coding\\Daily-AI-Reading-Reinforcement\\build\\DAIRR\\localpycs\\pyimod02_importers.pyc',
+   '/Users/eros/Documents/Daily AI Reading '
+   'Reinforcement/build/DAIRR/localpycs/pyimod02_importers.pyc',
    'PYMODULE'),
   ('pyimod03_ctypes',
-   'E:\\coding\\Daily-AI-Reading-Reinforcement\\build\\DAIRR\\localpycs\\pyimod03_ctypes.pyc',
-   'PYMODULE'),
-  ('pyimod04_pywin32',
-   'E:\\coding\\Daily-AI-Reading-Reinforcement\\build\\DAIRR\\localpycs\\pyimod04_pywin32.pyc',
+   '/Users/eros/Documents/Daily AI Reading '
+   'Reinforcement/build/DAIRR/localpycs/pyimod03_ctypes.pyc',
    'PYMODULE'),
   ('pyiboot01_bootstrap',
-   'E:\\manga-translator-ui\\Miniconda3\\Lib\\site-packages\\PyInstaller\\loader\\pyiboot01_bootstrap.py',
+   '/Users/eros/.local/lib/python3.13/site-packages/PyInstaller/loader/pyiboot01_bootstrap.py',
    'PYSOURCE'),
   ('pyi_rth_inspect',
-   'E:\\manga-translator-ui\\Miniconda3\\Lib\\site-packages\\PyInstaller\\hooks\\rthooks\\pyi_rth_inspect.py',
+   '/Users/eros/.local/lib/python3.13/site-packages/PyInstaller/hooks/rthooks/pyi_rth_inspect.py',
    'PYSOURCE'),
   ('pyi_rth_cryptography_openssl',
-   'E:\\manga-translator-ui\\Miniconda3\\Lib\\site-packages\\_pyinstaller_hooks_contrib\\rthooks\\pyi_rth_cryptography_openssl.py',
+   '/Users/eros/.local/lib/python3.13/site-packages/_pyinstaller_hooks_contrib/rthooks/pyi_rth_cryptography_openssl.py',
    'PYSOURCE'),
   ('pyi_rth_pkgutil',
-   'E:\\manga-translator-ui\\Miniconda3\\Lib\\site-packages\\PyInstaller\\hooks\\rthooks\\pyi_rth_pkgutil.py',
+   '/Users/eros/.local/lib/python3.13/site-packages/PyInstaller/hooks/rthooks/pyi_rth_pkgutil.py',
    'PYSOURCE'),
   ('pyi_rth_multiprocessing',
-   'E:\\manga-translator-ui\\Miniconda3\\Lib\\site-packages\\PyInstaller\\hooks\\rthooks\\pyi_rth_multiprocessing.py',
-   'PYSOURCE'),
-  ('pyi_rth_setuptools',
-   'E:\\manga-translator-ui\\Miniconda3\\Lib\\site-packages\\PyInstaller\\hooks\\rthooks\\pyi_rth_setuptools.py',
+   '/Users/eros/.local/lib/python3.13/site-packages/PyInstaller/hooks/rthooks/pyi_rth_multiprocessing.py',
    'PYSOURCE'),
   ('desktop_native',
-   'E:\\coding\\Daily-AI-Reading-Reinforcement\\desktop_native.py',
+   '/Users/eros/Documents/Daily AI Reading Reinforcement/desktop_native.py',
    'PYSOURCE')],
  [],
  False,
  False,
- 1783697374,
- [('runw.exe',
-   'E:\\manga-translator-ui\\Miniconda3\\Lib\\site-packages\\PyInstaller\\bootloader\\Windows-64bit-intel\\runw.exe',
+ 1783698098,
+ [('runw',
+   '/Users/eros/.local/lib/python3.13/site-packages/PyInstaller/bootloader/Darwin-64bit/runw',
    'EXECUTABLE')],
- 'E:\\manga-translator-ui\\Miniconda3\\python312.dll')
+ '/opt/miniconda3/lib/libpython3.13.dylib')
