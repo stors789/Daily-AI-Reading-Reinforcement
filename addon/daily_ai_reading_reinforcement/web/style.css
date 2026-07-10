@@ -1611,3 +1611,30 @@ h2 {
   --warn: #CC241D;
   --glow: transparent;
 }
+
+
+/* Theme: Nord (Arctic) */
+:root[data-theme="nord"] {
+  --bg-color: #2E3440;
+  --surface-color: rgba(59, 66, 82, 0.8);
+  --surface-color-solid: #3B4252;
+  --surface-color-hover: #434C5E;
+  
+  --text-primary: #ECEFF4;
+  --text-secondary: #E5E9F0;
+  --text-muted: #D8DEE9;
+  
+  --accent-color: #88C0D0;
+  --accent-success: #A3BE8C;
+  --accent-warning: #EBCB8B;
+  --accent-error: #BF616A;
+  
+  --border-color: #4C566A;
+  
+  /* Layout & Feel: No glowing blobs, harder lines, flat */
+  --ambient-blob-opacity: 0;
+  --border-radius-base: 2px;
+  --border-radius-lg: 4px;
+  --shadow-base: none;
+  --shadow-hover: none;
+}
