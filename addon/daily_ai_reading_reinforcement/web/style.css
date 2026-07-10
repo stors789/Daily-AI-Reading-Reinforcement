@@ -317,7 +317,7 @@ h2 {
   background: var(--surface-strong);
   border: 1px solid var(--line);
   border-width: 1px;
-  border-radius: 999px;
+  border-radius: var(--btn-radius);
   color: var(--text);
   cursor: pointer;
   font: inherit;
@@ -465,7 +465,7 @@ h2 {
 
 .tag {
   background: var(--tag-bg);
-  border-radius: 999px;
+  border-radius: var(--btn-radius);
   color: var(--tag-color);
   line-height: 1.2;
   padding: 3px 8px;
@@ -718,7 +718,7 @@ h2 {
   margin-top: 10px;
   padding: 12px 14px;
   border: 1px solid var(--offline-border);
-  border-radius: 12px;
+  border-radius: var(--panel-radius);
   color: var(--offline-color);
   background: var(--offline-bg);
 }
@@ -753,7 +753,7 @@ h2 {
 .para-translate-toggle {
   background: transparent;
   border: 0;
-  border-radius: 3px;
+  border-radius: var(--btn-radius);
   color: var(--muted);
   cursor: pointer;
   display: inline;
@@ -990,7 +990,7 @@ h2 {
 }
 
 .heatmap-cell {
-  border-radius: 3px;
+  border-radius: var(--btn-radius);
   cursor: pointer;
   height: var(--heatmap-cell);
   width: var(--heatmap-cell);
@@ -1359,7 +1359,7 @@ h2 {
 .para-translation {
   background: rgba(47, 111, 115, 0.06);
   border-left: 2px solid var(--accent);
-  border-radius: 0 4px 4px 0;
+  border-radius: 0 var(--btn-radius) var(--btn-radius) 0;
   color: var(--muted);
   display: block;
   font-size: 0.82em;
@@ -1381,7 +1381,7 @@ h2 {
   /* Inherit vertical-rl from parent — translation text is vertical */
   background: rgba(47, 111, 115, 0.1);
   border-right: 2px solid var(--accent);
-  border-radius: 4px 0 0 4px;
+  border-radius: var(--btn-radius) 0 0 var(--btn-radius);
   color: var(--muted);
   font-size: 15px;
   line-height: 2.0;
@@ -1449,7 +1449,7 @@ h2 {
 }
 :root[data-theme="dark"] ::-webkit-scrollbar-thumb {
   background: rgba(255, 255, 255, 0.2);
-  border-radius: 4px;
+  border-radius: var(--btn-radius);
 }
 :root[data-theme="dark"] ::-webkit-scrollbar-thumb:hover {
   background: rgba(255, 255, 255, 0.3);
@@ -1543,7 +1543,7 @@ h2 {
 }
 :root[data-theme="amethyst"] ::-webkit-scrollbar-thumb {
   background: rgba(192, 132, 252, 0.3);
-  border-radius: 4px;
+  border-radius: var(--btn-radius);
 }
 :root[data-theme="amethyst"] ::-webkit-scrollbar-thumb:hover {
   background: rgba(192, 132, 252, 0.5);
@@ -1591,7 +1591,7 @@ h2 {
 :root[data-theme="dracula"] .ambient-blob { display: block; }
 :root[data-theme="dracula"] .blob-1 { background: rgba(255, 121, 198, 0.2); }
 :root[data-theme="dracula"] .blob-2 { background: rgba(139, 233, 253, 0.2); }
-:root[data-theme="dracula"] ::-webkit-scrollbar-thumb { background: var(--line); border-radius: 4px; }
+:root[data-theme="dracula"] ::-webkit-scrollbar-thumb { background: var(--line); border-radius: var(--btn-radius); }
 
 /* Theme: cyberviolet */
 :root[data-theme="cyberviolet"] {
@@ -1635,7 +1635,7 @@ h2 {
 :root[data-theme="cyberviolet"] .ambient-blob { display: block; filter: blur(100px); opacity: 0.8; }
 :root[data-theme="cyberviolet"] .blob-1 { background: rgba(255, 0, 255, 0.3); }
 :root[data-theme="cyberviolet"] .blob-2 { background: rgba(0, 255, 255, 0.3); }
-:root[data-theme="cyberviolet"] ::-webkit-scrollbar-thumb { background: var(--line); border-radius: 4px; }
+:root[data-theme="cyberviolet"] ::-webkit-scrollbar-thumb { background: var(--line); border-radius: var(--btn-radius); }
 
 /* Theme: lavender */
 :root[data-theme="lavender"] {
@@ -1716,7 +1716,7 @@ h2 {
   --btn-radius: 4px;
   --body-bg-image: none;
 }
-:root[data-theme="gruvbox"] ::-webkit-scrollbar-thumb { background: var(--line); border-radius: 4px; }
+:root[data-theme="gruvbox"] ::-webkit-scrollbar-thumb { background: var(--line); border-radius: var(--btn-radius); }
 
 /* Theme: nord */
 :root[data-theme="nord"] {
@@ -1757,7 +1757,7 @@ h2 {
   --btn-radius: 4px;
   --body-bg-image: none;
 }
-:root[data-theme="nord"] ::-webkit-scrollbar-thumb { background: var(--line); border-radius: 4px; }
+:root[data-theme="nord"] ::-webkit-scrollbar-thumb { background: var(--line); border-radius: var(--btn-radius); }
 
 /* Theme: matcha */
 :root[data-theme="matcha"] {
@@ -1838,7 +1838,7 @@ h2 {
   --btn-radius: 0px;
   --body-bg-image: none;
 }
-:root[data-theme="oled"] ::-webkit-scrollbar-thumb { background: var(--line); border-radius: 4px; }
+:root[data-theme="oled"] ::-webkit-scrollbar-thumb { background: var(--line); border-radius: var(--btn-radius); }
 
 
 /* Theme: E-Ink Paper */

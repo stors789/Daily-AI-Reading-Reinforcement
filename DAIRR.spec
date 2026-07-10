@@ -32,7 +32,6 @@ exe = EXE(
     target_arch=None,
     codesign_identity=None,
     entitlements_file=None,
-    icon=['assets/branding/icon.icns'],
 )
 coll = COLLECT(
     exe,
@@ -46,6 +45,6 @@ coll = COLLECT(
 app = BUNDLE(
     coll,
     name='DAIRR.app',
-    icon='assets/branding/icon.icns',
+    icon=None,
     bundle_identifier=None,
 )
