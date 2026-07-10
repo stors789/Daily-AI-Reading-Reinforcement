@@ -2,21 +2,28 @@
 
 use std::{
     env,
+    fs::{self, File, OpenOptions},
     io::{Read, Write},
     net::{SocketAddr, TcpStream},
     path::PathBuf,
     process::{Child, Command, Stdio},
-    sync::{Arc, Mutex},
+    sync::{
+        atomic::{AtomicBool, Ordering},
+        Arc, Mutex,
+    },
     thread,
-    time::{Duration, Instant},
+    time::{Duration, Instant, SystemTime, UNIX_EPOCH},
 };
+
+#[cfg(unix)]
+use std::os::unix::process::CommandExt;
 
 use serde_json::Value;
 use tauri::Manager;
 
 const BACKEND_HOST: &str = "127.0.0.1";
 const BACKEND_PORT: u16 = 8755;
-const BACKEND_WAIT: Duration = Duration::from_secs(8);
+const BACKEND_WAIT: Duration = Duration::from_secs(45);
 const DAIRR_APP_ID: &str = "DAIRR";
 const SIDECAR_BASENAME: &str = "dairr-backend";
 const SIDECAR_TARGET_TRIPLE: &str = {
@@ -41,12 +48,70 @@ const SIDECAR_TARGET_TRIPLE: &str = {
     }
 };
 
-type BackendState = Arc<Mutex<Option<Child>>>;
-
 #[derive(Debug)]
 struct BackendHealth {
     provider: String,
     mode: String,
+    instance_id: String,
+}
+
+struct BackendProcess {
+    child: Child,
+    instance_id: String,
+    shutdown_token: String,
+    #[cfg(unix)]
+    process_group: i32,
+}
+
+type BackendState = Arc<Mutex<Option<BackendProcess>>>;
+
+struct ShellLogger {
+    file: Mutex<Option<File>>,
+}
+
+impl ShellLogger {
+    fn new(app: &tauri::App) -> Self {
+        let file = app.path().app_log_dir().ok().and_then(|dir| {
+            fs::create_dir_all(&dir).ok()?;
+            OpenOptions::new()
+                .create(true)
+                .append(true)
+                .open(dir.join("dairr-shell.log"))
+                .ok()
+        });
+        Self {
+            file: Mutex::new(file),
+        }
+    }
+
+    fn log(&self, message: &str) {
+        eprintln!("{message}");
+        if let Ok(mut slot) = self.file.lock() {
+            if let Some(file) = slot.as_mut() {
+                let _ = writeln!(file, "{} {message}", timestamp_secs());
+                let _ = file.flush();
+            }
+        }
+    }
+
+    fn clone_file(&self) -> Option<File> {
+        self.file.lock().ok()?.as_ref()?.try_clone().ok()
+    }
+}
+
+fn timestamp_secs() -> u64 {
+    SystemTime::now()
+        .duration_since(UNIX_EPOCH)
+        .unwrap_or_default()
+        .as_secs()
+}
+
+fn new_instance_value(label: &str) -> String {
+    let nanos = SystemTime::now()
+        .duration_since(UNIX_EPOCH)
+        .unwrap_or_default()
+        .as_nanos();
+    format!("{label}-{}-{nanos}", std::process::id())
 }
 
 fn backend_url() -> String {
@@ -61,7 +126,6 @@ fn repo_root() -> PathBuf {
     if let Ok(root) = env::var("DAIRR_REPO_ROOT") {
         return PathBuf::from(root);
     }
-
     PathBuf::from(env!("CARGO_MANIFEST_DIR"))
         .join("../../..")
         .canonicalize()
@@ -71,12 +135,11 @@ fn repo_root() -> PathBuf {
 fn backend_addr() -> SocketAddr {
     format!("{}:{}", BACKEND_HOST, BACKEND_PORT)
         .parse()
-        .expect("static backend address should parse")
+        .expect("static backend address")
 }
 
 fn request_backend_health() -> Result<Option<BackendHealth>, String> {
-    let addr = backend_addr();
-    let mut stream = match TcpStream::connect_timeout(&addr, Duration::from_millis(250)) {
+    let mut stream = match TcpStream::connect_timeout(&backend_addr(), Duration::from_millis(250)) {
         Ok(stream) => stream,
         Err(exc)
             if matches!(
@@ -84,29 +147,27 @@ fn request_backend_health() -> Result<Option<BackendHealth>, String> {
                 std::io::ErrorKind::ConnectionRefused | std::io::ErrorKind::TimedOut
             ) =>
         {
-            return Ok(None);
+            return Ok(None)
         }
-        Err(exc) => return Err(format!("could not connect to {}: {}", backend_url(), exc)),
+        Err(exc) => return Err(format!("could not connect to local backend: {exc}")),
     };
-
     stream
         .set_read_timeout(Some(Duration::from_millis(700)))
-        .map_err(|exc| format!("could not set backend read timeout: {}", exc))?;
+        .map_err(|e| e.to_string())?;
     stream
         .set_write_timeout(Some(Duration::from_millis(700)))
-        .map_err(|exc| format!("could not set backend write timeout: {}", exc))?;
+        .map_err(|e| e.to_string())?;
     let request = format!(
         "GET /api/health HTTP/1.1\r\nHost: {}:{}\r\nAccept: application/json\r\nConnection: close\r\n\r\n",
         BACKEND_HOST, BACKEND_PORT
     );
     stream
         .write_all(request.as_bytes())
-        .map_err(|exc| format!("could not request {}: {}", backend_health_url(), exc))?;
-
+        .map_err(|e| e.to_string())?;
     let mut response = String::new();
     stream
         .read_to_string(&mut response)
-        .map_err(|exc| format!("could not read {}: {}", backend_health_url(), exc))?;
+        .map_err(|e| e.to_string())?;
     parse_backend_health_response(&response).map(Some)
 }
 
@@ -117,38 +178,26 @@ fn parse_backend_health_response(response: &str) -> Result<BackendHealth, String
     let status = headers.lines().next().unwrap_or_default();
     if !status.contains(" 200 ") {
         return Err(format!(
-            "{} returned unexpected status '{}'",
-            backend_health_url(),
-            status
+            "{} returned unexpected status",
+            backend_health_url()
         ));
     }
-    let json: Value = serde_json::from_str(body).map_err(|exc| {
-        format!(
-            "{} did not return valid JSON: {}",
-            backend_health_url(),
-            exc
-        )
-    })?;
+    let json: Value = serde_json::from_str(body)
+        .map_err(|_| format!("{} returned invalid JSON", backend_health_url()))?;
     let app = json.get("app").and_then(Value::as_str).unwrap_or_default();
     if app != DAIRR_APP_ID {
         return Err(format!(
-            "port {} is already in use, but {} identified app '{}' instead of '{}'",
-            BACKEND_PORT,
-            backend_health_url(),
-            app,
-            DAIRR_APP_ID
+            "port {} is already in use, but the service is not DAIRR",
+            BACKEND_PORT
         ));
     }
     let bridge_available = json
         .get("bridge")
-        .and_then(|bridge| bridge.get("available"))
+        .and_then(|v| v.get("available"))
         .and_then(Value::as_bool)
         .unwrap_or(false);
     if !bridge_available {
-        return Err(format!(
-            "{} identified DAIRR but reported the bridge unavailable",
-            backend_health_url()
-        ));
+        return Err("DAIRR health response reported an unavailable bridge".into());
     }
     Ok(BackendHealth {
         provider: json
@@ -161,29 +210,44 @@ fn parse_backend_health_response(response: &str) -> Result<BackendHealth, String
             .and_then(Value::as_str)
             .unwrap_or("unknown")
             .to_string(),
+        instance_id: json
+            .get("instanceId")
+            .and_then(Value::as_str)
+            .unwrap_or_default()
+            .to_string(),
     })
 }
 
-fn wait_for_backend_health(timeout: Duration) -> Result<BackendHealth, String> {
+fn wait_for_backend_health(timeout: Duration, instance_id: &str) -> Result<BackendHealth, String> {
     let started = Instant::now();
-    let mut last_error: Option<String> = None;
+    let mut last_error = None;
     while started.elapsed() < timeout {
         match request_backend_health() {
-            Ok(Some(health)) => return Ok(health),
+            Ok(Some(health)) if health.instance_id == instance_id => return Ok(health),
+            Ok(Some(_)) => {
+                last_error = Some(format!(
+                    "port {BACKEND_PORT} belongs to another DAIRR instance"
+                ))
+            }
             Ok(None) => {}
             Err(exc) => last_error = Some(exc),
         }
-        thread::sleep(Duration::from_millis(100));
+        thread::sleep(Duration::from_millis(150));
     }
     Err(last_error.unwrap_or_else(|| {
         format!(
-            "DAIRR backend did not become ready at {} before timeout",
-            backend_health_url()
+            "DAIRR backend did not become ready within {} seconds",
+            timeout.as_secs()
         )
     }))
 }
 
-fn apply_backend_args(command: &mut Command, provider: &str) {
+fn apply_backend_args(
+    command: &mut Command,
+    provider: &str,
+    instance_id: &str,
+    shutdown_token: &str,
+) {
     command
         .arg("--provider")
         .arg(provider)
@@ -192,10 +256,13 @@ fn apply_backend_args(command: &mut Command, provider: &str) {
         .arg("--port")
         .arg(BACKEND_PORT.to_string())
         .arg("--no-browser")
-        .stdin(Stdio::null())
-        .stdout(Stdio::inherit())
-        .stderr(Stdio::inherit());
-
+        .arg("--parent-pid")
+        .arg(std::process::id().to_string())
+        .arg("--instance-id")
+        .arg(instance_id)
+        .arg("--shutdown-token")
+        .arg(shutdown_token)
+        .stdin(Stdio::null());
     if let Ok(url) = env::var("DAIRR_ANKICONNECT_URL") {
         if !url.trim().is_empty() {
             command.arg("--ankiconnect-url").arg(url);
@@ -203,19 +270,34 @@ fn apply_backend_args(command: &mut Command, provider: &str) {
     }
 }
 
-fn start_python_backend() -> Result<Child, String> {
+fn configure_child(command: &mut Command, logger: &ShellLogger) {
+    if let Some(file) = logger.clone_file() {
+        if let Ok(stderr) = file.try_clone() {
+            command
+                .stdout(Stdio::from(file))
+                .stderr(Stdio::from(stderr));
+        }
+    }
+    #[cfg(unix)]
+    command.process_group(0);
+}
+
+fn start_python_backend(
+    instance_id: &str,
+    shutdown_token: &str,
+    logger: &ShellLogger,
+) -> Result<Child, String> {
     let root = repo_root();
     let python = env::var("DAIRR_PYTHON").unwrap_or_else(|_| "python3".to_string());
     let provider = env::var("DAIRR_DESKTOP_PROVIDER").unwrap_or_else(|_| "mock".to_string());
     let mut command = Command::new(python);
     command.current_dir(&root).arg("desktop_app.py");
-    apply_backend_args(&mut command, &provider);
-
+    apply_backend_args(&mut command, &provider, instance_id, shutdown_token);
+    configure_child(&mut command, logger);
     command.spawn().map_err(|exc| {
         format!(
-            "failed to start DAIRR Python backend from {}: {}",
-            root.display(),
-            exc
+            "failed to start Python backend from {}: {exc}",
+            root.display()
         )
     })
 }
@@ -232,14 +314,15 @@ fn sidecar_target_triple_filename() -> Option<String> {
     if SIDECAR_TARGET_TRIPLE.is_empty() {
         return None;
     }
-    let suffix = if cfg!(windows) { ".exe" } else { "" };
     Some(format!(
         "{}-{}{}",
-        SIDECAR_BASENAME, SIDECAR_TARGET_TRIPLE, suffix
+        SIDECAR_BASENAME,
+        SIDECAR_TARGET_TRIPLE,
+        if cfg!(windows) { ".exe" } else { "" }
     ))
 }
 
-fn sidecar_candidates(app: &tauri::App) -> Vec<PathBuf> {
+fn sidecar_candidates(app: &tauri::AppHandle) -> Vec<PathBuf> {
     let filenames = [Some(sidecar_filename()), sidecar_target_triple_filename()];
     let mut candidates = Vec::new();
     if let Ok(path) = env::var("DAIRR_BACKEND_SIDECAR") {
@@ -254,41 +337,39 @@ fn sidecar_candidates(app: &tauri::App) -> Vec<PathBuf> {
         }
     }
     if let Ok(current_exe) = env::current_exe() {
-        if let Some(exe_dir) = current_exe.parent() {
+        if let Some(dir) = current_exe.parent() {
             for filename in filenames.iter().flatten() {
-                candidates.push(exe_dir.join(filename));
-                candidates.push(exe_dir.join("binaries").join(filename));
+                candidates.push(dir.join(filename));
+                candidates.push(dir.join("binaries").join(filename));
             }
         }
     }
     candidates
 }
 
-fn start_bundled_backend(app: &tauri::App) -> Result<Child, String> {
+fn start_bundled_backend(
+    app: &tauri::AppHandle,
+    instance_id: &str,
+    shutdown_token: &str,
+    logger: &ShellLogger,
+) -> Result<Child, String> {
     let provider = env::var("DAIRR_DESKTOP_PROVIDER").unwrap_or_else(|_| "ankiconnect".to_string());
     let candidates = sidecar_candidates(app);
-    let Some(sidecar) = candidates.iter().find(|path| path.is_file()) else {
-        let searched = candidates
-            .iter()
-            .map(|path| path.display().to_string())
-            .collect::<Vec<_>>()
-            .join(", ");
-        return Err(format!(
-            "DAIRR production backend sidecar '{}' was not found. Searched: {}",
-            sidecar_filename(),
-            searched
-        ));
-    };
-
+    let sidecar = candidates
+        .iter()
+        .find(|path| path.is_file())
+        .ok_or_else(|| {
+            format!(
+                "DAIRR backend sidecar was not found (searched {} locations)",
+                candidates.len()
+            )
+        })?;
     let mut command = Command::new(sidecar);
-    apply_backend_args(&mut command, &provider);
-    command.spawn().map_err(|exc| {
-        format!(
-            "failed to start DAIRR backend sidecar from {}: {}",
-            sidecar.display(),
-            exc
-        )
-    })
+    apply_backend_args(&mut command, &provider, instance_id, shutdown_token);
+    configure_child(&mut command, logger);
+    command
+        .spawn()
+        .map_err(|exc| format!("failed to start bundled backend: {exc}"))
 }
 
 fn should_use_python_backend() -> bool {
@@ -303,100 +384,196 @@ fn should_use_python_backend() -> bool {
     }
 }
 
-fn start_backend(app: &tauri::App) -> Result<Option<Child>, String> {
+fn start_backend(app: &tauri::AppHandle, logger: &ShellLogger) -> Result<BackendProcess, String> {
     match request_backend_health() {
-        Ok(Some(health)) => {
-            println!(
-                "Reusing DAIRR backend at {} (mode={}, provider={})",
-                backend_url(),
-                health.mode,
-                health.provider
-            );
-            return Ok(None);
-        }
         Ok(None) => {}
-        Err(exc) => {
+        Ok(Some(_)) => {
             return Err(format!(
-                "cannot reuse existing service on {}: {}",
-                backend_url(),
-                exc
-            ))
+            "port {BACKEND_PORT} is already owned by another DAIRR instance; close it and retry"
+        ))
         }
+        Err(exc) => return Err(exc),
     }
-
-    if should_use_python_backend() {
-        start_python_backend().map(Some)
+    let instance_id = new_instance_value("instance");
+    let shutdown_token = new_instance_value("shutdown");
+    let child = if should_use_python_backend() {
+        start_python_backend(&instance_id, &shutdown_token, logger)?
     } else {
-        start_bundled_backend(app).map(Some)
+        start_bundled_backend(app, &instance_id, &shutdown_token, logger)?
+    };
+    #[cfg(unix)]
+    let process_group = child.id() as i32;
+    Ok(BackendProcess {
+        child,
+        instance_id,
+        shutdown_token,
+        #[cfg(unix)]
+        process_group,
+    })
+}
+
+fn request_backend_shutdown(process: &BackendProcess) {
+    let Ok(Some(health)) = request_backend_health() else {
+        return;
+    };
+    if health.instance_id != process.instance_id {
+        return;
     }
+    let Ok(mut stream) = TcpStream::connect_timeout(&backend_addr(), Duration::from_millis(300))
+    else {
+        return;
+    };
+    let request = format!(
+        "POST /api/shutdown HTTP/1.1\r\nHost: {}:{}\r\nX-DAIRR-Shutdown-Token: {}\r\nContent-Length: 0\r\nConnection: close\r\n\r\n",
+        BACKEND_HOST, BACKEND_PORT, process.shutdown_token
+    );
+    let _ = stream.write_all(request.as_bytes());
 }
 
-fn stop_python_backend(state: &BackendState) {
-    let Ok(mut child_slot) = state.lock() else {
+fn stop_backend(state: &BackendState, logger: &ShellLogger) {
+    let process = state.lock().ok().and_then(|mut slot| slot.take());
+    let Some(mut process) = process else {
         return;
     };
-    let Some(mut child) = child_slot.take() else {
-        return;
-    };
-    let _ = child.kill();
-    let _ = child.wait();
+    logger.log("Stopping owned DAIRR backend");
+    request_backend_shutdown(&process);
+    let deadline = Instant::now() + Duration::from_secs(4);
+    while Instant::now() < deadline {
+        if matches!(process.child.try_wait(), Ok(Some(_))) {
+            return;
+        }
+        thread::sleep(Duration::from_millis(100));
+    }
+    #[cfg(unix)]
+    unsafe {
+        libc::kill(-process.process_group, libc::SIGTERM);
+    }
+    #[cfg(not(unix))]
+    let _ = process.child.kill();
+    let deadline = Instant::now() + Duration::from_secs(2);
+    while Instant::now() < deadline {
+        if matches!(process.child.try_wait(), Ok(Some(_))) {
+            return;
+        }
+        thread::sleep(Duration::from_millis(100));
+    }
+    #[cfg(unix)]
+    unsafe {
+        libc::kill(-process.process_group, libc::SIGKILL);
+    }
+    #[cfg(not(unix))]
+    let _ = process.child.kill();
+    let _ = process.child.wait();
 }
 
-fn stop_child(child: Option<Child>) {
-    let Some(mut child) = child else {
-        return;
-    };
-    let _ = child.kill();
-    let _ = child.wait();
+fn startup_url() -> tauri::Url {
+    tauri::Url::parse("dairr-startup://localhost/").expect("valid startup protocol URL")
+}
+
+fn startup_html() -> &'static str {
+    r#"<!doctype html><html><meta charset=utf-8><meta name=viewport content='width=device-width,initial-scale=1'><title>DAIRR</title><style>body{margin:0;background:#f4f0e8;color:#24322d;font:16px -apple-system,BlinkMacSystemFont,sans-serif;display:grid;place-items:center;height:100vh}.card{width:min(560px,calc(100% - 64px));background:#fff;padding:34px;border-radius:20px;box-shadow:0 18px 60px #20352b22}h1{margin:0 0 12px;font-size:30px}p{line-height:1.65;margin:8px 0}.muted{color:#66716c}.error{color:#9b3428}</style><main class=card><h1>DAIRR</h1><p id=status>正在启动本地服务，首次启动可能需要一些时间…</p><p class=muted id=detail>应用窗口已经就绪；后端将在验证身份后自动连接。</p></main><script>window.setStartupState=function(kind,message){var s=document.getElementById('status'),d=document.getElementById('detail');s.className=kind==='error'?'error':'';s.textContent=message;if(kind==='error')d.textContent='请关闭并重新打开 DAIRR。诊断信息已写入标准日志目录。';};</script></html>"#
+}
+
+fn set_startup_state(window: &tauri::WebviewWindow, kind: &str, message: &str) {
+    let kind = serde_json::to_string(kind).unwrap_or_else(|_| "\"error\"".into());
+    let message =
+        serde_json::to_string(message).unwrap_or_else(|_| "\"DAIRR backend failed\"".into());
+    let _ = window.eval(format!(
+        "window.setStartupState && window.setStartupState({kind},{message});"
+    ));
 }
 
 fn main() {
     let backend_state: BackendState = Arc::new(Mutex::new(None));
+    let shutting_down = Arc::new(AtomicBool::new(false));
     let setup_state = Arc::clone(&backend_state);
+    let setup_shutdown = Arc::clone(&shutting_down);
+    let logger_slot: Arc<Mutex<Option<Arc<ShellLogger>>>> = Arc::new(Mutex::new(None));
+    let setup_logger_slot = Arc::clone(&logger_slot);
 
     let app = tauri::Builder::default()
+        .register_uri_scheme_protocol("dairr-startup", |_context, _request| {
+            tauri::http::Response::builder()
+                .header("Content-Type", "text/html; charset=utf-8")
+                .body(startup_html().as_bytes().to_vec())
+                .expect("static startup response")
+        })
         .setup(move |app| {
-            let child = start_backend(app).map_err(std::io::Error::other)?;
-            let health = match wait_for_backend_health(BACKEND_WAIT) {
-                Ok(health) => health,
+            let logger = Arc::new(ShellLogger::new(app));
+            logger.log("DAIRR shell launched; creating startup window before backend wait");
+            if let Ok(mut slot) = setup_logger_slot.lock() {
+                *slot = Some(Arc::clone(&logger));
+            }
+            let window = match tauri::WebviewWindowBuilder::new(
+                app,
+                "main",
+                tauri::WebviewUrl::CustomProtocol(startup_url()),
+            )
+            .title("Daily AI Reading Reinforcement")
+            .inner_size(1280.0, 860.0)
+            .min_inner_size(900.0, 640.0)
+            .resizable(true)
+            .build()
+            {
+                Ok(window) => window,
                 Err(exc) => {
-                    stop_child(child);
-                    return Err(std::io::Error::other(exc).into());
+                    logger.log(&format!("Startup window creation failed: {exc}"));
+                    return Ok(());
                 }
             };
-            println!(
-                "DAIRR backend ready at {} (mode={}, provider={})",
-                backend_url(),
-                health.mode,
-                health.provider
-            );
-            if request_backend_health().is_err() {
-                stop_child(child);
-                return Err(std::io::Error::other(format!(
-                    "DAIRR backend failed health confirmation at {}",
-                    backend_health_url()
-                ))
-                .into());
-            }
 
-            let url = backend_url()
-                .parse()
-                .map_err(|exc| std::io::Error::other(format!("invalid backend URL: {}", exc)))?;
-            let window_result =
-                tauri::WebviewWindowBuilder::new(app, "main", tauri::WebviewUrl::External(url))
-                    .title("Daily AI Reading Reinforcement")
-                    .inner_size(1280.0, 860.0)
-                    .min_inner_size(900.0, 640.0)
-                    .resizable(true)
-                    .build();
-            if let Err(exc) = window_result {
-                stop_child(child);
-                return Err(exc.into());
-            }
-
-            if let Ok(mut child_slot) = setup_state.lock() {
-                *child_slot = child;
-            }
+            let handle = app.handle().clone();
+            thread::spawn(move || {
+                if setup_shutdown.load(Ordering::SeqCst) {
+                    return;
+                }
+                let process = match start_backend(&handle, &logger) {
+                    Ok(process) => process,
+                    Err(exc) => {
+                        logger.log(&format!("Backend start failed: {exc}"));
+                        set_startup_state(&window, "error", "本地服务启动失败，DAIRR 没有崩溃。");
+                        return;
+                    }
+                };
+                let instance_id = process.instance_id.clone();
+                if let Ok(mut slot) = setup_state.lock() {
+                    *slot = Some(process);
+                }
+                if setup_shutdown.load(Ordering::SeqCst) {
+                    stop_backend(&setup_state, &logger);
+                    return;
+                }
+                match wait_for_backend_health(BACKEND_WAIT, &instance_id) {
+                    Ok(health) => {
+                        logger.log(&format!(
+                            "Backend ready (mode={}, provider={})",
+                            health.mode, health.provider
+                        ));
+                        match backend_url().parse() {
+                            Ok(url) => {
+                                if let Err(exc) = window.navigate(url) {
+                                    logger.log(&format!("Backend navigation failed: {exc}"));
+                                    set_startup_state(
+                                        &window,
+                                        "error",
+                                        "本地服务已启动，但页面加载失败。",
+                                    );
+                                }
+                            }
+                            Err(exc) => logger.log(&format!("Invalid backend URL: {exc}")),
+                        }
+                    }
+                    Err(exc) => {
+                        logger.log(&format!("Backend readiness failed: {exc}"));
+                        stop_backend(&setup_state, &logger);
+                        set_startup_state(
+                            &window,
+                            "error",
+                            "本地服务未能及时启动，DAIRR 没有崩溃。",
+                        );
+                    }
+                }
+            });
             Ok(())
         })
         .build(tauri::generate_context!())
@@ -404,7 +581,10 @@ fn main() {
 
     app.run(move |_handle, event| match event {
         tauri::RunEvent::ExitRequested { .. } | tauri::RunEvent::Exit => {
-            stop_python_backend(&backend_state);
+            shutting_down.store(true, Ordering::SeqCst);
+            if let Some(logger) = logger_slot.lock().ok().and_then(|slot| slot.clone()) {
+                stop_backend(&backend_state, &logger);
+            }
         }
         _ => {}
     });

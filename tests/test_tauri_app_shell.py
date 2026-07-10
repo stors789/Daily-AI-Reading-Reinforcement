@@ -82,7 +82,19 @@ class TauriAppShellTests(unittest.TestCase):
         self.assertIn("DAIRR_REPO_ROOT", main_rs)
         self.assertIn("DAIRR_DESKTOP_PROVIDER", main_rs)
         self.assertIn("DAIRR_ANKICONNECT_URL", main_rs)
-        self.assertIn("WebviewUrl::External", main_rs)
+        self.assertIn("WebviewUrl::CustomProtocol", main_rs)
+        self.assertIn('register_uri_scheme_protocol("dairr-startup"', main_rs)
+        self.assertIn("window.navigate", main_rs)
+
+    def test_rust_shell_starts_backend_off_setup_thread_without_fatal_error(self) -> None:
+        main_rs = (SRC_TAURI_DIR / "src" / "main.rs").read_text()
+        self.assertIn("thread::spawn", main_rs)
+        self.assertIn("Duration::from_secs(45)", main_rs)
+        self.assertIn("creating startup window before backend wait", main_rs)
+        self.assertIn("Startup window creation failed", main_rs)
+        self.assertNotIn(".build()?;", main_rs)
+        self.assertNotIn("stop_child(child);\n                    return Err", main_rs)
+        self.assertIn("DAIRR 没有崩溃", main_rs)
 
     def test_rust_shell_requires_health_check_before_reusing_port(self) -> None:
         main_rs = (SRC_TAURI_DIR / "src" / "main.rs").read_text()
@@ -91,6 +103,17 @@ class TauriAppShellTests(unittest.TestCase):
         self.assertIn("DAIRR_APP_ID", main_rs)
         self.assertIn("port {} is already in use", main_rs)
         self.assertIn("bridge_available", main_rs)
+        self.assertIn("instanceId", main_rs)
+        self.assertIn("health.instance_id == instance_id", main_rs)
+
+    def test_rust_shell_stops_owned_pyinstaller_process_group(self) -> None:
+        main_rs = (SRC_TAURI_DIR / "src" / "main.rs").read_text()
+        self.assertIn("--parent-pid", main_rs)
+        self.assertIn("--shutdown-token", main_rs)
+        self.assertIn("/api/shutdown", main_rs)
+        self.assertIn("process_group(0)", main_rs)
+        self.assertIn("libc::kill(-process.process_group", main_rs)
+        self.assertIn("health.instance_id != process.instance_id", main_rs)
 
     def test_rust_shell_has_dev_python_and_production_sidecar_paths(self) -> None:
         main_rs = (SRC_TAURI_DIR / "src" / "main.rs").read_text()
