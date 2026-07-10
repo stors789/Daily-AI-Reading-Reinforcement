@@ -1988,3 +1988,26 @@
 
   send("load");
 })();
+
+
+// --- Theme Switching Logic ---
+function initTheme() {
+  const themeSelect = document.getElementById('themeSelect');
+  if (!themeSelect) return;
+  
+  // Load saved theme or fallback to light
+  const savedTheme = localStorage.getItem('dairr_theme') || 'light';
+  document.documentElement.setAttribute('data-theme', savedTheme);
+  themeSelect.value = savedTheme;
+  
+  themeSelect.addEventListener('change', (e) => {
+    const newTheme = e.target.value;
+    document.documentElement.setAttribute('data-theme', newTheme);
+    localStorage.setItem('dairr_theme', newTheme);
+  });
+}
+
+// Initialize theme as soon as DOM is ready
+document.addEventListener('DOMContentLoaded', () => {
+  initTheme();
+});
