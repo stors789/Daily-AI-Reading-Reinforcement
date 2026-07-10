@@ -2142,5 +2142,10 @@ function initTheme() {
 
 // Initialize theme as soon as DOM is ready
 document.addEventListener('DOMContentLoaded', () => {
+  if (navigator.userAgent.includes('Mac OS X')) {
+    document.documentElement.classList.add('os-mac');
+  } else {
+    document.documentElement.classList.add('os-windows');
+  }
   initTheme();
 });

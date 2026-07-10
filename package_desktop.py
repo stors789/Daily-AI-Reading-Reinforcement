@@ -158,13 +158,24 @@ def run_packager(
     out = stdout or sys.stdout
     err = stderr or sys.stderr
 
+    icon = args.icon
+    if not icon:
+        if sys.platform == "darwin":
+            default_icns = ROOT / "assets" / "branding" / "icon.icns"
+            if default_icns.exists():
+                icon = str(default_icns)
+        elif sys.platform.startswith("win"):
+            default_ico = ROOT / "assets" / "branding" / "icon.ico"
+            if default_ico.exists():
+                icon = str(default_ico)
+
     command = build_pyinstaller_command(
         entry=args.entry,
         name=args.name,
         onefile=args.onefile,
         windowed=args.windowed,
         clean=args.clean,
-        icon=args.icon,
+        icon=icon,
     )
 
     if args.dry_run:
