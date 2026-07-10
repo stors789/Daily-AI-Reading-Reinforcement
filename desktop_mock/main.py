@@ -32,6 +32,12 @@ from mock_data import (
 from ankiconnect_provider import AnkiConnectDeckProvider, AnkiConnectError, DEFAULT_ANKICONNECT_URL
 from momo_provider import MockMoMoDeckProvider
 from real_momo_provider import RealMoMoDeckProvider
+from dairr_core_runtime import enable_dairr_core_imports
+
+enable_dairr_core_imports()
+
+from dairr_core.learning_sources import LearningSourceRegistry, SourceScopedId
+from learning_sources import LegacyDeckProviderSource, source_descriptor
 
 # Desktop adapters and real generation pipeline
 try:
@@ -204,23 +210,65 @@ def _primary_source() -> dict[str, str]:
     }
 
 
-def _available_sources() -> list[dict[str, str]]:
+def _available_sources() -> list[dict[str, Any]]:
     """List configured sources without requesting study data from them."""
     primary = _primary_source()
-    sources = [primary]
+    sources = [
+        source_descriptor(
+            primary["id"],
+            primary["name"],
+            supports_article_card_write=primary["provider"] == "ankiconnect",
+        ).to_bridge_dict()
+    ]
     # A MoMo primary source is already represented above. A separately
     # configured MoMo account is only contacted after it is selected.
     if primary["provider"] != "real_momo" and _momo_api_key():
-        sources.append({"id": "momo", "name": "MoMo", "provider": "real_momo"})
+        sources.append(source_descriptor("momo", "MoMo").to_bridge_dict())
     return sources
 
 
-def _provider_for_source(source_id: str) -> Any | None:
-    if source_id == "primary":
-        return get_deck_provider()
-    if source_id == "momo":
-        return get_momo_provider()
-    return None
+def _source_registry() -> LearningSourceRegistry:
+    """Build adapters only after a source/deck operation asks for them.
+
+    Listing source descriptors remains network-free; the legacy provider is
+    instantiated lazily only when it is selected or when a scoped deck id is
+    resolved.
+    """
+    primary = _primary_source()
+    sources = [
+        LegacyDeckProviderSource(
+            source_descriptor(
+                primary["id"],
+                primary["name"],
+                supports_article_card_write=primary["provider"] == "ankiconnect",
+            ),
+            get_deck_provider(),
+        )
+    ]
+    if primary["provider"] != "real_momo" and _momo_api_key():
+        momo_provider = get_momo_provider()
+        if momo_provider is not None:
+            sources.append(
+                LegacyDeckProviderSource(source_descriptor("momo", "MoMo"), momo_provider)
+            )
+    return LearningSourceRegistry(sources)
+
+
+def _resolve_deck_source(deck_id: str) -> tuple[LegacyDeckProviderSource, SourceScopedId]:
+    """Resolve a bridge deck id through the source registry, never by prefix.
+
+    The unscoped fallback is a temporary migration path for a saved desktop
+    selection from before contract v1.  New bridge responses always emit the
+    opaque scoped form, so a value can never be mistaken for another source
+    after it has passed through the current UI.
+    """
+    registry = _source_registry()
+    try:
+        source, scoped_deck_id = registry.resolve_deck(deck_id)
+    except ValueError:
+        scoped_deck_id = SourceScopedId("primary", deck_id)
+        source = registry.get("primary")
+    return source, scoped_deck_id
 
 
 # Actions the mock understands. Anything else returns an error event so the
@@ -271,7 +319,7 @@ def _state_payload(
     last_selected_deck_id: str,
     decks: list[dict[str, Any]],
     *,
-    sources: list[dict[str, str]] | None = None,
+    sources: list[dict[str, Any]] | None = None,
     selected_source_id: str = "",
 ) -> dict[str, Any]:
     config = _load_desktop_config()
@@ -409,10 +457,8 @@ def resolve_generation_context(deck_id: str, payload: dict[str, Any]) -> dict[st
     the diagnostic prompt is built from the same provider cards and preset
     resolution as the real LLM request.
     """
-    deck_provider = get_momo_provider() if deck_id.startswith("momo_") else get_deck_provider()
-    if deck_provider is None:
-        raise RuntimeError("MoMo API key is not configured.")
-    cards_data = deck_provider.get_deck_cards(deck_id)
+    source, scoped_deck_id = _resolve_deck_source(deck_id)
+    cards_data = source.get_deck(scoped_deck_id).to_bridge_cards()
     deck_name = str(cards_data.get("name") or "Desktop Deck")
     raw_cards = cards_data.get("cards", [])
     if not isinstance(raw_cards, list):
@@ -424,7 +470,11 @@ def resolve_generation_context(deck_id: str, payload: dict[str, Any]) -> dict[st
         selected_ids_set = {str(cid) for cid in selected_card_ids}
         raw_cards = [
             card for card in raw_cards
-            if isinstance(card, dict) and str(card.get("cid")) in selected_ids_set
+            if isinstance(card, dict)
+            and (
+                str(card.get("cid")) in selected_ids_set
+                or _local_card_id(str(card.get("cid") or "")) in selected_ids_set
+            )
         ]
 
     config = _load_generation_config()
@@ -462,6 +512,14 @@ def resolve_generation_context(deck_id: str, payload: dict[str, Any]) -> dict[st
         "requestedPresetId": requested_preset_id,
         "selectedPromptPresetId": selected_preset_id,
     }
+
+
+def _local_card_id(card_id: str) -> str:
+    """Accept legacy raw card selections while the UI migrates to v1 IDs."""
+    try:
+        return SourceScopedId.parse(card_id).local_id
+    except ValueError:
+        return card_id
 
 
 def _safe_debug_value(value: Any) -> Any:
@@ -541,8 +599,8 @@ def handle_generate_real(deck_id: str, payload: dict[str, Any]) -> dict[str, Any
 
     Returns an {event, payload} envelope matching the addon contract.
     """
-    deck_provider = get_deck_provider()
-    if isinstance(deck_provider, MockMoMoDeckProvider):
+    source, _ = _resolve_deck_source(deck_id)
+    if isinstance(source.provider, MockMoMoDeckProvider):
         return _mock_generate(deck_id)
 
     if not _DESKTOP_ADAPTERS_AVAILABLE:
@@ -585,7 +643,10 @@ def handle_generate_real(deck_id: str, payload: dict[str, Any]) -> dict[str, Any
 
 def _mock_generate(deck_id: str) -> dict[str, Any]:
     """Return the mock article payload (kept for backward compatibility)."""
-    return {"event": "article", "payload": build_article_payload(deck_id)}
+    _, scoped_deck_id = _resolve_deck_source(deck_id)
+    payload = build_article_payload(scoped_deck_id.local_id)
+    payload["deckId"] = scoped_deck_id.encode()
+    return {"event": "article", "payload": payload}
 
 def handle_action(action: str, payload: dict[str, Any]) -> dict[str, Any]:
     """Dispatch one bridge action and return an {event, payload} envelope.
@@ -606,10 +667,12 @@ def handle_action(action: str, payload: dict[str, Any]) -> dict[str, Any]:
         if source_id not in {source["id"] for source in sources}:
             return {"event": "error", "payload": {"message": "Unknown or unconfigured source."}}
         try:
-            deck_provider = _provider_for_source(source_id)
-            if deck_provider is None:
+            registry = _source_registry()
+            try:
+                source = registry.get(source_id)
+            except KeyError:
                 return {"event": "error", "payload": {"message": "MoMo API key is not configured."}}
-            decks = list(deck_provider.get_today_decks())
+            decks = [deck.to_bridge_row() for deck in source.list_today_decks()]
             last_selected = str((payload or {}).get("lastSelectedDeckId") or "")
             return {
                 "event": "state",
@@ -638,10 +701,8 @@ def handle_action(action: str, payload: dict[str, Any]) -> dict[str, Any]:
     if action == "selectDeck":
         deck_id = str((payload or {}).get("deckId") or "")
         try:
-            deck_provider = get_momo_provider() if deck_id.startswith("momo_") else get_deck_provider()
-            if deck_provider is None:
-                return {"event": "error", "payload": {"message": "MoMo API key is not configured."}}
-            cards_data = deck_provider.get_deck_cards(deck_id)
+            source, scoped_deck_id = _resolve_deck_source(deck_id)
+            cards_data = source.get_deck(scoped_deck_id).to_bridge_cards()
             config = _load_desktop_config()
             if config:
                 config["last_selected_deck_id"] = deck_id
@@ -682,10 +743,8 @@ def handle_action(action: str, payload: dict[str, Any]) -> dict[str, Any]:
     if action == "saveFieldConfig":
         deck_id = str((payload or {}).get("deckId") or "")
         try:
-            deck_provider = get_momo_provider() if deck_id.startswith("momo_") else get_deck_provider()
-            if deck_provider is None:
-                return {"event": "error", "payload": {"message": "MoMo API key is not configured."}}
-            cards_data = deck_provider.get_deck_cards(deck_id)
+            source, scoped_deck_id = _resolve_deck_source(deck_id)
+            cards_data = source.get_deck(scoped_deck_id).to_bridge_cards()
         except Exception:
             return {"event": "error", "payload": {"message": "Select a deck before saving fields."}}
         cards = cards_data.get("cards") or []
@@ -719,10 +778,8 @@ def handle_action(action: str, payload: dict[str, Any]) -> dict[str, Any]:
             return {"event": "articleCardSaved", "payload": {"articleCard": None}}
         deck_id = str((payload or {}).get("deckId") or "")
         try:
-            deck_provider = get_momo_provider() if deck_id.startswith("momo_") else get_deck_provider()
-            if deck_provider is None:
-                return {"event": "articleCardSaved", "payload": {"articleCardError": "MoMo API key is not configured."}}
-            cards_data = deck_provider.get_deck_cards(deck_id)
+            source, scoped_deck_id = _resolve_deck_source(deck_id)
+            cards_data = source.get_deck(scoped_deck_id).to_bridge_cards()
             deck_name = str(cards_data.get("name") or "Desktop Deck")
             raw_cards = cards_data.get("cards", [])
             selected_card_ids = payload.get("cardIds")
