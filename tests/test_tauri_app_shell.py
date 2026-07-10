@@ -70,7 +70,7 @@ class TauriAppShellTests(unittest.TestCase):
     def test_tauri_config_prepares_bundle_sidecar_boundary(self) -> None:
         config = json.loads((SRC_TAURI_DIR / "tauri.conf.json").read_text())
         self.assertTrue(config["bundle"]["active"])
-        self.assertEqual(config["bundle"]["externalBin"], ["binaries/dairr-backend"])
+        self.assertEqual(config["bundle"]["resources"], ["binaries/dairr-backend"])
         self.assertNotIn("signingIdentity", config["bundle"].get("macOS", {}))
         self.assertNotIn("certificateThumbprint", config["bundle"].get("windows", {}))
         self.assertTrue((SRC_TAURI_DIR / "binaries" / "README.md").exists())

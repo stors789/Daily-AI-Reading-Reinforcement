@@ -331,6 +331,20 @@ fn sidecar_candidates(app: &tauri::AppHandle) -> Vec<PathBuf> {
         }
     }
     if let Ok(resource_dir) = app.path().resource_dir() {
+        let runtime_name = if cfg!(windows) {
+            format!("{SIDECAR_BASENAME}.exe")
+        } else {
+            SIDECAR_BASENAME.to_string()
+        };
+        // Prefer the PyInstaller onedir runtime.  It starts directly instead
+        // of extracting a onefile archive on every application launch.
+        candidates.push(
+            resource_dir
+                .join("binaries")
+                .join(SIDECAR_BASENAME)
+                .join(&runtime_name),
+        );
+        candidates.push(resource_dir.join(SIDECAR_BASENAME).join(&runtime_name));
         for filename in filenames.iter().flatten() {
             candidates.push(resource_dir.join(filename));
             candidates.push(resource_dir.join("binaries").join(filename));
@@ -338,6 +352,16 @@ fn sidecar_candidates(app: &tauri::AppHandle) -> Vec<PathBuf> {
     }
     if let Ok(current_exe) = env::current_exe() {
         if let Some(dir) = current_exe.parent() {
+            let runtime_name = if cfg!(windows) {
+                format!("{SIDECAR_BASENAME}.exe")
+            } else {
+                SIDECAR_BASENAME.to_string()
+            };
+            candidates.push(
+                dir.join("binaries")
+                    .join(SIDECAR_BASENAME)
+                    .join(&runtime_name),
+            );
             for filename in filenames.iter().flatten() {
                 candidates.push(dir.join(filename));
                 candidates.push(dir.join("binaries").join(filename));

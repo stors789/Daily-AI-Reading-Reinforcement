@@ -22,7 +22,7 @@
   "bundle": {
     "active": true,
     "targets": "all",
-    "externalBin": [
+    "resources": [
       "binaries/dairr-backend"
     ],
     "macOS": {
