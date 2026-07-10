@@ -28,6 +28,7 @@ DESKTOP_MOCK_FILES = (
     "dairr_core_runtime.py",
     "desktop_paths.py",
     "diagnostics.py",
+    "learning_sources.py",
     "main.py",
     "mock_data.py",
     "momo_provider.py",
@@ -46,6 +47,7 @@ HIDDEN_IMPORTS = (
     "urllib.error",
     "urllib.request",
     "uuid",
+    "webview",
 )
 PYINSTALLER_MISSING_MESSAGE = (
     "PyInstaller is not installed. Install it in your packaging environment, "
@@ -69,6 +71,7 @@ def build_pyinstaller_command(
     onefile: bool = False,
     windowed: bool = False,
     clean: bool = False,
+    icon: str | None = None,
     pyinstaller: str = "pyinstaller",
     platform: str | None = None,
 ) -> list[str]:
@@ -84,6 +87,8 @@ def build_pyinstaller_command(
     if clean:
         command.append("--clean")
         command.append("--noconfirm")
+    if icon:
+        command.extend(["--icon", icon])
 
     for module_name in HIDDEN_IMPORTS:
         command.extend(["--hidden-import", module_name])
@@ -130,6 +135,10 @@ def build_parser() -> argparse.ArgumentParser:
         action="store_true",
         help="Pass --clean to PyInstaller.",
     )
+    parser.add_argument(
+        "--icon",
+        help="Path to the app icon (.icns on macOS, .ico on Windows).",
+    )
     return parser
 
 
@@ -155,6 +164,7 @@ def run_packager(
         onefile=args.onefile,
         windowed=args.windowed,
         clean=args.clean,
+        icon=args.icon,
     )
 
     if args.dry_run:
