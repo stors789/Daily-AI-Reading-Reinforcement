@@ -1570,3 +1570,33 @@ h2 {
     --blob-1-color: rgba(255, 0, 255, 0.15);
     --blob-2-color: rgba(0, 255, 255, 0.15);
 }
+
+
+/* Theme: Lavender Twilight */
+:root[data-theme="lavender"] {
+  /* Background & Surfaces */
+  --bg-base: #F9F5FF;
+  --surface-base: rgba(255, 255, 255, 0.8);
+  --surface-hover: rgba(255, 255, 255, 0.95);
+  --surface-active: #ffffff;
+  --surface-border: rgba(167, 139, 250, 0.2);
+
+  /* Typography / Ink */
+  --ink-base: #2E1065;
+  --ink-muted: #4C1D95;
+  --ink-faint: #6D28D9;
+
+  /* Accents */
+  --accent-base: #A78BFA;
+  --accent-hover: #8B5CF6;
+  --accent-active: #7C3AED;
+
+  /* Ambient Blobs (Faint Light Pink/Purple for Sunset Reading Vibe) */
+  --ambient-1: rgba(253, 230, 246, 0.6); /* Soft pink */
+  --ambient-2: rgba(243, 232, 255, 0.5); /* Soft lilac */
+  --ambient-3: rgba(255, 241, 242, 0.5); /* Pale rose */
+
+  /* Shadows */
+  --shadow-base: 0 4px 12px rgba(46, 16, 101, 0.04);
+  --shadow-hover: 0 8px 24px rgba(46, 16, 101, 0.08);
+}
