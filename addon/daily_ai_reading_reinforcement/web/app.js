@@ -624,6 +624,13 @@
    if (el.writingModeVertical) el.writingModeVertical.textContent = tr("writingVertical");
     if (el.readingTabArticle) el.readingTabArticle.textContent = tr("readingTabArticle");
     if (el.readingTabNotes) el.readingTabNotes.textContent = tr("readingTabNotes");
+    
+    document.querySelectorAll('[data-i18n]').forEach(element => {
+      const key = element.getAttribute('data-i18n');
+      if (tr(key)) {
+        element.textContent = tr(key);
+      }
+    });
    renderModelOptions();
     renderDesktopSettings();
     updateCardSelectionControls();
