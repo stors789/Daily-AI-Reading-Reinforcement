@@ -1475,3 +1475,37 @@ h2 {
   --warning-color: #AAAAAA;
   --danger-color: #E5E5E5;
 }
+
+
+/* Theme: Dracula */
+:root[data-theme="dracula"] {
+  --bg-color: #282A36;
+  --surface-color: rgba(68, 71, 90, 0.6);
+  --surface-hover: rgba(68, 71, 90, 0.8);
+  
+  --text-primary: #F8F8F2;
+  --text-secondary: #6272A4;
+  --text-muted: #44475A;
+  
+  --accent-color: #FF79C6;
+  --accent-secondary: #8BE9FD;
+  
+  --border-color: rgba(98, 114, 164, 0.3);
+  --border-highlight: rgba(139, 233, 253, 0.5);
+
+  /* Ambient Blobs */
+  --blob-1: #FF79C6;
+  --blob-2: #8BE9FD;
+  
+  /* Component specific */
+  --card-bg: rgba(68, 71, 90, 0.6);
+  --modal-overlay: rgba(40, 42, 54, 0.8);
+  
+  --btn-primary-bg: #FF79C6;
+  --btn-primary-text: #282A36;
+  --btn-primary-hover: #FF92D0;
+  
+  --btn-secondary-bg: #44475A;
+  --btn-secondary-text: #F8F8F2;
+  --btn-secondary-hover: #6272A4;
+}
