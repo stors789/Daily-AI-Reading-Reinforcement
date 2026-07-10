@@ -74,6 +74,9 @@ def build_parser() -> argparse.ArgumentParser:
         default=None,
         help="AnkiConnect endpoint used when --provider ankiconnect is selected.",
     )
+    parser.add_argument("--parent-pid", type=int, default=None, help=argparse.SUPPRESS)
+    parser.add_argument("--instance-id", default=None, help=argparse.SUPPRESS)
+    parser.add_argument("--shutdown-token", default=None, help=argparse.SUPPRESS)
     check_group = parser.add_mutually_exclusive_group()
     check_group.add_argument(
         "--check",
@@ -109,6 +112,15 @@ def configure_environment(
     environ["DAIRR_DESKTOP_PROVIDER"] = args.provider
     if args.ankiconnect_url:
         environ["DAIRR_ANKICONNECT_URL"] = args.ankiconnect_url
+    parent_pid = getattr(args, "parent_pid", None)
+    instance_id = getattr(args, "instance_id", None)
+    shutdown_token = getattr(args, "shutdown_token", None)
+    if parent_pid:
+        environ["DAIRR_PARENT_PID"] = str(parent_pid)
+    if instance_id:
+        environ["DAIRR_INSTANCE_ID"] = instance_id
+    if shutdown_token:
+        environ["DAIRR_SHUTDOWN_TOKEN"] = shutdown_token
 
 
 def _load_server_runner() -> Callable[[str, int], None]:

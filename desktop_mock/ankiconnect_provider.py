@@ -68,7 +68,7 @@ class AnkiConnectDeckProvider:
                 raw = resp.read()
         except urllib.error.HTTPError as exc:
             raise AnkiConnectError(f"AnkiConnect HTTP {exc.code}") from exc
-        except urllib.error.URLError as exc:
+        except (urllib.error.URLError, TimeoutError, OSError) as exc:
             raise AnkiConnectError("AnkiConnect URL error") from exc
 
         try:

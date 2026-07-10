@@ -19,7 +19,7 @@ def _load(name: str, path: Path):
     return mod
 
 _main = _load("dairr_mock_main", _mock_dir / "main.py")
-from ankiconnect_provider import AnkiConnectDeckProvider
+from ankiconnect_provider import AnkiConnectDeckProvider, AnkiConnectError
 from momo_provider import MockMoMoDeckProvider
 from real_momo_provider import RealMoMoDeckProvider
 
@@ -99,6 +99,18 @@ class TestHandleActionWithFakeProvider(unittest.TestCase):
         # Should not leak the exception message to the payload
         self.assertNotIn("secret", result["payload"]["message"])
         self.assertIn("Failed to load decks", result["payload"]["message"])
+
+    def test_ankiconnect_offline_returns_retryable_provider_event(self):
+        self.fake_provider.get_today_decks.side_effect = AnkiConnectError("secret endpoint detail")
+        result = _main.handle_action("load", {})
+        self.assertEqual(result["event"], "providerOffline")
+        self.assertEqual(result["payload"]["provider"], "ankiconnect")
+        self.assertTrue(result["payload"]["retryable"])
+        self.assertEqual(
+            result["payload"]["message"],
+            "无法连接 AnkiConnect。请启动 Anki，并确认 AnkiConnect 已安装和启用。",
+        )
+        self.assertNotIn("secret", result["payload"]["message"])
 
     def test_select_deck_success_returns_cards(self):
         self.fake_provider.get_deck_cards.return_value = {"deckId": "test_deck", "cards": [], "fields": ["term"], "selectedFields": ["term"]}

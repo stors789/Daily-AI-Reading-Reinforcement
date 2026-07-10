@@ -40,8 +40,19 @@ class TestHandleAction(unittest.TestCase):
         self.assertEqual(payload["name"], "Daily AI Reading Reinforcement")
         self.assertEqual(payload["mode"], "desktop")
         self.assertEqual(payload["provider"], "ankiconnect")
+        self.assertEqual(payload["instanceId"], "")
+        self.assertEqual(payload["parentPid"], 0)
         self.assertEqual(payload["bridge"]["endpoint"], "/api/bridge")
         self.assertTrue(payload["bridge"]["available"])
+
+    def test_health_payload_exposes_shell_instance_ownership(self) -> None:
+        payload = _main.build_health_payload({
+            "DAIRR_DESKTOP_PROVIDER": "ankiconnect",
+            "DAIRR_INSTANCE_ID": "instance-123",
+            "DAIRR_PARENT_PID": "456",
+        })
+        self.assertEqual(payload["instanceId"], "instance-123")
+        self.assertEqual(payload["parentPid"], 456)
 
     def test_load_returns_state_with_required_fields(self) -> None:
         result = _main.handle_action("load", {})

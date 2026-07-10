@@ -14,6 +14,7 @@ from __future__ import annotations
 import json
 import os
 import sys
+import threading
 from datetime import datetime, timedelta
 from functools import lru_cache
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
@@ -28,7 +29,7 @@ from mock_data import (
     build_loaded_article_payload,
     build_state_payload,
 )
-from ankiconnect_provider import AnkiConnectDeckProvider, DEFAULT_ANKICONNECT_URL
+from ankiconnect_provider import AnkiConnectDeckProvider, AnkiConnectError, DEFAULT_ANKICONNECT_URL
 from momo_provider import MockMoMoDeckProvider
 from real_momo_provider import RealMoMoDeckProvider
 
@@ -154,6 +155,8 @@ def build_health_payload(environ: Mapping[str, str] | None = None) -> dict[str, 
         "version": APP_VERSION,
         "mode": APP_MODE,
         "provider": provider,
+        "instanceId": str(environ.get("DAIRR_INSTANCE_ID") or ""),
+        "parentPid": int(environ.get("DAIRR_PARENT_PID") or 0),
         "bridge": {
             "available": True,
             "type": "http",
@@ -581,6 +584,16 @@ def handle_action(action: str, payload: dict[str, Any]) -> dict[str, Any]:
             deck_provider = get_deck_provider()
             decks = _merge_momo_decks(deck_provider.get_today_decks(), deck_provider)
             return {"event": "state", "payload": _state_payload(last_selected, decks)}
+        except AnkiConnectError as exc:
+            sys.stderr.write(f"[desktop] AnkiConnect unavailable on load: {type(exc).__name__}\n")
+            return {
+                "event": "providerOffline",
+                "payload": {
+                    "provider": "ankiconnect",
+                    "retryable": True,
+                    "message": "无法连接 AnkiConnect。请启动 Anki，并确认 AnkiConnect 已安装和启用。",
+                },
+            }
         except Exception as exc:
             err_type = type(exc).__name__
             sys.stderr.write(f"[mock] Provider error on load: {err_type}\n")
@@ -598,6 +611,16 @@ def handle_action(action: str, payload: dict[str, Any]) -> dict[str, Any]:
                 config["last_selected_deck_id"] = deck_id
                 _save_desktop_config(config)
             return {"event": "deckCards", "payload": _deck_cards_payload(deck_id, cards_data)}
+        except AnkiConnectError as exc:
+            sys.stderr.write(f"[desktop] AnkiConnect unavailable on selectDeck: {type(exc).__name__}\n")
+            return {
+                "event": "providerOffline",
+                "payload": {
+                    "provider": "ankiconnect",
+                    "retryable": True,
+                    "message": "无法连接 AnkiConnect。请启动 Anki，并确认 AnkiConnect 已安装和启用。",
+                },
+            }
         except Exception as exc:
             err_type = type(exc).__name__
             stage = getattr(exc, "stage", None)
@@ -938,6 +961,15 @@ class MockHandler(BaseHTTPRequestHandler):
         self.send_error(404, "Not found")
 
     def do_POST(self) -> None:
+        if self.path == "/api/shutdown":
+            expected = os.environ.get("DAIRR_SHUTDOWN_TOKEN") or ""
+            supplied = self.headers.get("X-DAIRR-Shutdown-Token") or ""
+            if not expected or supplied != expected:
+                self._send_json(403, {"ok": False})
+                return
+            self._send_json(200, {"ok": True})
+            threading.Thread(target=self.server.shutdown, daemon=True).start()
+            return
         if self.path != "/api/bridge":
             self.send_error(404, "Not found")
             return
@@ -965,13 +997,28 @@ class MockHandler(BaseHTTPRequestHandler):
 def run_server(host: str = HOST, port: int = PORT) -> None:
     get_deck_provider()
     server = ThreadingHTTPServer((host, port), MockHandler)
+    server.daemon_threads = True
+    parent_pid = int(os.environ.get("DAIRR_PARENT_PID") or 0)
+    if parent_pid > 0:
+        def stop_when_parent_exits() -> None:
+            while True:
+                try:
+                    os.kill(parent_pid, 0)
+                except OSError:
+                    sys.stderr.write("[desktop] Tauri parent exited; stopping sidecar.\n")
+                    server.shutdown()
+                    return
+                threading.Event().wait(0.5)
+
+        threading.Thread(target=stop_when_parent_exits, daemon=True).start()
     print(f"DAIRR desktop mock running at http://{host}:{port}")
     print("Press Ctrl+C to stop.")
     try:
         server.serve_forever()
     except KeyboardInterrupt:
         print("\nStopping.")
-        server.shutdown()
+    finally:
+        server.server_close()
 
 
 def main() -> None:
