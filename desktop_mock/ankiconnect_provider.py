@@ -29,6 +29,8 @@ class AnkiConnectDeckProvider:
     learned or failed today by querying revlog directly; this standalone
     provider uses conservative approximations:
     - today's candidate cards come from ``rated:1``;
+    - today's Anki answer buttons are mapped to the MoMo-compatible response
+      names FORGET/VAGUE/FAMILIAR/RECOGNIZE via ``rated:1:<ease>``;
     - failed-today cards are identified with ``rated:1:1`` when supported, with
       relearning queue/type as a secondary signal;
     - newly learned cards prefer ``introduced:1`` when supported, and otherwise
@@ -101,6 +103,37 @@ class AnkiConnectDeckProvider:
         except AnkiConnectError:
             return set()
 
+    def _today_card_sets(self) -> tuple[list[int], dict[int, set[int]], set[int]]:
+        """Fetch today's candidates and answer grades with one round trip.
+
+        ``multi`` has been part of AnkiConnect's stable API for years.  The
+        individual-query fallback keeps older installations working.
+        """
+        queries = ["rated:1", *(f"rated:1:{ease}" for ease in range(1, 5)), "introduced:1"]
+        try:
+            result = self._invoke(
+                "multi",
+                {"actions": [
+                    {"action": "findCards", "params": {"query": query}}
+                    for query in queries
+                ]},
+            )
+            if not isinstance(result, list) or len(result) != len(queries):
+                raise AnkiConnectError("Invalid AnkiConnect multi response")
+            card_sets: list[set[int]] = []
+            for item in result:
+                values = item.get("result") if isinstance(item, dict) else None
+                if not isinstance(values, list):
+                    raise AnkiConnectError("Invalid AnkiConnect multi result")
+                card_sets.append({cid for value in values if (cid := _as_int(value)) is not None})
+        except AnkiConnectError:
+            card_sets = [set(self._find_cards(queries[0]))]
+            card_sets.extend(self._find_cards_optional(query) for query in queries[1:])
+
+        today_ids = sorted(card_sets[0])
+        grade_ids = {ease: card_sets[ease] for ease in range(1, 5)}
+        return today_ids, grade_ids, card_sets[5]
+
     def _cards_info(self, card_ids: list[int]) -> list[dict[str, Any]]:
         if not card_ids:
             return []
@@ -150,14 +183,13 @@ class AnkiConnectDeckProvider:
         }
 
     def _refresh_cache(self) -> dict[str, dict[str, Any]]:
-        today_ids = self._find_cards("rated:1")
-        failed_today_ids = self._find_cards_optional("rated:1:1")
-        introduced_today_ids = self._find_cards_optional("introduced:1")
+        today_ids, grade_ids, introduced_today_ids = self._today_card_sets()
+        failed_today_ids = grade_ids[1]
         infos = self._cards_info(today_ids)
 
         decks: dict[str, dict[str, Any]] = {}
         for info in infos:
-            card = _card_from_info(info, failed_today_ids, introduced_today_ids)
+            card = _card_from_info(info, failed_today_ids, introduced_today_ids, grade_ids)
             if card is None:
                 continue
             deck_name = str(info.get("deckName") or "Default")
@@ -182,6 +214,7 @@ def _card_from_info(
     info: dict[str, Any],
     failed_today_ids: set[int],
     introduced_today_ids: set[int],
+    grade_ids: dict[int, set[int]],
 ) -> dict[str, Any] | None:
     cid = _as_int(info.get("cardId") or info.get("card_id"))
     if cid is None:
@@ -195,6 +228,16 @@ def _card_from_info(
 
     is_failed = cid in failed_today_ids or queue == 3 or card_type == 3
     is_new = cid in introduced_today_ids or (cid not in failed_today_ids and reps <= 1)
+    response_grades = [ease for ease in range(1, 5) if cid in grade_ids.get(ease, set())]
+    response_names = {
+        1: "FORGET",
+        2: "VAGUE",
+        3: "FAMILIAR",
+        4: "RECOGNIZE",
+    }
+    # A card can receive more than one answer today.  Keep the complete set for
+    # filters, while the single compatibility field uses the lowest grade.
+    first_response = response_names.get(min(response_grades)) if response_grades else None
 
     return {
         "cid": cid,
@@ -203,6 +246,8 @@ def _card_from_info(
         "fields": {name: _clean_text(value) for name, value in fields.items()},
         "is_new": bool(is_new),
         "is_failed": bool(is_failed),
+        "first_response": first_response,
+        "response_grades": response_grades,
         "review_count": reps,
     }
 
@@ -246,6 +291,13 @@ def _append_card(
         return
     existing["is_new"] = bool(existing.get("is_new")) or bool(card.get("is_new"))
     existing["is_failed"] = bool(existing.get("is_failed")) or bool(card.get("is_failed"))
+    existing["response_grades"] = sorted({
+        *existing.get("response_grades", []),
+        *card.get("response_grades", []),
+    })
+    response_names = {1: "FORGET", 2: "VAGUE", 3: "FAMILIAR", 4: "RECOGNIZE"}
+    grades = existing["response_grades"]
+    existing["first_response"] = response_names.get(min(grades)) if grades else None
     existing["review_count"] = int(existing.get("review_count") or 0) + int(card.get("review_count") or 0)
 
 

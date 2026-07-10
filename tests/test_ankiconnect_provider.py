@@ -36,6 +36,19 @@ class FakeAnkiConnectOpener:
                 result = [101]
             else:
                 result = []
+        elif action == "multi":
+            query_results = {
+                "rated:1": [101, 102, 201],
+                "rated:1:1": [102],
+                "rated:1:2": [201],
+                "rated:1:3": [101, 201],
+                "rated:1:4": [],
+                "introduced:1": [101],
+            }
+            result = [
+                {"result": query_results[item["params"]["query"]], "error": None}
+                for item in params["actions"]
+            ]
         elif action == "cardsInfo":
             if params["cards"] != [101, 102, 201]:
                 raise AssertionError(params["cards"])
@@ -141,7 +154,13 @@ class TestAnkiConnectDeckProvider(unittest.TestCase):
 
         self.assertFalse(cards[102]["is_new"])
         self.assertTrue(cards[102]["is_failed"])
+        self.assertEqual(cards[102]["first_response"], "FORGET")
+        self.assertEqual(cards[102]["response_grades"], [1])
         self.assertEqual(cards[102]["review_count"], 4)
+
+        japanese = self.provider.get_deck_cards("Japanese")["cards"][0]
+        self.assertEqual(japanese["first_response"], "VAGUE")
+        self.assertEqual(japanese["response_grades"], [2, 3])
 
     def test_unknown_deck_returns_empty_contract(self) -> None:
         result = self.provider.get_deck_cards("Missing")
@@ -157,9 +176,12 @@ class TestAnkiConnectDeckProvider(unittest.TestCase):
         self.assertEqual(first_req.full_url, "http://anki.test")
         self.assertEqual(first_req.method, "POST")
         payload = json.loads(first_req.data.decode("utf-8"))
-        self.assertEqual(payload["action"], "findCards")
+        self.assertEqual(payload["action"], "multi")
         self.assertEqual(payload["version"], 6)
-        self.assertEqual(payload["params"], {"query": "rated:1"})
+        self.assertEqual(payload["params"]["actions"][0], {
+            "action": "findCards",
+            "params": {"query": "rated:1"},
+        })
 
     def test_ankiconnect_error_raises_safe_provider_error(self) -> None:
         def opener(req, timeout):

@@ -1713,12 +1713,14 @@
 
   function isForgottenCard(card) {
     const f = String(card.first_response || "").toUpperCase();
-    return f === "FORGET" || Boolean(card.is_failed);
+    const grades = Array.isArray(card.response_grades) ? card.response_grades : [];
+    return f === "FORGET" || grades.includes(1) || Boolean(card.is_failed);
   }
 
   function isVagueCard(card) {
     const f = String(card.first_response || "").toUpperCase();
-    return f === "VAGUE";
+    const grades = Array.isArray(card.response_grades) ? card.response_grades : [];
+    return f === "VAGUE" || grades.includes(2);
   }
 
   function isNewCard(card) {
