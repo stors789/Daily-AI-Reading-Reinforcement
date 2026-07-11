@@ -181,17 +181,37 @@ class TestHandleAction(unittest.TestCase):
         self.assertIsNone(payload["articleCard"])
 
     def test_list_articles_returns_list(self) -> None:
-        result = _main.handle_action("listArticles", {})
+        with tempfile.TemporaryDirectory() as tmpdir, patch.dict(
+            os.environ, {"DESKTOP_OUTPUT_DIR": tmpdir}, clear=False
+        ):
+            adapter = _main.DesktopDeckAdapter()
+            adapter.save_article(
+                "Saved Deck",
+                [],
+                "[ARTICLE_TITLE]\nSaved article\n[MAIN_ARTICLE]\nBody.",
+            )
+            result = _main.handle_action("listArticles", {})
+
         self.assertEqual(result["event"], "articleList")
-        self.assertIsInstance(result["payload"]["articles"], list)
-        self.assertTrue(result["payload"]["articles"])
+        self.assertEqual(result["payload"]["articles"][0]["deck"], "Saved Deck")
+        self.assertEqual(result["payload"]["articles"][0]["title"], "Saved article")
 
     def test_load_article_returns_loaded_article(self) -> None:
-        path = "mock/2026-07-05-english-vocab-081012.md"
-        result = _main.handle_action("loadArticle", {"path": path})
+        with tempfile.TemporaryDirectory() as tmpdir, patch.dict(
+            os.environ, {"DESKTOP_OUTPUT_DIR": tmpdir}, clear=False
+        ):
+            adapter = _main.DesktopDeckAdapter()
+            saved = adapter.save_article(
+                "Saved Deck",
+                [],
+                "[ARTICLE_TITLE]\nSaved article\n[MAIN_ARTICLE]\nBody.",
+            )
+            path = str(saved["markdown"])
+            result = _main.handle_action("loadArticle", {"path": path})
+
         self.assertEqual(result["event"], "articleLoaded")
         self.assertEqual(result["payload"]["path"], path)
-        self.assertIn("[ARTICLE_TITLE]", result["payload"]["article"])
+        self.assertIn("Saved article", result["payload"]["article"])
 
     def test_unknown_action_returns_error_without_raising(self) -> None:
         result = _main.handle_action("doesNotExist", {})

@@ -196,6 +196,14 @@ class DesktopDeckAdapter:
         finally:
             _core_article.ARTICLES_DIR = original_dir
 
+    def list_saved_articles(self) -> list[dict[str, str]]:
+        """Return the real history stored in this desktop app's data folder."""
+        return _core_article.list_saved_articles(articles_dir=self._articles_dir)
+
+    def load_saved_article(self, path: str) -> dict[str, Any]:
+        """Load one real desktop article while enforcing its storage boundary."""
+        return _core_article.load_saved_article(path, articles_dir=self._articles_dir)
+
     def save_article_card(
         self,
         source_deck_name: str,

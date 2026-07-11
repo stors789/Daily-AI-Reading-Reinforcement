@@ -648,6 +648,25 @@ def _mock_generate(deck_id: str) -> dict[str, Any]:
     payload["deckId"] = scoped_deck_id.encode()
     return {"event": "article", "payload": payload}
 
+
+def _list_desktop_articles() -> dict[str, Any]:
+    """Read persisted desktop articles instead of the UI demonstration data.
+
+    The mock article list exists only for the dependency-free server fixture.
+    A packaged desktop app always has ``DesktopDeckAdapter`` available and must
+    show the Markdown files written to its own DAIRR application-data folder.
+    """
+    if not _DESKTOP_ADAPTERS_AVAILABLE:
+        return build_article_list_payload()
+    return {"articles": DesktopDeckAdapter().list_saved_articles()}
+
+
+def _load_desktop_article(path: str) -> dict[str, Any]:
+    """Restore one persisted desktop article, with the mock fallback for tests."""
+    if not _DESKTOP_ADAPTERS_AVAILABLE:
+        return build_loaded_article_payload(path)
+    return DesktopDeckAdapter().load_saved_article(path)
+
 def handle_action(action: str, payload: dict[str, Any]) -> dict[str, Any]:
     """Dispatch one bridge action and return an {event, payload} envelope.
 
@@ -805,11 +824,11 @@ def handle_action(action: str, payload: dict[str, Any]) -> dict[str, Any]:
             return {"event": "articleCardSaved", "payload": {"articleCardError": message}}
 
     if action == "listArticles":
-        return {"event": "articleList", "payload": build_article_list_payload()}
+        return {"event": "articleList", "payload": _list_desktop_articles()}
 
     if action == "loadArticle":
         path = str((payload or {}).get("path") or "")
-        return {"event": "articleLoaded", "payload": build_loaded_article_payload(path)}
+        return {"event": "articleLoaded", "payload": _load_desktop_article(path)}
 
     if action == "fetchModels":
         if _DESKTOP_ADAPTERS_AVAILABLE:
