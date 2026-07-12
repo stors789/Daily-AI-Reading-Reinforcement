@@ -15,6 +15,7 @@ from core.llm import (
     fetch_openai_compatible_models,
     generate_article,
     max_tokens_for_request,
+    test_openai_compatible_config,
 )
 
 
@@ -125,6 +126,28 @@ class TestFetchOpenAICompatibleModels(unittest.TestCase):
             with self.assertRaises(RuntimeError) as ctx:
                 fetch_openai_compatible_models("https://invalid.example.com/v1", "key")
             self.assertIn("connection refused", str(ctx.exception))
+
+
+class TestOpenAICompatibleConfig(unittest.TestCase):
+    def test_success_makes_minimal_chat_request(self):
+        body = json.dumps({"choices": [{"message": {"content": "OK"}}]}).encode()
+
+        def mock_urlopen(request, timeout=None):
+            self.assertEqual(request.get_full_url(), "https://api.example.com/v1/chat/completions")
+            self.assertEqual(request.get_header("Authorization"), "Bearer secret")
+            payload = json.loads(request.data)
+            self.assertEqual(payload["model"], "model-a")
+            self.assertEqual(payload["max_tokens"], 8)
+            return MockHTTPResponse(body)
+
+        with patch("urllib.request.urlopen", mock_urlopen):
+            result = test_openai_compatible_config("https://api.example.com/v1/", "secret", "model-a")
+        self.assertEqual(result, {"model": "model-a", "response": "OK"})
+
+    def test_invalid_response_is_rejected(self):
+        with patch("urllib.request.urlopen", lambda *_args, **_kwargs: MockHTTPResponse(b'{}')):
+            with self.assertRaisesRegex(RuntimeError, "invalid chat completion"):
+                test_openai_compatible_config("https://api.example.com/v1", "secret", "model-a")
 
 
 class TestGenerateArticle(unittest.TestCase):

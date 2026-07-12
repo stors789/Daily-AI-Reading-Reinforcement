@@ -49,6 +49,35 @@ def fetch_openai_compatible_models(base_url: str, api_key: str) -> list[str]:
     return sorted(set(models), key=str.lower)
 
 
+def test_openai_compatible_config(base_url: str, api_key: str, model: str) -> dict[str, Any]:
+    """Make a tiny real chat request to verify endpoint, credentials and model."""
+    url = f"{base_url.rstrip('/')}/chat/completions"
+    data = json.dumps({
+        "model": model,
+        "messages": [{"role": "user", "content": "Reply with OK."}],
+        "temperature": 0,
+        "max_tokens": 8,
+    }).encode("utf-8")
+    request = urllib.request.Request(url, data=data, headers={
+        "Authorization": f"Bearer {api_key}",
+        "Content-Type": "application/json",
+        "User-Agent": "DAIRR/config-test",
+    }, method="POST")
+    try:
+        with urllib.request.urlopen(request, timeout=30) as response:
+            payload = json.loads(response.read().decode("utf-8"))
+    except urllib.error.HTTPError as exc:
+        body = exc.read().decode("utf-8", errors="replace")
+        raise RuntimeError(f"Configuration test failed with HTTP {exc.code}: {body}") from exc
+    except urllib.error.URLError as exc:
+        raise RuntimeError(f"Configuration test failed: {exc.reason}") from exc
+    try:
+        content = payload["choices"][0]["message"]["content"]
+    except (KeyError, IndexError, TypeError) as exc:
+        raise RuntimeError("Configuration test returned an invalid chat completion response.") from exc
+    return {"model": model, "response": str(content).strip()[:120]}
+
+
 def generate_article(
     config: dict[str, Any],
     deck_name_value: str,

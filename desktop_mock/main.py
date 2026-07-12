@@ -857,6 +857,24 @@ def handle_action(action: str, payload: dict[str, Any]) -> dict[str, Any]:
         else:
             return {"event": "modelsFetched", "payload": {"models": ["mock-model-1", "mock-model-2"]}}
 
+    if action == "testApiSettings":
+        if not _DESKTOP_ADAPTERS_AVAILABLE:
+            return {"event": "apiSettingsTested", "payload": {"model": "mock-model", "response": "OK"}}
+        try:
+            from desktop_adapters import _import_core
+            _llm = _import_core("llm")
+            config = DesktopConfigAdapter().load() or {}
+            settings = payload.get("settings") or {}
+            api_key = str(settings.get("apiKey") or config.get("api_key") or "").strip()
+            base_url = str(settings.get("baseUrl") or config.get("base_url") or "").strip().rstrip("/")
+            model = str(settings.get("model") or config.get("model") or "").strip()
+            if not api_key or not base_url or not model:
+                return {"event": "error", "payload": {"message": "API key, base URL, and model are required for testing."}}
+            result = _llm.test_openai_compatible_config(base_url, api_key, model)
+            return {"event": "apiSettingsTested", "payload": result}
+        except Exception as exc:
+            return {"event": "error", "payload": {"message": str(exc)}}
+
     if _DESKTOP_ADAPTERS_AVAILABLE:
         config_adapter = DesktopConfigAdapter()
         config = config_adapter.load() or {}
@@ -926,6 +944,16 @@ def handle_action(action: str, payload: dict[str, Any]) -> dict[str, Any]:
             config["model"] = model
             config["temperature"] = temperature
             config["max_tokens"] = max_tokens
+            import uuid
+            from dairr_core.config import normalize_llm_api_profiles
+            profile_id = str(settings.get("profileId") or uuid.uuid4().hex).strip()
+            profile_name = str(settings.get("profileName") or model).strip()
+            profiles = normalize_llm_api_profiles(config)
+            profile = {"id": profile_id, "name": profile_name, "provider_id": provider_id,
+                       "base_url": base_url, "model": model, "api_key": config.get("api_key") or "",
+                       "temperature": temperature, "max_tokens": max_tokens}
+            config["llm_api_profiles"] = [item for item in profiles if item["id"] != profile_id] + [profile]
+            config["selected_llm_api_profile_id"] = profile_id
 
             config_adapter.save(config)
 
@@ -936,6 +964,13 @@ def handle_action(action: str, payload: dict[str, Any]) -> dict[str, Any]:
                 api_settings_resp = config
 
             return {"event": "apiSettingsSaved", "payload": {"apiSettings": api_settings_resp, "message": "API settings saved."}}
+        if action == "selectApiProfile":
+            from dairr_core.config import activate_llm_api_profile
+            if not activate_llm_api_profile(config, str(payload.get("profileId") or "")):
+                return {"event": "error", "payload": {"message": "API profile not found."}}
+            config_adapter.save(config)
+            from mock_data import _api_settings_payload
+            return {"event": "apiSettingsSaved", "payload": {"apiSettings": _api_settings_payload(config)}}
         if action == "savePromptPreset":
             preset = payload.get("preset") or {}
             try:

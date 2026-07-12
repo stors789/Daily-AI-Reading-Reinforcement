@@ -137,6 +137,14 @@
         </div>
         <div class="settings-editor">
           <label class="form-field">
+            <span id="apiProfileLabel">已保存的 API</span>
+            <select id="apiProfileSelect"><option value="">新建配置</option></select>
+          </label>
+          <label class="form-field">
+            <span id="apiProfileNameLabel">配置名称</span>
+            <input id="apiProfileNameInput" autocomplete="off" placeholder="例如：工作 OpenAI">
+          </label>
+          <label class="form-field">
             <span id="providerLabel">Provider</span>
             <select id="providerSelect"></select>
           </label>
@@ -171,6 +179,7 @@
             <input id="maxTokensInput" type="number" min="128" max="32000" step="1">
           </label>
           <button class="secondary-button full-button" id="saveApiSettingsButton" style="margin-top: 16px;">Save API settings</button>
+          <button class="secondary-button full-button" id="testApiSettingsButton" type="button">测试当前配置</button>
         </div>
       </section>
     </div>

@@ -89,6 +89,8 @@
     savePresetButton: document.getElementById("savePresetButton"),
     deletePresetButton: document.getElementById("deletePresetButton"),
     providerSelect: document.getElementById("providerSelect"),
+    apiProfileSelect: document.getElementById("apiProfileSelect"),
+    apiProfileNameInput: document.getElementById("apiProfileNameInput"),
     fetchModelsButton: document.getElementById("fetchModelsButton"),
     modelSelect: document.getElementById("modelSelect"),
     providerLabel: document.getElementById("providerLabel"),
@@ -107,6 +109,7 @@
     clearApiKeyInput: document.getElementById("clearApiKeyInput"),
     apiKeyStatus: document.getElementById("apiKeyStatus"),
     saveApiSettingsButton: document.getElementById("saveApiSettingsButton"),
+    testApiSettingsButton: document.getElementById("testApiSettingsButton"),
     status: document.getElementById("status"),
     articleOutput: document.getElementById("articleOutput"),
     articleScroll: document.getElementById("articleScroll"),
@@ -263,6 +266,9 @@
       noKey: "无 key",
       enterNewKey: "留空则保留已保存 key",
       apiSettingsSaved: "API 设置已保存。",
+      testApiSettings: "测试当前配置",
+      testingApiSettings: "正在测试当前配置...",
+      apiSettingsTested: "配置可用，模型连接成功。",
       articleCardSettingSaved: "文章卡片设置已保存。",
       articleCardSaved: "文章卡片已创建到",
       articleCardFailed: "文章已保存，但创建卡片失败：",
@@ -413,6 +419,9 @@
       noKey: "No key",
       enterNewKey: "Leave blank to keep saved key",
       apiSettingsSaved: "API settings saved.",
+      testApiSettings: "Test current configuration",
+      testingApiSettings: "Testing current configuration...",
+      apiSettingsTested: "Configuration works and the model responded.",
       articleCardSettingSaved: "Article card setting saved.",
       articleCardSaved: "Article card created in",
       articleCardFailed: "Article saved, but card creation failed: ",
@@ -563,6 +572,9 @@
       noKey: "Key なし",
       enterNewKey: "空欄なら保存済み key を保持",
       apiSettingsSaved: "API 設定を保存しました。",
+      testApiSettings: "現在の設定をテスト",
+      testingApiSettings: "現在の設定をテスト中...",
+      apiSettingsTested: "設定は使用可能で、モデルへの接続に成功しました。",
       articleCardSettingSaved: "文章カード設定を保存しました。",
       articleCardSaved: "文章カードを作成しました：",
       articleCardFailed: "文章は保存しましたが、カード作成に失敗しました：",
@@ -651,6 +663,7 @@
     el.temperatureLabel.textContent = tr("temperature");
     el.maxTokensLabel.textContent = tr("maxTokens");
     el.fetchModelsButton.textContent = tr("fetchModels");
+    el.testApiSettingsButton.textContent = tr("testApiSettings");
     el.clearApiKeyLabel.textContent = tr("clearApiKey");
     if (el.regenerateButton) el.regenerateButton.textContent = tr("regenerate");
     if (el.saveArticleToCardButton) el.saveArticleToCardButton.textContent = tr("saveArticleToCard");
@@ -1115,6 +1128,12 @@
         return `<option value="${escapeHtml(profile.id)}"${selected}>${escapeHtml(profile.name)}</option>`;
       })
       .join("");
+    const savedProfiles = state.apiSettings.profiles || [];
+    el.apiProfileSelect.innerHTML = [`<option value="">${state.uiLanguage === "zh" ? "新建配置" : "New profile"}</option>`,
+      ...savedProfiles.map((profile) => `<option value="${escapeHtml(profile.id)}"${profile.id === state.apiSettings.profileId ? " selected" : ""}>${escapeHtml(profile.name)}</option>`)
+    ].join("");
+    const activeProfile = savedProfiles.find((profile) => profile.id === state.apiSettings.profileId);
+    el.apiProfileNameInput.value = activeProfile ? activeProfile.name : "";
     el.baseUrlInput.value = state.apiSettings.baseUrl || "";
     el.modelInput.value = state.apiSettings.model || "";
     el.temperatureInput.value = state.apiSettings.temperature;
@@ -1498,6 +1517,10 @@
         el.fetchModelsButton.disabled = false;
         setStatus("modelsFetched");
       }
+      if (event === "apiSettingsTested") {
+        el.testApiSettingsButton.disabled = false;
+        setStatus("apiSettingsTested");
+      }
       if (event === "articleCardSettingsSaved") {
         state.articleCardSettings = payload.articleCardSettings || state.articleCardSettings;
         renderApiSettings();
@@ -1536,6 +1559,7 @@
       if (event === "error") {
         updateGenerateButton();
         el.fetchModelsButton.disabled = false;
+        el.testApiSettingsButton.disabled = false;
         setStatus("error", true, payload.message ? { message: payload.message } : {});
       }
       if (event === "articleList") {
@@ -2050,6 +2074,8 @@
     }
     send("saveApiSettings", {
       settings: {
+        profileId: el.apiProfileSelect.value,
+        profileName: el.apiProfileNameInput.value,
         providerId: el.providerSelect.value,
         baseUrl,
         model,
@@ -2059,6 +2085,18 @@
         maxTokens: el.maxTokensInput.value,
       },
     });
+  });
+
+  el.apiProfileSelect.addEventListener("change", () => {
+    const profile = (state.apiSettings.profiles || []).find((item) => item.id === el.apiProfileSelect.value);
+    if (!profile) {
+      state.apiSettings.profileId = "";
+      el.apiProfileNameInput.value = "";
+      return;
+    }
+    state.apiSettings = Object.assign({}, state.apiSettings, profile, { profileId: profile.id, profiles: state.apiSettings.profiles });
+    renderApiSettings();
+    send("selectApiProfile", { profileId: profile.id });
   });
 
   if (el.saveDesktopSettingsButton) {
@@ -2089,6 +2127,18 @@
         apiKey: el.apiKeyInput.value,
       },
     });
+  });
+
+  el.testApiSettingsButton.addEventListener("click", () => {
+    const baseUrl = el.baseUrlInput.value.trim();
+    const model = el.modelInput.value.trim();
+    if (!baseUrl || !model) {
+      setStatus(!baseUrl ? "apiMissingBaseUrl" : "apiMissingModel", true);
+      return;
+    }
+    el.testApiSettingsButton.disabled = true;
+    setStatus("testingApiSettings");
+    send("testApiSettings", { settings: { baseUrl, model, apiKey: el.apiKeyInput.value } });
   });
 
   el.modelSelect.addEventListener("change", () => {

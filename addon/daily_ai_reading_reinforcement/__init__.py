@@ -27,8 +27,8 @@ from .core.article import (
     parse_article_frontmatter,
     save_article,
 )
-from .core.config import DEFAULT_CONFIG, PROVIDER_PROFILES
-from .core.llm import fetch_openai_compatible_models, generate_article
+from .core.config import DEFAULT_CONFIG, PROVIDER_PROFILES, activate_llm_api_profile, normalize_llm_api_profiles
+from .core.llm import fetch_openai_compatible_models, generate_article, test_openai_compatible_config
 from .core.prompt import build_prompt
 from .core.article_generator import run_article_generation
 from .anki_adapters import AnkiConfigAdapter, AnkiDeckAdapter
@@ -138,6 +138,8 @@ window.addEventListener("error", function (event) {
                 self._send_deck_cards(str(payload.get("deckId", "")))
             elif action == "fetchModels":
                 self._fetch_models(dict(payload.get("settings") or {}))
+            elif action == "testApiSettings":
+                self._test_api_settings(dict(payload.get("settings") or {}))
             elif action == "saveFieldConfig":
                 self._save_field_config(
                     str(payload.get("deckId", "")),
@@ -153,6 +155,8 @@ window.addEventListener("error", function (event) {
                 self._save_ui_language(str(payload.get("uiLanguage", "")))
             elif action == "saveApiSettings":
                 self._save_api_settings(dict(payload.get("settings") or {}))
+            elif action == "selectApiProfile":
+                self._select_api_profile(str(payload.get("profileId") or ""))
             elif action == "saveDesktopSettings":
                 self._save_desktop_settings(dict(payload.get("settings") or {}))
             elif action == "saveArticleCardSettings":
@@ -275,6 +279,28 @@ window.addEventListener("error", function (event) {
 
         mw.taskman.run_in_background(task, on_done)
 
+    def _test_api_settings(self, settings: dict[str, Any]) -> None:
+        config = load_config()
+        api_key = str(settings.get("apiKey") or config.get("api_key") or "").strip()
+        base_url = clean_base_url(settings.get("baseUrl") or config.get("base_url"))
+        model = clean_text(settings.get("model") or config.get("model"))
+        if not api_key or not base_url or not model:
+            self._emit("error", {"message": "API key, base URL, and model are required for testing."})
+            return
+
+        def task() -> dict[str, Any]:
+            return test_openai_compatible_config(base_url, api_key, model)
+
+        def on_done(future: Any) -> None:
+            try:
+                result = future.result()
+            except Exception as exc:
+                self._emit("error", {"message": str(exc)})
+                return
+            self._emit("apiSettingsTested", result)
+
+        mw.taskman.run_in_background(task, on_done)
+
     def _save_field_config(self, deck_id: str, fields: list[str]) -> None:
         payload = self.deck_payloads.get(deck_id)
         if not payload:
@@ -384,6 +410,16 @@ window.addEventListener("error", function (event) {
         elif clear_api_key:
             config["api_key"] = ""
 
+        profile_id = clean_text(settings.get("profileId")) or uuid4().hex
+        profile_name = clean_text(settings.get("profileName")) or model
+        profiles = normalize_llm_api_profiles(config)
+        saved_key = api_key or ("" if clear_api_key else str(config.get("api_key") or ""))
+        profile = {"id": profile_id, "name": profile_name, "provider_id": provider_id,
+                   "base_url": base_url, "model": model, "api_key": saved_key,
+                   "temperature": temperature, "max_tokens": max_tokens}
+        profiles = [item for item in profiles if item["id"] != profile_id] + [profile]
+        config["llm_api_profiles"] = profiles
+        config["selected_llm_api_profile_id"] = profile_id
         config["selected_provider_profile"] = provider_id
         config["base_url"] = base_url
         config["model"] = model
@@ -397,6 +433,14 @@ window.addEventListener("error", function (event) {
                 "message": "API settings saved.",
             },
         )
+
+    def _select_api_profile(self, profile_id: str) -> None:
+        config = load_config()
+        if not activate_llm_api_profile(config, profile_id):
+            self._emit("error", {"message": "API profile not found."})
+            return
+        CONFIG_STORE.save(config)
+        self._emit("apiSettingsSaved", {"apiSettings": api_settings_payload(config)})
 
     def _save_desktop_settings(self, settings: dict[str, Any]) -> None:
         config = load_config()
@@ -784,6 +828,12 @@ def api_settings_payload(config: dict[str, Any]) -> dict[str, Any]:
         "temperature": clean_temperature(config.get("temperature")),
         "maxTokens": clean_max_tokens(config.get("max_tokens")),
         "hasApiKey": bool(str(config.get("api_key") or "").strip()),
+        "profileId": str(config.get("selected_llm_api_profile_id") or ""),
+        "profiles": [{"id": p["id"], "name": p.get("name") or p.get("model") or "API",
+                      "providerId": p.get("provider_id") or "custom", "baseUrl": p.get("base_url") or "",
+                      "model": p.get("model") or "", "temperature": p.get("temperature", 0.7),
+                      "maxTokens": p.get("max_tokens", 30000), "hasApiKey": bool(p.get("api_key"))}
+                     for p in normalize_llm_api_profiles(config)],
     }
 
 
