@@ -45,6 +45,7 @@ TARGET_TRIPLES = frozenset({
 DESKTOP_MOCK_FILES = (
     "ankiconnect_card_saver.py",
     "ankiconnect_provider.py",
+    "credential_store.py",
     "desktop_adapters.py",
     "dairr_core_runtime.py",
     "desktop_paths.py",
@@ -71,6 +72,9 @@ HIDDEN_IMPORTS = (
     "urllib.error",
     "urllib.request",
     "uuid",
+    "keyring",
+    "keyring.backends.macOS",
+    "keyring.backends.Windows",
 )
 
 PYINSTALLER_MISSING_MESSAGE = (

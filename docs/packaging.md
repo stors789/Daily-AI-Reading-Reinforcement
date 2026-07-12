@@ -4,9 +4,15 @@ This is the first packaging scaffold for DAIRR desktop mode. It standardizes
 the future PyInstaller command shape, but it is not a formal release pipeline
 yet.
 
-The repository does not commit PyInstaller, pywebview, or a packaging
-requirements file. Install those optional tools only in the environment you use
-for packaging.
+Install the pinned-major desktop runtime and packaging dependencies in a clean
+environment on the target operating system:
+
+```bash
+python3 -m pip install -r requirements-desktop.txt
+```
+
+PyInstaller does not cross-compile. Build macOS artifacts on macOS and Windows
+artifacts on Windows so the packaged keyring backend matches the target.
 
 ## Entry Points
 
@@ -53,3 +59,16 @@ Packaged desktop mode uses the same default user-data paths defined in
 
 These defaults cover the desktop config and generated article output paths
 unless the user overrides them with environment variables.
+
+## Credential storage
+
+Packaged desktop builds include `keyring` and its macOS and Windows backends.
+Credentials are stored in macOS Keychain or Windows Credential Manager; the
+JSON configuration keeps non-secret settings and credential references only.
+
+On first use after upgrading, DAIRR migrates legacy plaintext credentials to
+the system credential store. It removes each plaintext value only after the
+secure write succeeds. A missing, locked, or unusable system backend makes the
+operation fail closed: DAIRR does not silently write the credential back to
+JSON. Release acceptance must exercise the packaged app on its target OS,
+including restart, update, delete, migration-failure, and non-ASCII-user tests.

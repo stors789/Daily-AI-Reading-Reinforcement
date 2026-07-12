@@ -46,7 +46,7 @@ python3 desktop_app.py --provider ankiconnect --check
 
 ### Native Tauri shell
 
-Requirements: Python 3.11+, Node.js, Rust, and the native dependencies required by Tauri for your platform.
+Requirements: Python 3.11+, Node.js, Rust, and the native dependencies required by Tauri for your platform. Install the desktop Python dependencies with `python3 -m pip install -r requirements-desktop.txt`.
 
 ```bash
 cd apps/desktop
@@ -91,6 +91,8 @@ python3 package_tauri_sidecar.py --clean
 ```
 
 The repository keeps the learning and rendering logic in `packages/dairr_core/`; Anki-specific APIs are isolated in the add-on wrapper. Tests live in `tests/`.
+
+Desktop API credentials are stored through Python `keyring`: macOS uses Keychain and Windows uses Credential Manager. Existing plaintext credentials are copied into the system store and removed from the JSON configuration only after the secure write succeeds. If no supported keyring backend is available, credential writes fail closed instead of silently falling back to plaintext storage.
 
 ## License and contributions
 
