@@ -19,6 +19,12 @@ from typing import Any, Callable, TypeVar
 
 from dairr_core_runtime import enable_dairr_core_imports
 from desktop_paths import app_config_path, app_output_dir, legacy_config_path
+from credential_store import (
+    API_KEY_REFERENCE,
+    MOMO_API_KEY_REFERENCE,
+    KeyringCredentialStore,
+    profile_api_key_reference,
+)
 
 enable_dairr_core_imports()
 
@@ -94,9 +100,9 @@ class DesktopConfigAdapter:
         "ui_language": "DAIRR_UI_LANGUAGE",
     }
 
-    __slots__ = ("_file_path", "_cache")
+    __slots__ = ("_file_path", "_cache", "_credential_store")
 
-    def __init__(self, file_path: str | None = None) -> None:
+    def __init__(self, file_path: str | None = None, credential_store: Any | None = None) -> None:
         if file_path:
             self._file_path = Path(file_path)
         else:
@@ -107,6 +113,91 @@ class DesktopConfigAdapter:
                 legacy_path = legacy_config_path()
                 self._file_path = legacy_path if legacy_path.is_file() else app_config_path()
         self._cache: dict[str, Any] | None = None
+        self._credential_store = credential_store
+
+    def _credentials(self) -> Any:
+        if self._credential_store is None:
+            self._credential_store = KeyringCredentialStore.system()
+        return self._credential_store
+
+    @staticmethod
+    def _profile_reference(profile: dict[str, Any]) -> str:
+        return profile_api_key_reference(str(profile.get("id") or "").strip())
+
+    def _resolve_credentials(self, config: dict[str, Any]) -> None:
+        references = (
+            ("api_key", "api_key_ref", API_KEY_REFERENCE),
+            ("momo_api_key", "momo_api_key_ref", MOMO_API_KEY_REFERENCE),
+        )
+        for value_key, ref_key, default_ref in references:
+            reference = str(config.get(ref_key) or "").strip()
+            if reference:
+                config[value_key] = self._credentials().read(reference) or ""
+            elif value_key not in config:
+                config[value_key] = ""
+        profiles = config.get("llm_api_profiles")
+        if isinstance(profiles, list):
+            for profile in profiles:
+                if not isinstance(profile, dict):
+                    continue
+                reference = str(profile.get("api_key_ref") or "").strip()
+                if reference:
+                    profile["api_key"] = self._credentials().read(reference) or ""
+                elif "api_key" not in profile:
+                    profile["api_key"] = ""
+
+    def _externalize_credentials(self, config: dict[str, Any]) -> tuple[dict[str, Any], bool]:
+        persisted = json.loads(json.dumps(config))
+        changed = False
+        for value_key, ref_key, reference in (
+            ("api_key", "api_key_ref", API_KEY_REFERENCE),
+            ("momo_api_key", "momo_api_key_ref", MOMO_API_KEY_REFERENCE),
+        ):
+            has_value = value_key in persisted
+            secret = str(persisted.pop(value_key, "") or "")
+            if secret:
+                self._credentials().write(reference, secret)
+                persisted[ref_key] = reference
+                changed = True
+            elif has_value and persisted.pop(ref_key, None):
+                if self._credentials().read(reference) is not None:
+                    self._credentials().delete(reference)
+        profiles = persisted.get("llm_api_profiles")
+        if isinstance(profiles, list):
+            for profile in profiles:
+                if not isinstance(profile, dict):
+                    continue
+                has_value = "api_key" in profile
+                secret = str(profile.pop("api_key", "") or "")
+                profile_id = str(profile.get("id") or "").strip()
+                if secret and profile_id:
+                    reference = self._profile_reference(profile)
+                    self._credentials().write(reference, secret)
+                    profile["api_key_ref"] = reference
+                    changed = True
+                elif has_value and profile.pop("api_key_ref", None) and profile_id:
+                    reference = self._profile_reference(profile)
+                    if self._credentials().read(reference) is not None:
+                        self._credentials().delete(reference)
+        return persisted, changed
+
+    def _write_json(self, config: dict[str, Any]) -> None:
+        self._file_path.parent.mkdir(parents=True, exist_ok=True, mode=0o700)
+        fd, temporary = tempfile.mkstemp(prefix=f".{self._file_path.name}.", dir=self._file_path.parent)
+        try:
+            os.chmod(temporary, 0o600)
+            with os.fdopen(fd, "w", encoding="utf-8") as fh:
+                json.dump(config, fh, ensure_ascii=False, indent=2)
+                fh.flush()
+                os.fsync(fh.fileno())
+            os.replace(temporary, self._file_path)
+            os.chmod(self._file_path, 0o600)
+        except Exception:
+            try:
+                os.unlink(temporary)
+            except OSError:
+                pass
+            raise
 
     def load(self) -> dict[str, Any] | None:
         if self._cache is not None:
@@ -116,13 +207,14 @@ class DesktopConfigAdapter:
 
         # Layer 2: JSON file
         if self._file_path.is_file():
-            try:
-                with open(self._file_path, encoding="utf-8") as fh:
-                    file_config = json.load(fh)
-                if isinstance(file_config, dict):
-                    config.update(file_config)
-            except Exception:
-                pass
+            with open(self._file_path, encoding="utf-8") as fh:
+                file_config = json.load(fh)
+            if isinstance(file_config, dict):
+                persisted, migrated = self._externalize_credentials(file_config)
+                if migrated:
+                    self._write_json(persisted)
+                self._resolve_credentials(persisted)
+                config.update(persisted)
 
         # Layer 1: environment variables (highest priority)
         for config_key, env_key in self.ENV_MAP.items():
@@ -145,23 +237,14 @@ class DesktopConfigAdapter:
         return config
 
     def save(self, config: dict[str, Any]) -> None:
-        self._cache = dict(config)
-        try:
-            self._file_path.parent.mkdir(parents=True, exist_ok=True, mode=0o700)
-            fd, temporary = tempfile.mkstemp(prefix=f".{self._file_path.name}.", dir=self._file_path.parent)
-            os.chmod(temporary, 0o600)
-            with os.fdopen(fd, "w", encoding="utf-8") as fh:
-                json.dump(config, fh, ensure_ascii=False, indent=2)
-                fh.flush()
-                os.fsync(fh.fileno())
-            os.replace(temporary, self._file_path)
-            os.chmod(self._file_path, 0o600)
-        except Exception:
-            try:
-                if "temporary" in locals():
-                    os.unlink(temporary)
-            except OSError:
-                pass
+        to_save = json.loads(json.dumps(config))
+        # Environment overrides are runtime-only and must never become persisted
+        # credentials merely because the merged config is subsequently saved.
+        if os.environ.get(self.ENV_MAP["api_key"]) is not None:
+            to_save.pop("api_key", None)
+        persisted, _ = self._externalize_credentials(to_save)
+        self._write_json(persisted)
+        self._cache = json.loads(json.dumps(config))
 
 
 # ---------------------------------------------------------------------------

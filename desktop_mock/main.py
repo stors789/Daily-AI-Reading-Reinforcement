@@ -48,6 +48,7 @@ try:
         DesktopDeckAdapter,
         DesktopEnvironmentAdapter,
     )
+    from credential_store import CredentialStoreError
     _DESKTOP_ADAPTERS_AVAILABLE = True
 except Exception:
     _DESKTOP_ADAPTERS_AVAILABLE = False
@@ -886,7 +887,13 @@ def handle_action(action: str, payload: dict[str, Any]) -> dict[str, Any]:
 
     if _DESKTOP_ADAPTERS_AVAILABLE:
         config_adapter = DesktopConfigAdapter()
-        config = config_adapter.load() or {}
+        try:
+            config = config_adapter.load() or {}
+        except CredentialStoreError:
+            return {
+                "event": "error",
+                "payload": {"message": "Secure credential storage is unavailable. Check the system keyring and try again."},
+            }
 
         if action == "getConfig":
             return {"event": "configLoaded", "payload": _safe_debug_value(config)}
@@ -900,7 +907,13 @@ def handle_action(action: str, payload: dict[str, Any]) -> dict[str, Any]:
                 config["momo_api_key"] = ""
             config["momo_day_start"] = _time_setting(settings.get("momoDayStart"))
             config["momo_day_end"] = _time_setting(settings.get("momoDayEnd"))
-            config_adapter.save(config)
+            try:
+                config_adapter.save(config)
+            except CredentialStoreError:
+                return {
+                    "event": "error",
+                    "payload": {"message": "Secure credential storage is unavailable. Check the system keyring and try again."},
+                }
             global MOMO_PROVIDER
             MOMO_PROVIDER = None
             day_start, day_end = _study_window(config)

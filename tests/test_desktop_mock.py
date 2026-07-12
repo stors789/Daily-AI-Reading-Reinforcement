@@ -36,6 +36,40 @@ _data = _load("dairr_mock_data", _mock_dir / "mock_data.py")
 
 
 class TestHandleAction(unittest.TestCase):
+    def setUp(self) -> None:
+        self._tmpdir = tempfile.TemporaryDirectory()
+        self.addCleanup(self._tmpdir.cleanup)
+        self._env_patch = patch.dict(
+            os.environ,
+            {"DESKTOP_CONFIG_PATH": str(Path(self._tmpdir.name) / "config.json")},
+            clear=False,
+        )
+        self._env_patch.start()
+        self.addCleanup(self._env_patch.stop)
+        values: dict[tuple[str, str], str] = {}
+
+        class Backend:
+            priority = 1
+
+            def get_password(self, service: str, username: str) -> str | None:
+                return values.get((service, username))
+
+            def set_password(self, service: str, username: str, password: str) -> None:
+                values[(service, username)] = password
+
+            def delete_password(self, service: str, username: str) -> None:
+                values.pop((service, username), None)
+
+        store = _main.DesktopConfigAdapter(str(Path(self._tmpdir.name) / "unused.json"), None)
+        credential_store = sys.modules[store.__class__.__module__].KeyringCredentialStore(Backend())
+        self._keyring_patch = patch.object(
+            sys.modules[store.__class__.__module__].KeyringCredentialStore,
+            "system",
+            return_value=credential_store,
+        )
+        self._keyring_patch.start()
+        self.addCleanup(self._keyring_patch.stop)
+
     def test_server_rejects_cross_origin_bridge_requests(self) -> None:
         server = _main.ThreadingHTTPServer(("127.0.0.1", 0), _main.MockHandler)
         thread = threading.Thread(target=server.serve_forever, daemon=True)
