@@ -16,8 +16,22 @@ sys.modules['gui_hooks'] = MagicMock()
 
 import addon.daily_ai_reading_reinforcement.__init__ as addon_module
 from addon.daily_ai_reading_reinforcement.__init__ import api_settings_payload
+from addon.daily_ai_reading_reinforcement.core.config import activate_llm_api_profile, normalize_llm_api_profiles
 
 class TestBridgeConfig(unittest.TestCase):
+    def test_legacy_llm_config_migrates_to_named_profile(self):
+        profiles = normalize_llm_api_profiles({"api_key": "secret", "base_url": "https://one.test", "model": "m1"})
+        self.assertEqual(profiles[0]["name"], "Default")
+        self.assertEqual(profiles[0]["api_key"], "secret")
+
+    def test_activate_profile_updates_legacy_generation_fields(self):
+        config = {"llm_api_profiles": [{"id": "two", "name": "Two", "provider_id": "custom",
+                  "base_url": "https://two.test", "model": "m2", "api_key": "key2",
+                  "temperature": 0.2, "max_tokens": 1234}]}
+        self.assertTrue(activate_llm_api_profile(config, "two"))
+        self.assertEqual(config["api_key"], "key2")
+        self.assertEqual(config["model"], "m2")
+
     def test_api_settings_payload_default(self):
         config = {}
         payload = api_settings_payload(config)

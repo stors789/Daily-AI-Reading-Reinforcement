@@ -18,6 +18,7 @@ enable_dairr_core_imports()
 
 from dairr_core.config import DEFAULT_CONFIG as _DEFAULT_CONFIG
 from dairr_core.config import PROVIDER_PROFILES as _PROVIDER_PROFILES
+from dairr_core.config import normalize_llm_api_profiles
 
 DEFAULT_CONFIG = dict(_DEFAULT_CONFIG)
 _PROVIDER_PROFILES = list(_PROVIDER_PROFILES)
@@ -50,6 +51,11 @@ def _api_settings_payload(config: dict[str, Any]) -> dict[str, Any]:
         "temperature": config.get("temperature", DEFAULT_CONFIG["temperature"]),
         "maxTokens": config.get("max_tokens", DEFAULT_CONFIG["max_tokens"]),
         "hasApiKey": bool(str(config.get("api_key") or "").strip()),
+        "profileId": str(config.get("selected_llm_api_profile_id") or ""),
+        "profiles": [{"id": p["id"], "name": p.get("name") or "API", "providerId": p.get("provider_id") or "custom",
+                      "baseUrl": p.get("base_url") or "", "model": p.get("model") or "",
+                      "temperature": p.get("temperature", .7), "maxTokens": p.get("max_tokens", 30000),
+                      "hasApiKey": bool(p.get("api_key"))} for p in normalize_llm_api_profiles(config)],
     }
 
 
