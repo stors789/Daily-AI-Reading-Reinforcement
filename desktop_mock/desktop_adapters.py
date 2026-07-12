@@ -12,6 +12,7 @@ from __future__ import annotations
 import importlib
 import json
 import os
+import tempfile
 import threading
 from pathlib import Path
 from typing import Any, Callable, TypeVar
@@ -146,11 +147,21 @@ class DesktopConfigAdapter:
     def save(self, config: dict[str, Any]) -> None:
         self._cache = dict(config)
         try:
-            self._file_path.parent.mkdir(parents=True, exist_ok=True)
-            with open(self._file_path, "w", encoding="utf-8") as fh:
+            self._file_path.parent.mkdir(parents=True, exist_ok=True, mode=0o700)
+            fd, temporary = tempfile.mkstemp(prefix=f".{self._file_path.name}.", dir=self._file_path.parent)
+            os.chmod(temporary, 0o600)
+            with os.fdopen(fd, "w", encoding="utf-8") as fh:
                 json.dump(config, fh, ensure_ascii=False, indent=2)
+                fh.flush()
+                os.fsync(fh.fileno())
+            os.replace(temporary, self._file_path)
+            os.chmod(self._file_path, 0o600)
         except Exception:
-            pass
+            try:
+                if "temporary" in locals():
+                    os.unlink(temporary)
+            except OSError:
+                pass
 
 
 # ---------------------------------------------------------------------------
