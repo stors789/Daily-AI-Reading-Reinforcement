@@ -3,8 +3,10 @@
 from __future__ import annotations
 
 import html
+import ipaddress
 import re
 from typing import Any
+from urllib.parse import urlsplit, urlunsplit
 
 from .config import DEFAULT_CONFIG, PROVIDER_PROFILES
 
@@ -17,7 +19,32 @@ def clean_text(value: Any) -> str:
 
 
 def clean_base_url(value: Any) -> str:
-    return str(value or "").strip().rstrip("/")
+    raw = str(value or "").strip().rstrip("/")
+    if not raw:
+        return ""
+
+    parsed = urlsplit(raw)
+    if parsed.scheme not in {"http", "https"}:
+        raise ValueError("API base URL must use HTTPS (or HTTP for a loopback development server).")
+    if not parsed.hostname:
+        raise ValueError("API base URL must include a host.")
+    if parsed.username is not None or parsed.password is not None:
+        raise ValueError("API base URL must not contain embedded credentials.")
+    if parsed.query or parsed.fragment:
+        raise ValueError("API base URL must not contain a query string or fragment.")
+
+    if parsed.scheme == "http" and not _is_loopback_host(parsed.hostname):
+        raise ValueError("Unencrypted HTTP is only allowed for loopback development servers.")
+    return urlunsplit((parsed.scheme, parsed.netloc, parsed.path.rstrip("/"), "", ""))
+
+
+def _is_loopback_host(hostname: str) -> bool:
+    if hostname.lower().rstrip(".") == "localhost":
+        return True
+    try:
+        return ipaddress.ip_address(hostname).is_loopback
+    except ValueError:
+        return False
 
 
 def slugify(value: str) -> str:

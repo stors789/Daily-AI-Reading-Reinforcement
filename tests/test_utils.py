@@ -74,6 +74,26 @@ class TestCleanBaseUrl(unittest.TestCase):
     def test_no_slash_to_strip(self):
         self.assertEqual(clean_base_url("http://localhost:8080"), "http://localhost:8080")
 
+    def test_allows_loopback_ip_http(self):
+        self.assertEqual(clean_base_url("http://127.0.0.1:8080/v1"), "http://127.0.0.1:8080/v1")
+
+    def test_rejects_remote_http(self):
+        with self.assertRaisesRegex(ValueError, "loopback"):
+            clean_base_url("http://api.example.com/v1")
+
+    def test_rejects_embedded_credentials(self):
+        with self.assertRaisesRegex(ValueError, "embedded credentials"):
+            clean_base_url("https://user:secret@api.example.com/v1")
+
+    def test_rejects_non_http_scheme(self):
+        with self.assertRaisesRegex(ValueError, "must use HTTPS"):
+            clean_base_url("file:///tmp/api")
+
+    def test_rejects_query_and_fragment(self):
+        for url in ("https://api.example.com/v1?token=x", "https://api.example.com/v1#section"):
+            with self.subTest(url=url), self.assertRaisesRegex(ValueError, "query string or fragment"):
+                clean_base_url(url)
+
 
 class TestSlugify(unittest.TestCase):
 

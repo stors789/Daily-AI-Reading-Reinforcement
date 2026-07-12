@@ -125,7 +125,22 @@ class TestFetchOpenAICompatibleModels(unittest.TestCase):
         with patch("urllib.request.urlopen", mock_urlopen):
             with self.assertRaises(RuntimeError) as ctx:
                 fetch_openai_compatible_models("https://invalid.example.com/v1", "key")
-            self.assertIn("connection refused", str(ctx.exception))
+            self.assertNotIn("connection refused", str(ctx.exception))
+            self.assertIn("could not be reached", str(ctx.exception))
+
+    def test_authorization_is_not_forwarded_on_redirect(self):
+        request = None
+
+        def capture(req, timeout=None):
+            nonlocal request
+            request = req
+            return MockHTTPResponse(b'{"data": []}')
+
+        with patch("urllib.request.urlopen", capture):
+            fetch_openai_compatible_models("https://api.example.com/v1", "secret")
+        self.assertEqual(request.get_header("Authorization"), "Bearer secret")
+        self.assertNotIn("Authorization", request.headers)
+        self.assertEqual(request.unredirected_hdrs["Authorization"], "Bearer secret")
 
 
 class TestOpenAICompatibleConfig(unittest.TestCase):
@@ -261,7 +276,8 @@ class TestGenerateArticle(unittest.TestCase):
                     [self._make_mock_card()], ["Front"],
                     self.preset
                 )
-            self.assertIn("timeout", str(ctx.exception))
+            self.assertNotIn("timeout", str(ctx.exception))
+            self.assertIn("could not be reached", str(ctx.exception))
 
     def test_malformed_response(self):
         response_body = json.dumps({
