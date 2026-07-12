@@ -269,6 +269,7 @@ class TauriSidecarTests(unittest.TestCase):
         self.assertIn("desktop_app.py", output)
         self.assertIn("packages/dairr_core/src/dairr_core", output)
         self.assertIn("desktop_mock/main.py", output)
+        self.assertIn("desktop_mock/learning_sources.py", output)
 
     def test_sidecar_script_known_target_triples_are_valid(self) -> None:
         spec = importlib.util.spec_from_file_location(

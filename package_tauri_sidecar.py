@@ -49,6 +49,7 @@ DESKTOP_MOCK_FILES = (
     "dairr_core_runtime.py",
     "desktop_paths.py",
     "diagnostics.py",
+    "learning_sources.py",
     "main.py",
     "mock_data.py",
     "momo_provider.py",
