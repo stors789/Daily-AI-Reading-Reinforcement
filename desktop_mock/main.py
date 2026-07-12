@@ -12,7 +12,9 @@
 from __future__ import annotations
 
 import json
+import hmac
 import os
+import secrets
 import sys
 import threading
 from datetime import datetime, timedelta
@@ -60,6 +62,9 @@ APP_NAME = "DAIRR"
 APP_DISPLAY_NAME = "Daily AI Reading Reinforcement"
 APP_VERSION = "0.1.0"
 APP_MODE = "desktop"
+MAX_REQUEST_BODY = 1_048_576
+_LOOPBACK_HOSTS = {"127.0.0.1", "localhost", "[::1]"}
+BRIDGE_TOKEN = os.environ.get("DAIRR_BRIDGE_TOKEN") or secrets.token_urlsafe(32)
 
 
 def _load_provider_config() -> dict[str, Any]:
@@ -528,7 +533,11 @@ def _safe_debug_value(value: Any) -> Any:
         for key, item in value.items():
             key_text = str(key)
             key_lower = key_text.lower()
-            if key_lower in {"api_key", "apikey"} or "authorization" in key_lower:
+            if (
+                key_lower in {"api_key", "apikey", "api_token", "password", "secret", "token"}
+                or "authorization" in key_lower
+                or key_lower.endswith("_api_key")
+            ):
                 continue
             cleaned[key_text] = _safe_debug_value(item)
         return cleaned
@@ -880,7 +889,7 @@ def handle_action(action: str, payload: dict[str, Any]) -> dict[str, Any]:
         config = config_adapter.load() or {}
 
         if action == "getConfig":
-            return {"event": "configLoaded", "payload": config}
+            return {"event": "configLoaded", "payload": _safe_debug_value(config)}
         if action == "saveDesktopSettings":
             settings = payload.get("settings") or {}
             momo_key = str(settings.get("momoApiKey") or "").strip()
@@ -1056,13 +1065,15 @@ def _build_index_page() -> str:
     # The mock bridge replaces the Anki pycmd path. It posts to /api/bridge and
     # feeds the response straight into the shared app.js receive handler
     # (window.DAIRR.receive), which expects { event, payload }.
+    bridge_token = json.dumps(BRIDGE_TOKEN)
     bridge = (
         '<script>\n'
+        f'const DAIRR_BRIDGE_TOKEN = {bridge_token};\n'
         'window.__DAIRR_BRIDGE__ = {\n'
         '  send(action, payload) {\n'
         '    fetch("/api/bridge", {\n'
         '      method: "POST",\n'
-        '      headers: {"Content-Type": "application/json"},\n'
+        '      headers: {"Content-Type": "application/json", "X-DAIRR-Bridge-Token": DAIRR_BRIDGE_TOKEN},\n'
         '      body: JSON.stringify({action: action, payload: payload})\n'
         '    })\n'
         '      .then(function (r) { return r.json(); })\n'
@@ -1082,11 +1093,33 @@ def _build_index_page() -> str:
 class MockHandler(BaseHTTPRequestHandler):
     server_version = "DAIRRMock/1.0"
 
+    def _send_security_headers(self) -> None:
+        self.send_header("Cache-Control", "no-store")
+        self.send_header("X-Content-Type-Options", "nosniff")
+        self.send_header("X-Frame-Options", "DENY")
+        self.send_header("Referrer-Policy", "no-referrer")
+        self.send_header(
+            "Content-Security-Policy",
+            "default-src 'none'; style-src 'unsafe-inline'; script-src 'unsafe-inline'; "
+            "connect-src 'self'; img-src 'self' data:; font-src 'self' data:; "
+            "frame-ancestors 'none'; base-uri 'none'; form-action 'none'",
+        )
+
+    def _request_is_local(self) -> bool:
+        host = (self.headers.get("Host") or "").split(":", 1)[0].lower()
+        if host not in _LOOPBACK_HOSTS:
+            return False
+        origin = self.headers.get("Origin")
+        if not origin:
+            return True
+        return any(origin == f"http://{name}:{self.server.server_port}" for name in _LOOPBACK_HOSTS)
+
     def _send_json(self, status: int, obj: dict[str, Any]) -> None:
         body = json.dumps(obj, ensure_ascii=False).encode("utf-8")
         self.send_response(status)
         self.send_header("Content-Type", "application/json; charset=utf-8")
         self.send_header("Content-Length", str(len(body)))
+        self._send_security_headers()
         self.end_headers()
         self.wfile.write(body)
 
@@ -1095,6 +1128,7 @@ class MockHandler(BaseHTTPRequestHandler):
         self.send_response(200)
         self.send_header("Content-Type", "text/html; charset=utf-8")
         self.send_header("Content-Length", str(len(body)))
+        self._send_security_headers()
         self.end_headers()
         self.wfile.write(body)
 
@@ -1108,6 +1142,9 @@ class MockHandler(BaseHTTPRequestHandler):
         self.send_error(404, "Not found")
 
     def do_POST(self) -> None:
+        if not self._request_is_local():
+            self._send_json(403, {"event": "error", "payload": {"message": "Forbidden origin"}})
+            return
         if self.path == "/api/shutdown":
             expected = os.environ.get("DAIRR_SHUTDOWN_TOKEN") or ""
             supplied = self.headers.get("X-DAIRR-Shutdown-Token") or ""
@@ -1120,8 +1157,18 @@ class MockHandler(BaseHTTPRequestHandler):
         if self.path != "/api/bridge":
             self.send_error(404, "Not found")
             return
+        supplied = self.headers.get("X-DAIRR-Bridge-Token") or ""
+        if not hmac.compare_digest(supplied, BRIDGE_TOKEN):
+            self._send_json(403, {"event": "error", "payload": {"message": "Forbidden"}})
+            return
         try:
             length = int(self.headers.get("Content-Length") or 0)
+            if length < 0 or length > MAX_REQUEST_BODY:
+                self._send_json(413, {"event": "error", "payload": {"message": "Request too large"}})
+                return
+            if self.headers.get("Content-Type", "").split(";", 1)[0].strip().lower() != "application/json":
+                self._send_json(415, {"event": "error", "payload": {"message": "JSON content type required"}})
+                return
             raw = self.rfile.read(length) if length else b"{}"
             message = json.loads(raw.decode("utf-8") or "{}")
         except Exception as exc:
@@ -1142,6 +1189,8 @@ class MockHandler(BaseHTTPRequestHandler):
 
 
 def run_server(host: str = HOST, port: int = PORT) -> None:
+    if host not in _LOOPBACK_HOSTS:
+        raise ValueError("DAIRR desktop server may only bind to a loopback address")
     get_deck_provider()
     server = ThreadingHTTPServer((host, port), MockHandler)
     server.daemon_threads = True

@@ -9,7 +9,10 @@ import json
 import os
 import sys
 import tempfile
+import threading
 import unittest
+import urllib.error
+import urllib.request
 from pathlib import Path
 from unittest.mock import patch
 
@@ -33,6 +36,112 @@ _data = _load("dairr_mock_data", _mock_dir / "mock_data.py")
 
 
 class TestHandleAction(unittest.TestCase):
+    def test_server_rejects_cross_origin_bridge_requests(self) -> None:
+        server = _main.ThreadingHTTPServer(("127.0.0.1", 0), _main.MockHandler)
+        thread = threading.Thread(target=server.serve_forever, daemon=True)
+        thread.start()
+        try:
+            request = urllib.request.Request(
+                f"http://127.0.0.1:{server.server_port}/api/bridge",
+                data=b'{"action":"load","payload":{}}',
+                headers={"Content-Type": "application/json", "Origin": "https://evil.example"},
+                method="POST",
+            )
+            with self.assertRaises(urllib.error.HTTPError) as caught:
+                urllib.request.urlopen(request)
+            self.assertEqual(caught.exception.code, 403)
+        finally:
+            server.shutdown()
+            server.server_close()
+
+    def test_server_rejects_oversized_bridge_requests(self) -> None:
+        server = _main.ThreadingHTTPServer(("127.0.0.1", 0), _main.MockHandler)
+        thread = threading.Thread(target=server.serve_forever, daemon=True)
+        thread.start()
+        try:
+            request = urllib.request.Request(
+                f"http://127.0.0.1:{server.server_port}/api/bridge",
+                data=b"{}",
+                headers={
+                    "Content-Type": "application/json",
+                    "Content-Length": str(_main.MAX_REQUEST_BODY + 1),
+                    "X-DAIRR-Bridge-Token": _main.BRIDGE_TOKEN,
+                },
+                method="POST",
+            )
+            with self.assertRaises(urllib.error.HTTPError) as caught:
+                urllib.request.urlopen(request)
+            self.assertEqual(caught.exception.code, 413)
+        finally:
+            server.shutdown()
+            server.server_close()
+
+    def test_server_rejects_bridge_request_without_session_token(self) -> None:
+        server = _main.ThreadingHTTPServer(("127.0.0.1", 0), _main.MockHandler)
+        thread = threading.Thread(target=server.serve_forever, daemon=True)
+        thread.start()
+        try:
+            request = urllib.request.Request(
+                f"http://127.0.0.1:{server.server_port}/api/bridge",
+                data=b'{"action":"load","payload":{}}',
+                headers={"Content-Type": "application/json"},
+                method="POST",
+            )
+            with self.assertRaises(urllib.error.HTTPError) as caught:
+                urllib.request.urlopen(request)
+            self.assertEqual(caught.exception.code, 403)
+        finally:
+            server.shutdown()
+            server.server_close()
+
+    def test_index_injects_session_token_into_bridge_header(self) -> None:
+        page = _main._build_index_page()
+        self.assertIn("X-DAIRR-Bridge-Token", page)
+        self.assertIn(json.dumps(_main.BRIDGE_TOKEN), page)
+
+    def test_server_accepts_bridge_request_with_session_token(self) -> None:
+        server = _main.ThreadingHTTPServer(("127.0.0.1", 0), _main.MockHandler)
+        thread = threading.Thread(target=server.serve_forever, daemon=True)
+        thread.start()
+        try:
+            request = urllib.request.Request(
+                f"http://127.0.0.1:{server.server_port}/api/bridge",
+                data=b'{"action":"load","payload":{}}',
+                headers={
+                    "Content-Type": "application/json",
+                    "X-DAIRR-Bridge-Token": _main.BRIDGE_TOKEN,
+                },
+                method="POST",
+            )
+            with urllib.request.urlopen(request) as response:
+                result = json.load(response)
+            self.assertEqual(result["event"], "state")
+        finally:
+            server.shutdown()
+            server.server_close()
+
+    def test_get_config_redacts_credentials_recursively(self) -> None:
+        class ConfigAdapter:
+            def load(self):
+                return {
+                    "api_key": "primary-secret",
+                    "momo_api_key": "momo-secret",
+                    "model": "safe-model",
+                    "llm_api_profiles": [
+                        {"id": "profile", "api_key": "profile-secret", "base_url": "https://example.test"}
+                    ],
+                }
+
+        with patch.object(_main, "DesktopConfigAdapter", return_value=ConfigAdapter()):
+            result = _main.handle_action("getConfig", {})
+
+        serialized = json.dumps(result)
+        self.assertEqual(result["event"], "configLoaded")
+        self.assertEqual(result["payload"]["model"], "safe-model")
+        self.assertNotIn("primary-secret", serialized)
+        self.assertNotIn("momo-secret", serialized)
+        self.assertNotIn("profile-secret", serialized)
+
     def test_health_payload_identifies_dairr_backend_without_provider_io(self) -> None:
         payload = _main.build_health_payload({"DAIRR_DESKTOP_PROVIDER": "ankiconnect"})
 
