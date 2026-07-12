@@ -68,7 +68,7 @@ class TestDesktopNativeCli(unittest.TestCase):
 
         webview = SimpleNamespace(
             create_window=MagicMock(),
-            start=MagicMock(side_effect=lambda: server_started.wait(1)),
+            start=MagicMock(side_effect=lambda **_kwargs: server_started.wait(1)),
         )
 
         exit_code = desktop_native.run_native(
@@ -83,7 +83,7 @@ class TestDesktopNativeCli(unittest.TestCase):
             "Daily AI Reading Reinforcement",
             "http://127.0.0.1:8760",
         )
-        webview.start.assert_called_once_with()
+        webview.start.assert_called_once_with(private_mode=False)
 
     def test_pywebview_missing_returns_clear_error(self) -> None:
         stderr = StringIO()
@@ -152,7 +152,7 @@ class TestDesktopNativeCli(unittest.TestCase):
 
         webview = SimpleNamespace(
             create_window=MagicMock(),
-            start=MagicMock(side_effect=lambda: server_started.wait(1)),
+            start=MagicMock(side_effect=lambda **_kwargs: server_started.wait(1)),
         )
 
         with patch.dict(os.environ, {}, clear=True):

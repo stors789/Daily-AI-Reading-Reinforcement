@@ -30,6 +30,15 @@ def main() -> None:
         "WebViewAssetLoader",
         "https://appassets.androidplatform.net/assets/dairr/index.html",
         "allowContentAccess = false",
+        "WebView.setWebContentsDebuggingEnabled(false)",
+        'request.url.host != LOCAL_UI_HOST',
+        'request.url.toString() != LOCAL_UI_URL',
+    )
+    require(
+        "app/src/main/AndroidManifest.xml",
+        'android:allowBackup="false"',
+        'android:usesCleartextTraffic="false"',
+        'android:debuggable="false"',
     )
     require(
         "app/src/main/java/com/dairr/android/bridge/BridgeContract.kt",
