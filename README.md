@@ -8,6 +8,8 @@ Daily AI Reading Reinforcement (DAIRR) turns the vocabulary and cards you studie
 
 The shared interface supports Chinese, English, and Japanese, multiple color themes, reusable generation profiles, article history, and both horizontal and vertical reading.
 
+**[▶ Watch the DAIRR demo video](https://github.com/stors789/Daily-AI-Reading-Reinforcement/releases/download/v1.2.1/DAIRR-demo.mp4)**
+
 ### Generation workspace
 
 ![DAIRR generation workspace using the Cyber Violet theme](assets/dairr-workspace-cyber-violet.png)
