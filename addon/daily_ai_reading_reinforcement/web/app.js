@@ -2,6 +2,7 @@
   const HISTORY_ALL_DECKS = "__dairr_all_decks__";
 
   const state = {
+    runtimeMode: "standalone",
     selectedDeckId: null,
     decks: [],
     sources: [],
@@ -890,6 +891,13 @@
 
   function renderSources() {
     if (!el.sourceList) return;
+    const sourceSection = el.sourceList.closest(".source-section");
+    if (state.runtimeMode === "anki-addon") {
+      if (sourceSection) sourceSection.hidden = true;
+      el.sourceList.innerHTML = "";
+      return;
+    }
+    if (sourceSection) sourceSection.hidden = false;
     if (!state.sources.length) {
       el.sourceList.innerHTML = "";
       return;
@@ -1500,6 +1508,7 @@
       const { event, payload } = message;
       if (event === "state") {
         setProviderOffline(false);
+        state.runtimeMode = payload.runtimeMode || "standalone";
         state.decks = payload.decks || [];
         state.sources = payload.sources || [];
         state.selectedSourceId = payload.selectedSourceId || null;
@@ -1511,6 +1520,9 @@
         state.apiSettings = payload.apiSettings || state.apiSettings;
         state.articleCardSettings = payload.articleCardSettings || state.articleCardSettings;
         state.desktopSettings = payload.desktopSettings || state.desktopSettings;
+        const isAnkiAddon = state.runtimeMode === "anki-addon";
+        if (el.desktopSettingsButton) el.desktopSettingsButton.hidden = isAnkiAddon;
+        if (el.desktopSettingsPanel && isAnkiAddon) el.desktopSettingsPanel.style.display = "none";
         state.dayStart = payload.dayStart;
         state.dayEnd = payload.dayEnd;
         el.dayWindow.textContent = `${formatTime(state.dayStart)} - ${formatTime(state.dayEnd)}`;

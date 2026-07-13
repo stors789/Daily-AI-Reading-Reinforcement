@@ -19,6 +19,13 @@ from addon.daily_ai_reading_reinforcement.__init__ import api_settings_payload
 from addon.daily_ai_reading_reinforcement.core.config import activate_llm_api_profile, normalize_llm_api_profiles
 
 class TestBridgeConfig(unittest.TestCase):
+    def test_anki_study_window_uses_internal_scheduler_cutoff(self):
+        col = SimpleNamespace(sched=SimpleNamespace(day_cutoff=1_800_000_000))
+        self.assertEqual(
+            addon_module.anki_study_window_payload(col),
+            (1_799_913_600, 1_800_000_000),
+        )
+
     def test_legacy_llm_config_migrates_to_named_profile(self):
         profiles = normalize_llm_api_profiles({"api_key": "secret", "base_url": "https://one.test", "model": "m1"})
         self.assertEqual(profiles[0]["name"], "Default")
