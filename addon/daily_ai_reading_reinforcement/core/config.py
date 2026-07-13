@@ -1,3 +1,6 @@
 """Legacy re-export for :mod:`dairr_core.config`."""
 
-from dairr_core.config import *  # noqa: F403
+try:
+    from ..dairr_core.config import *  # type: ignore[import-not-found]  # noqa: F403
+except ImportError:
+    from dairr_core.config import *  # noqa: F403
