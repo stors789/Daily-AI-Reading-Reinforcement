@@ -2,6 +2,8 @@
 
 **Turn today's flashcards into a reading habit.**
 
+[![License: AGPL v3 or later](https://img.shields.io/badge/License-AGPL_v3_or_later-blue.svg)](LICENSE)
+
 Daily AI Reading Reinforcement (DAIRR) turns the vocabulary and cards you studied today into a level-appropriate AI reading article. Use it today as an Anki add-on, or follow the standalone macOS, Windows, and Android work as it develops. The desktop app connects to Anki through AnkiConnect and can also use MoMo as a learning source.
 
 ## Preview
@@ -122,5 +124,7 @@ python3 apps/android/tests/validate_scaffold.py
 The repository keeps the learning and rendering logic in `packages/dairr_core/`; Anki-specific APIs are isolated in the add-on wrapper. Tests live in `tests/`.
 
 ## License and contributions
+
+DAIRR is free and open-source software licensed under the [GNU Affero General Public License v3.0 or later](LICENSE).
 
 Issues and pull requests are welcome. When reporting a provider problem, please remove API keys and tokens from logs before sharing them.
