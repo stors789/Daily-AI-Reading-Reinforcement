@@ -5,8 +5,12 @@ from __future__ import annotations
 from pathlib import Path
 from typing import Any
 
-from dairr_core import article as _article
-from dairr_core.article import parse_article_frontmatter
+try:
+    from ..dairr_core import article as _article  # type: ignore[import-not-found]
+    from ..dairr_core.article import parse_article_frontmatter  # type: ignore[import-not-found]
+except ImportError:
+    from dairr_core import article as _article
+    from dairr_core.article import parse_article_frontmatter
 
 ARTICLES_DIR = Path(__file__).resolve().parents[1] / "user_files" / "articles"
 time = _article.time

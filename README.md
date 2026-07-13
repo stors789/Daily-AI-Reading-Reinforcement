@@ -2,17 +2,30 @@
 
 **Turn today's flashcards into a reading habit.**
 
-Daily AI Reading Reinforcement (DAIRR) turns the vocabulary and cards you studied today into a short, level-appropriate AI reading article. It is available as an Anki add-on and is evolving into a standalone macOS and Windows app that works with AnkiConnect and MoMo.
+Daily AI Reading Reinforcement (DAIRR) turns the vocabulary and cards you studied today into a level-appropriate AI reading article. Use it today as an Anki add-on, or follow the standalone macOS, Windows, and Android work as it develops. The desktop app connects to Anki through AnkiConnect and can also use MoMo as a learning source.
 
-![DAIRR reading workspace](assets/screenshot1.png)
+## Preview
+
+The shared interface supports Chinese, English, and Japanese, multiple color themes, reusable generation profiles, article history, and both horizontal and vertical reading.
+
+### Generation workspace
+
+![DAIRR generation workspace using the Cyber Violet theme](assets/dairr-workspace-cyber-violet.png)
+
+### Vertical reading
+
+![DAIRR vertical reading view with review notes and an expanded inline translation](assets/dairr-vertical-reading-cyber-violet.png)
 
 ## What it does
 
 - Builds a focused article from the cards you studied or missed today.
 - Works with OpenAI-compatible models and configurable prompts, languages, difficulty levels, and article length.
+- Provides Chinese, English, and Japanese interface translations plus selectable visual themes.
+- Supports horizontal and Japanese-style vertical reading, with translations that can be expanded one paragraph at a time.
 - Keeps the original article title, source deck, generated time, source terms, Markdown, and HTML output together.
 - Lets you revisit saved articles through a 52-week activity heatmap, filter by deck or day, and reopen an article in read-only mode.
 - Can save generated articles as suspended Anki reading cards. Card titles include the precise generation time and the AI-generated article title, so multiple articles from the same day stay distinct.
+- Supports multiple saved OpenAI-compatible API profiles and model discovery where the provider exposes a model endpoint.
 - Supports Anki-native use today, plus standalone desktop providers for AnkiConnect and MoMo.
 
 ## Product surfaces
@@ -21,9 +34,12 @@ Daily AI Reading Reinforcement (DAIRR) turns the vocabulary and cards you studie
 | --- | --- | --- |
 | Anki add-on | Supported | You want DAIRR inside Anki and its native collection workflow. |
 | Standalone desktop | In active development | You want a native macOS/Windows window with AnkiConnect or MoMo. |
+| Android shell | Foundation only | You are developing the Android bridge and provider adapters; it is not ready for end users yet. |
 | Browser launcher | Development fallback | You are testing the standalone backend without a native shell. |
 
 The desktop shell is built with Tauri and packages the existing Python backend as a sidecar. Its release pipeline prepares signed macOS and Windows update bundles; publishing the first public update still requires Apple, Windows, and Tauri signing credentials. See [desktop auto updates](docs/desktop_auto_updates.md).
+
+The Android project currently packages the shared web interface and defines a secure bridge boundary, but it does not yet connect to AnkiDroid, MoMo, or an LLM provider. See the [Android shell README](apps/android/README.md).
 
 ## Install the Anki add-on
 
@@ -63,6 +79,14 @@ DAIRR_DESKTOP_PROVIDER=real_momo MOMO_TOKEN=your-token npm run dev
 
 Read [Desktop Standalone Mode](docs/desktop_standalone.md) for provider behavior, diagnostics, environment variables, and known limits. The architectural boundary is documented in [Tauri App Shell](docs/architecture/tauri_app_shell.md).
 
+### Android shell validation
+
+The Android shell requires JDK 17 and Android SDK 35 to build. Its current fail-closed bridge scaffold can be checked without producing an APK:
+
+```bash
+python3 apps/android/tests/validate_scaffold.py
+```
+
 ## Configure AI generation
 
 DAIRR uses an OpenAI-compatible chat-completions API. Configure the API key, base URL, model, and prompt presets from the add-on or desktop settings. Prompt presets can control:
@@ -88,6 +112,9 @@ python3 package_desktop.py --entry native --windowed --clean
 
 # Build the Tauri sidecar for the current platform
 python3 package_tauri_sidecar.py --clean
+
+# Validate the Android shell bridge and asset wiring
+python3 apps/android/tests/validate_scaffold.py
 ```
 
 The repository keeps the learning and rendering logic in `packages/dairr_core/`; Anki-specific APIs are isolated in the add-on wrapper. Tests live in `tests/`.

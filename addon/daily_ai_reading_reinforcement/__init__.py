@@ -160,8 +160,6 @@ window.addEventListener("error", function (event) {
                 self._save_api_settings(dict(payload.get("settings") or {}))
             elif action == "selectApiProfile":
                 self._select_api_profile(str(payload.get("profileId") or ""))
-            elif action == "saveDesktopSettings":
-                self._save_desktop_settings(dict(payload.get("settings") or {}))
             elif action == "saveArticleCardSettings":
                 self._save_article_card_settings(dict(payload.get("settings") or {}))
             elif action == "saveCollapsedDeckGroups":
@@ -221,10 +219,11 @@ window.addEventListener("error", function (event) {
                 self.deck_payloads.items(), key=lambda item: item[1]["name"].lower()
             )
         ]
-        day_start, day_end = study_window_payload(config)
+        day_start, day_end = anki_study_window_payload(mw.col)
         self._emit(
             "state",
             {
+                "runtimeMode": "anki-addon",
                 "decks": decks,
                 "dayStart": day_start,
                 "dayEnd": day_end,
@@ -237,7 +236,6 @@ window.addEventListener("error", function (event) {
                 "providerProfiles": provider_profiles_payload(),
                 "apiSettings": api_settings_payload(config),
                 "articleCardSettings": article_card_settings_payload(config),
-                "desktopSettings": desktop_settings_payload(config),
             },
         )
 
@@ -453,28 +451,6 @@ window.addEventListener("error", function (event) {
             return
         CONFIG_STORE.save(config)
         self._emit("apiSettingsSaved", {"apiSettings": api_settings_payload(config)})
-
-    def _save_desktop_settings(self, settings: dict[str, Any]) -> None:
-        config = load_config()
-        momo_api_key = clean_text(settings.get("momoApiKey"))
-        clear_momo_key = bool(settings.get("clearMomoApiKey"))
-        if momo_api_key:
-            config["momo_api_key"] = momo_api_key
-        elif clear_momo_key:
-            config["momo_api_key"] = ""
-        config["momo_day_start"] = clean_time_setting(settings.get("momoDayStart"))
-        config["momo_day_end"] = clean_time_setting(settings.get("momoDayEnd"))
-        CONFIG_STORE.save(config)
-        day_start, day_end = study_window_payload(config)
-        self._emit(
-            "desktopSettingsSaved",
-            {
-                "desktopSettings": desktop_settings_payload(config),
-                "dayStart": day_start,
-                "dayEnd": day_end,
-                "message": "Desktop settings saved.",
-            },
-        )
 
     def _save_article_card_settings(self, settings: dict[str, Any]) -> None:
         config = load_config()
@@ -868,40 +844,10 @@ def article_card_settings_payload(config: dict[str, Any]) -> dict[str, Any]:
     }
 
 
-def clean_time_setting(value: Any, fallback: str = "04:00") -> str:
-    text = clean_text(value)
-    try:
-        hour_text, minute_text = text.split(":", 1)
-        hour = int(hour_text)
-        minute = int(minute_text)
-    except (TypeError, ValueError):
-        return fallback
-    if hour < 0 or hour > 23 or minute < 0 or minute > 59:
-        return fallback
-    return f"{hour:02d}:{minute:02d}"
-
-
-def desktop_settings_payload(config: dict[str, Any]) -> dict[str, Any]:
-    return {
-        "hasMomoApiKey": bool(clean_text(config.get("momo_api_key"))),
-        "momoDayStart": clean_time_setting(config.get("momo_day_start")),
-        "momoDayEnd": clean_time_setting(config.get("momo_day_end")),
-    }
-
-
-def study_window_payload(config: dict[str, Any], now: float | None = None) -> tuple[int, int]:
-    now_ts = time.time() if now is None else now
-    now_parts = time.localtime(now_ts)
-    start_hour, start_minute = [int(part) for part in clean_time_setting(config.get("momo_day_start")).split(":")]
-    end_hour, end_minute = [int(part) for part in clean_time_setting(config.get("momo_day_end")).split(":")]
-    start_ts = int(time.mktime(now_parts[:3] + (start_hour, start_minute, 0, -1, -1, -1)))
-    end_ts = int(time.mktime(now_parts[:3] + (end_hour, end_minute, 0, -1, -1, -1)))
-    if end_ts <= start_ts:
-        end_ts += 86400
-    if now_ts < start_ts:
-        start_ts -= 86400
-        end_ts -= 86400
-    return start_ts, end_ts
+def anki_study_window_payload(col: Any) -> tuple[int, int]:
+    """Return the same day window used by Anki's internal scheduler."""
+    cutoff = get_day_cutoff(col)
+    return cutoff - 86400, cutoff
 
 
 def load_config() -> dict[str, Any]:

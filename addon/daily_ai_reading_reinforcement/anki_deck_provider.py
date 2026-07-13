@@ -6,9 +6,8 @@ from typing import Any, Callable
 class AnkiDeckProvider:
     """Thin adapter that delegates to collect_today_decks().
 
-    This lets the UI bridge call DECK_PROVIDER.get_today_decks()
-    instead of reaching for the raw helper directly, which keeps
-    the door open for non-Anki deck providers later.
+    The add-on deliberately supports only Anki's internal collection. Desktop
+    provider selection lives outside the add-on package.
     """
 
     def __init__(self, collect_today_decks_func: Callable[[], dict[str, dict[str, Any]]]) -> None:

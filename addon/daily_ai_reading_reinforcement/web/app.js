@@ -2,6 +2,7 @@
   const HISTORY_ALL_DECKS = "__dairr_all_decks__";
 
   const state = {
+    runtimeMode: "standalone",
     selectedDeckId: null,
     decks: [],
     sources: [],
@@ -93,6 +94,8 @@
     providerSelect: document.getElementById("providerSelect"),
     apiProfileSelect: document.getElementById("apiProfileSelect"),
     apiProfileNameInput: document.getElementById("apiProfileNameInput"),
+    apiProfileLabel: document.getElementById("apiProfileLabel"),
+    apiProfileNameLabel: document.getElementById("apiProfileNameLabel"),
     fetchModelsButton: document.getElementById("fetchModelsButton"),
     modelSelect: document.getElementById("modelSelect"),
     providerLabel: document.getElementById("providerLabel"),
@@ -250,6 +253,10 @@
       difficulty: "难度",
       maxWords: "字数范围",
       instructions: "格式要求",
+      apiProfiles: "已保存的 API",
+      newApiProfile: "新建配置",
+      apiProfileName: "配置名称",
+      apiProfileNamePlaceholder: "例如：工作 OpenAI",
       provider: "服务商",
       baseUrl: "Base URL",
       model: "模型",
@@ -272,12 +279,24 @@
       apiSettingsSaved: "API 设置已保存。",
       testApiSettings: "测试当前配置",
       testingApiSettings: "正在测试当前配置...",
+      savingToCard: "正在保存到卡片...",
       apiSettingsTested: "配置可用，模型连接成功。",
       articleCardSettingSaved: "文章卡片设置已保存。",
       articleCardSaved: "文章卡片已创建到",
       articleCardFailed: "文章已保存，但创建卡片失败：",
       apiMissingBaseUrl: "请输入 API Base URL。",
       apiMissingModel: "请输入模型名称。",
+      apiMissingKeyForModels: "获取模型前，请输入或保存 API key。",
+      apiTestFieldsRequired: "测试时需要 API key、Base URL 和模型。",
+      apiProfileNotFound: "未找到 API 配置。",
+      noModelsReturned: "服务商没有返回可用模型。",
+      selectDeckBeforeFields: "保存字段前，请先选择卡组。",
+      selectStudiedDeck: "请先选择有学习记录的卡组。",
+      selectedCardsUnavailable: "所选卡片已不可用，请重新选择。",
+      defaultPresetCannotDelete: "默认预设不能删除。",
+      articleDeletionUnavailable: "当前环境不支持删除文章。",
+      momoKeyRequired: "尚未配置墨墨 API key。",
+      sourceUnavailable: "学习来源不存在或尚未配置。",
       toggleTranslation: "显示/隐藏翻译",
       translateButtonShort: "译",
       historyTitle: "历史文章",
@@ -306,8 +325,9 @@
       momoKeySaved: "墨墨 API 已保存",
       momoNoKey: "未保存墨墨 API",
       enterNewMomoKey: "留空则保留已保存墨墨 API",
-     writingHorizontal: "横",
-     writingVertical: "竖",
+     writingHorizontal: "横排",
+     writingVertical: "竖排",
+     weekdays: ["日", "一", "二", "三", "四", "五", "六"],
    },
    en: {
       group_light: "🌞 Light & Bright",
@@ -407,6 +427,10 @@
       difficulty: "Difficulty",
       maxWords: "Word range",
       instructions: "Formatting requirements",
+      apiProfiles: "Saved APIs",
+      newApiProfile: "New profile",
+      apiProfileName: "Profile name",
+      apiProfileNamePlaceholder: "For example: Work OpenAI",
       provider: "Provider",
       baseUrl: "Base URL",
       model: "Model",
@@ -429,12 +453,24 @@
       apiSettingsSaved: "API settings saved.",
       testApiSettings: "Test current configuration",
       testingApiSettings: "Testing current configuration...",
+      savingToCard: "Saving to card...",
       apiSettingsTested: "Configuration works and the model responded.",
       articleCardSettingSaved: "Article card setting saved.",
       articleCardSaved: "Article card created in",
       articleCardFailed: "Article saved, but card creation failed: ",
       apiMissingBaseUrl: "Enter an API base URL.",
       apiMissingModel: "Enter a model name.",
+      apiMissingKeyForModels: "Enter or save an API key before fetching models.",
+      apiTestFieldsRequired: "API key, base URL, and model are required for testing.",
+      apiProfileNotFound: "API profile not found.",
+      noModelsReturned: "No models were returned by this provider.",
+      selectDeckBeforeFields: "Select a deck before saving fields.",
+      selectStudiedDeck: "Select a deck with study activity first.",
+      selectedCardsUnavailable: "Selected cards are no longer available. Select them again.",
+      defaultPresetCannotDelete: "The default preset cannot be deleted.",
+      articleDeletionUnavailable: "Article deletion is unavailable in this environment.",
+      momoKeyRequired: "The MoMo API key is not configured.",
+      sourceUnavailable: "The learning source is unknown or not configured.",
       toggleTranslation: "Show/hide translation",
       translateButtonShort: "TR",
       historyTitle: "Article History",
@@ -463,8 +499,9 @@
       momoKeySaved: "MoMo API saved",
       momoNoKey: "No MoMo API",
       enterNewMomoKey: "Leave blank to keep saved MoMo API",
-     writingHorizontal: "横",
-     writingVertical: "縦",
+     writingHorizontal: "Horizontal",
+     writingVertical: "Vertical",
+     weekdays: ["S", "M", "T", "W", "T", "F", "S"],
     },
     ja: {
       group_light: "🌞 ライト＆フレッシュ",
@@ -564,6 +601,10 @@
       difficulty: "難度",
       maxWords: "文字数範囲",
       instructions: "フォーマット要件",
+      apiProfiles: "保存済み API",
+      newApiProfile: "新しい設定",
+      apiProfileName: "設定名",
+      apiProfileNamePlaceholder: "例：仕事用 OpenAI",
       provider: "プロバイダー",
       baseUrl: "Base URL",
       model: "モデル",
@@ -586,12 +627,24 @@
       apiSettingsSaved: "API 設定を保存しました。",
       testApiSettings: "現在の設定をテスト",
       testingApiSettings: "現在の設定をテスト中...",
+      savingToCard: "カードに保存中...",
       apiSettingsTested: "設定は使用可能で、モデルへの接続に成功しました。",
       articleCardSettingSaved: "文章カード設定を保存しました。",
       articleCardSaved: "文章カードを作成しました：",
       articleCardFailed: "文章は保存しましたが、カード作成に失敗しました：",
       apiMissingBaseUrl: "API Base URL を入力してください。",
       apiMissingModel: "モデル名を入力してください。",
+      apiMissingKeyForModels: "モデル取得前に API key を入力または保存してください。",
+      apiTestFieldsRequired: "テストには API key、Base URL、モデルが必要です。",
+      apiProfileNotFound: "API 設定が見つかりません。",
+      noModelsReturned: "プロバイダーから利用可能なモデルが返されませんでした。",
+      selectDeckBeforeFields: "フィールドを保存する前にデッキを選択してください。",
+      selectStudiedDeck: "先に学習記録のあるデッキを選択してください。",
+      selectedCardsUnavailable: "選択したカードは利用できなくなりました。選び直してください。",
+      defaultPresetCannotDelete: "デフォルトのプリセットは削除できません。",
+      articleDeletionUnavailable: "現在の環境では記事を削除できません。",
+      momoKeyRequired: "MoMo API key が設定されていません。",
+      sourceUnavailable: "学習元が存在しないか、設定されていません。",
       toggleTranslation: "翻訳の表示/非表示",
       translateButtonShort: "訳",
       historyTitle: "過去の記事",
@@ -622,6 +675,7 @@
       enterNewMomoKey: "空欄なら保存済み MoMo API を保持",
      writingHorizontal: "横",
      writingVertical: "縦",
+     weekdays: ["日", "月", "火", "水", "木", "金", "土"],
     },
   };
 
@@ -632,13 +686,40 @@
     return key;
   }
 
+  const MESSAGE_KEYS = {
+    "Enter or save an API key before fetching models.": "apiMissingKeyForModels",
+    "Enter an API base URL before fetching models.": "apiMissingBaseUrl",
+    "API key, base URL, and model are required for testing.": "apiTestFieldsRequired",
+    "API profile not found.": "apiProfileNotFound",
+    "No models were returned by this provider.": "noModelsReturned",
+    "Select a deck before saving fields.": "selectDeckBeforeFields",
+    "Choose at least one field for AI input.": "chooseField",
+    "Choose at least one card for generation.": "chooseCard",
+    "Select a deck with study activity first.": "selectStudiedDeck",
+    "This deck has no candidate cards today.": "noCards",
+    "No cards available for generation.": "noCards",
+    "Selected cards are no longer available.": "selectedCardsUnavailable",
+    "The default preset cannot be deleted.": "defaultPresetCannotDelete",
+    "Article deletion is unavailable.": "articleDeletionUnavailable",
+    "MoMo API key is not configured.": "momoKeyRequired",
+    "Unknown or unconfigured source.": "sourceUnavailable",
+    "Generating article...": "generating",
+    "Saving to card...": "savingToCard",
+    "无法连接 AnkiConnect。请启动 Anki，并确认 AnkiConnect 已安装和启用。": "ankiConnectOffline",
+  };
+
+  function localizeMessage(message) {
+    const key = MESSAGE_KEYS[String(message || "").trim()];
+    return key ? tr(key) : String(message || "");
+  }
+
   function renderStatus() {
     let msg = tr(state.statusData.key);
     if (state.statusData.params.deckName) {
       msg = msg + state.statusData.params.deckName + ".";
     }
     if (state.statusData.params.message) {
-      msg = state.statusData.params.message; // fallback for raw message errors
+      msg = localizeMessage(state.statusData.params.message);
     }
     el.status.textContent = msg;
     el.status.classList.toggle("error", state.statusData.isError);
@@ -672,6 +753,9 @@
     el.presetDifficulty.placeholder = tr("difficulty");
     el.presetMaxWords.placeholder = tr("maxWords");
     el.presetInstructions.placeholder = tr("instructions");
+    if (el.apiProfileLabel) el.apiProfileLabel.textContent = tr("apiProfiles");
+    if (el.apiProfileNameLabel) el.apiProfileNameLabel.textContent = tr("apiProfileName");
+    if (el.apiProfileNameInput) el.apiProfileNameInput.placeholder = tr("apiProfileNamePlaceholder");
     el.providerLabel.textContent = tr("provider");
     el.baseUrlLabel.textContent = tr("baseUrl");
     el.modelLabel.textContent = tr("model");
@@ -890,6 +974,13 @@
 
   function renderSources() {
     if (!el.sourceList) return;
+    const sourceSection = el.sourceList.closest(".source-section");
+    if (state.runtimeMode === "anki-addon") {
+      if (sourceSection) sourceSection.hidden = true;
+      el.sourceList.innerHTML = "";
+      return;
+    }
+    if (sourceSection) sourceSection.hidden = false;
     if (!state.sources.length) {
       el.sourceList.innerHTML = "";
       return;
@@ -1172,7 +1263,7 @@
       })
       .join("");
     const savedProfiles = state.apiSettings.profiles || [];
-    el.apiProfileSelect.innerHTML = [`<option value="">${state.uiLanguage === "zh" ? "新建配置" : "New profile"}</option>`,
+    el.apiProfileSelect.innerHTML = [`<option value="">${tr("newApiProfile")}</option>`,
       ...savedProfiles.map((profile) => `<option value="${escapeHtml(profile.id)}"${profile.id === state.apiSettings.profileId ? " selected" : ""}>${escapeHtml(profile.name)}</option>`)
     ].join("");
     const activeProfile = savedProfiles.find((profile) => profile.id === state.apiSettings.profileId);
@@ -1255,7 +1346,7 @@
     if (!el.providerOffline) return;
     el.providerOffline.hidden = !isOffline;
     if (isOffline && el.providerOfflineMessage) {
-      el.providerOfflineMessage.textContent = message || tr("ankiConnectOffline");
+      el.providerOfflineMessage.textContent = message ? localizeMessage(message) : tr("ankiConnectOffline");
     }
     if (el.providerRetryButton) el.providerRetryButton.textContent = tr("retry");
   }
@@ -1500,6 +1591,7 @@
       const { event, payload } = message;
       if (event === "state") {
         setProviderOffline(false);
+        state.runtimeMode = payload.runtimeMode || "standalone";
         state.decks = payload.decks || [];
         state.sources = payload.sources || [];
         state.selectedSourceId = payload.selectedSourceId || null;
@@ -1511,6 +1603,9 @@
         state.apiSettings = payload.apiSettings || state.apiSettings;
         state.articleCardSettings = payload.articleCardSettings || state.articleCardSettings;
         state.desktopSettings = payload.desktopSettings || state.desktopSettings;
+        const isAnkiAddon = state.runtimeMode === "anki-addon";
+        if (el.desktopSettingsButton) el.desktopSettingsButton.hidden = isAnkiAddon;
+        if (el.desktopSettingsPanel && isAnkiAddon) el.desktopSettingsPanel.style.display = "none";
         state.dayStart = payload.dayStart;
         state.dayEnd = payload.dayEnd;
         el.dayWindow.textContent = `${formatTime(state.dayStart)} - ${formatTime(state.dayEnd)}`;
@@ -1769,7 +1864,7 @@
     start.setDate(start.getDate() - (51 * 7 + end.getDay()));
     const maxCount = Math.max(...group.dateCount.values(), 1);
     const cells = [];
-    const weekdayLabels = ["S", "M", "T", "W", "T", "F", "S"];
+    const weekdayLabels = tr("weekdays");
     const labelCol = weekdayLabels.map((d) => `<div class="heatmap-weekday">${d}</div>`).join("");
     let cursor = new Date(start);
     while (cursor <= end) {
@@ -1988,7 +2083,7 @@
       const payload = state.lastGeneratedArticle;
       
       el.saveArticleToCardButton.disabled = true;
-      setStatus("generating", false, { message: "Saving to card..." });
+      setStatus("savingToCard");
       
       send("saveArticleCard", {
         deckId: state.selectedDeckId,
@@ -2150,7 +2245,7 @@
     state.selectedPromptPresetId = `preset-${Date.now()}`;
     state.promptPresets.push({
       id: state.selectedPromptPresetId,
-      name: "New Preset",
+      name: tr("new"),
       reader_native_language: "",
       article_language: "",
       difficulty: "",
