@@ -710,6 +710,7 @@
     if (el.saveDesktopSettingsButton) el.saveDesktopSettingsButton.textContent = tr("saveDesktopSettings");
     if (el.writingModeHorizontal) el.writingModeHorizontal.textContent = tr("writingHorizontal");
    if (el.writingModeVertical) el.writingModeVertical.textContent = tr("writingVertical");
+    updateTranslationToggleLabels();
     if (el.readingTabArticle) el.readingTabArticle.textContent = tr("readingTabArticle");
     if (el.readingTabNotes) el.readingTabNotes.textContent = tr("readingTabNotes");
     
@@ -1370,6 +1371,13 @@
         return `<div class="reading-para-group"><p class="reading-para">${bodyHtml} ${toggleHtml}</p>${translationHtml}</div>`;
       })
       .join("");
+  }
+
+  function updateTranslationToggleLabels() {
+    document.querySelectorAll(".para-translate-toggle").forEach((button) => {
+      button.textContent = tr("translateButtonShort");
+      button.title = tr("toggleTranslation");
+    });
   }
 
   function renderReviewNotes(notes) {
