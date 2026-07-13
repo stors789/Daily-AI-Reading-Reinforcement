@@ -42,6 +42,8 @@
     historySelectedDeck: null,
    historySelectedDate: null,
    readingHistoricalArticle: false,
+   currentArticlePath: "",
+   currentArticleDay: "",
    dayStart: 0,
     dayEnd: 0,
   };
@@ -128,6 +130,8 @@
     historyArticles: document.getElementById("historyArticles"),
    historyCloseButton: document.getElementById("historyCloseButton"),
     historyEmptyText: document.getElementById("historyEmptyText"),
+    deleteDayArticlesButton: document.getElementById("deleteDayArticlesButton"),
+    deleteCurrentArticleButton: document.getElementById("deleteCurrentArticleButton"),
     desktopSettingsButton: document.getElementById("desktopSettingsButton"),
     desktopSettingsPanel: document.getElementById("desktopSettingsPanel"),
     desktopSettingsHeading: document.getElementById("desktopSettingsHeading"),
@@ -288,6 +292,10 @@
       historyArticlesCount: "篇文章",
       historyRecentDate: "最近",
       historyAllDecks: "全部牌组",
+      deleteArticle: "删除文章",
+      deleteSelectedDay: "清空所选日期",
+      deleteDayPrefix: "清空",
+      confirmDelete: "再次点击确认",
       desktopSettingsTitle: "设置",
       momoApiKey: "墨墨 API",
       clearMomoApiKey: "清除已保存的墨墨 API",
@@ -441,6 +449,10 @@
       historyArticlesCount: "articles",
       historyRecentDate: "Recent",
       historyAllDecks: "All decks",
+      deleteArticle: "Delete article",
+      deleteSelectedDay: "Clear selected date",
+      deleteDayPrefix: "Clear",
+      confirmDelete: "Click again to confirm",
       desktopSettingsTitle: "Settings",
       momoApiKey: "MoMo API",
       clearMomoApiKey: "Clear saved MoMo API",
@@ -594,6 +606,10 @@
       historyArticlesCount: "件",
       historyRecentDate: "最近",
       historyAllDecks: "すべてのデッキ",
+      deleteArticle: "記事を削除",
+      deleteSelectedDay: "選択した日付を削除",
+      deleteDayPrefix: "削除",
+      confirmDelete: "もう一度クリックして確認",
       desktopSettingsTitle: "設定",
       momoApiKey: "MoMo API",
       clearMomoApiKey: "保存済み MoMo API を消去",
@@ -679,6 +695,8 @@
       el.historyButton.title = tr("historyTitle");
     }
     if (el.historyCloseButton) el.historyCloseButton.title = tr("historyClose");
+    updateDeleteDayButton();
+    if (el.deleteCurrentArticleButton) el.deleteCurrentArticleButton.textContent = tr("deleteArticle");
     if (el.desktopSettingsButton) {
       el.desktopSettingsButton.textContent = tr("desktopSettingsTitle");
       el.desktopSettingsButton.title = tr("desktopSettingsTitle");
@@ -770,6 +788,30 @@
     bridgeQueue.push({ action: action, payload: payload });
     flushBridgeQueue();
     waitForBridge();
+  }
+
+  const destructiveTimers = new WeakMap();
+
+  function resetDestructiveButton(button) {
+    const timer = destructiveTimers.get(button);
+    if (timer) window.clearTimeout(timer);
+    destructiveTimers.delete(button);
+    button.dataset.confirming = "false";
+    if (button.dataset.originalText) button.textContent = button.dataset.originalText;
+    button.classList.remove("confirming");
+  }
+
+  function confirmInPlace(button, action) {
+    if (button.dataset.confirming === "true") {
+      resetDestructiveButton(button);
+      action();
+      return;
+    }
+    button.dataset.originalText = button.textContent;
+    button.dataset.confirming = "true";
+    button.textContent = tr("confirmDelete");
+    button.classList.add("confirming");
+    destructiveTimers.set(button, window.setTimeout(() => resetDestructiveButton(button), 4000));
   }
 
   function escapeHtml(value) {
@@ -1351,6 +1393,8 @@
     const parsed = parseArticleResponse(payload.article);
     const generatedAt = payload.generatedAt || new Date().toLocaleString();
     state.readingHistoricalArticle = Boolean(payload.isHistorical);
+    state.currentArticlePath = payload.markdownPath || "";
+    state.currentArticleDay = payload.generatedDay || String(payload.generatedAt || "").slice(0, 10);
     document.body.classList.toggle("historical-reading", state.readingHistoricalArticle);
     const articleCardLine = payload.articleCard
       ? `<div>${tr("articleCardSaved")} ${escapeHtml(payload.articleCard.deckName)}</div>`
@@ -1404,6 +1448,8 @@
     document.body.classList.toggle("reading-mode", active);
     if (!active) {
       state.readingHistoricalArticle = false;
+      state.currentArticlePath = "";
+      state.currentArticleDay = "";
       document.body.classList.remove("historical-reading");
       state.writingMode = "horizontal";
       state.readingTab = "article";
@@ -1584,6 +1630,26 @@
         if (el.saveArticleToCardButton) el.saveArticleToCardButton.disabled = true;
         renderArticle(loadedPayload);
       }
+      if (event === "articleDeleted") {
+        const deletedPath = payload.path || "";
+        state.historyArticles = state.historyArticles.filter((item) => item.path !== deletedPath);
+        if (state.currentArticlePath === deletedPath) setReadingMode(false);
+        renderHistoryView();
+      }
+      if (event === "articlesDeleted") {
+        state.historyArticles = [];
+        if (state.currentArticlePath) setReadingMode(false);
+        renderHistoryView();
+      }
+      if (event === "articlesDeletedByDay") {
+        const deletedDay = payload.generatedDay || "";
+        state.historyArticles = state.historyArticles.filter(
+          (item) => dateKeyFromArticle(item) !== deletedDay
+        );
+        if (state.currentArticleDay === deletedDay) setReadingMode(false);
+        state.historySelectedDate = null;
+        renderHistoryView();
+      }
     },
   };
 
@@ -1751,12 +1817,15 @@
       items
         .map((item) => {
           return `
-            <div class="history-item" data-path="${escapeHtml(item.path)}">
-              <div class="history-item-title">${escapeHtml(item.title || item.filename || item.deck)}</div>
-              <div class="history-item-meta">
-                ${escapeHtml(item.generated_at || "")}
-                ${item.card_count ? ` · ${escapeHtml(item.card_count)} ${tr("historyCards")}` : ""}
+            <div class="history-item history-item-row" data-path="${escapeHtml(item.path)}">
+              <div class="history-item-content">
+                <div class="history-item-title">${escapeHtml(item.title || item.filename || item.deck)}</div>
+                <div class="history-item-meta">
+                  ${escapeHtml(item.generated_at || "")}
+                  ${item.card_count ? ` · ${escapeHtml(item.card_count)} ${tr("historyCards")}` : ""}
+                </div>
               </div>
+              <button class="history-delete-button" type="button" title="${tr("deleteArticle")}">${tr("delete")}</button>
             </div>
           `;
         })
@@ -1764,6 +1833,11 @@
     el.historyArticles.querySelectorAll(".history-item").forEach((item) => {
       item.addEventListener("click", () => {
         send("loadArticle", { path: item.dataset.path });
+      });
+      const deleteButton = item.querySelector(".history-delete-button");
+      if (deleteButton) deleteButton.addEventListener("click", (event) => {
+        event.stopPropagation();
+        confirmInPlace(deleteButton, () => send("deleteArticle", { path: item.dataset.path }));
       });
     });
   }
@@ -1773,6 +1847,16 @@
     renderHistoryDecks(deckGroups);
     renderHistoryHeatmap(deckGroups);
     renderHistoryArticles(deckGroups);
+    updateDeleteDayButton();
+  }
+
+  function updateDeleteDayButton() {
+    if (!el.deleteDayArticlesButton) return;
+    resetDestructiveButton(el.deleteDayArticlesButton);
+    el.deleteDayArticlesButton.disabled = !state.historySelectedDate;
+    el.deleteDayArticlesButton.textContent = state.historySelectedDate
+      ? `${tr("deleteDayPrefix")} ${state.historySelectedDate}`
+      : tr("deleteSelectedDay");
   }
 
   function closeHistoryPanel() {
@@ -1810,6 +1894,25 @@
   if (el.historyCloseButton) {
     el.historyCloseButton.addEventListener("click", () => {
       closeHistoryPanel();
+    });
+  }
+
+  if (el.deleteDayArticlesButton) {
+    el.deleteDayArticlesButton.addEventListener("click", () => {
+      if (!state.historySelectedDate) return;
+      const selectedDay = state.historySelectedDate;
+      confirmInPlace(el.deleteDayArticlesButton, () => {
+        send("deleteArticlesByDay", { generatedDay: selectedDay });
+      });
+    });
+  }
+
+  if (el.deleteCurrentArticleButton) {
+    el.deleteCurrentArticleButton.addEventListener("click", () => {
+      if (!state.currentArticlePath) return;
+      confirmInPlace(el.deleteCurrentArticleButton, () => {
+        send("deleteArticle", { path: state.currentArticlePath });
+      });
     });
   }
 

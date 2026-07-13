@@ -1119,6 +1119,40 @@ h2 {
   transition: border-color 0.15s;
 }
 
+.history-item-row {
+  align-items: center;
+  display: flex;
+  gap: 12px;
+  justify-content: space-between;
+}
+
+.history-item-content {
+  min-width: 0;
+}
+
+.history-delete-button,
+.danger-button {
+  background: transparent;
+  border: 1px solid color-mix(in srgb, var(--warn) 45%, transparent);
+  border-radius: var(--btn-radius);
+  color: var(--warn);
+  cursor: pointer;
+  font-weight: 700;
+  min-height: 34px;
+  padding: 5px 10px;
+}
+
+.history-delete-button:hover,
+.danger-button:hover:not(:disabled) {
+  background: color-mix(in srgb, var(--warn) 10%, transparent);
+}
+
+.history-delete-button.confirming,
+.danger-button.confirming {
+  background: var(--warn);
+  color: var(--surface-strong);
+}
+
 .history-item:hover {
   border-color: var(--item-hover-border);
 }
@@ -1306,7 +1340,8 @@ h2 {
 
 .reading-mode #returnToSelectionButton,
 .reading-mode #regenerateButton,
-.reading-mode #saveArticleToCardButton {
+.reading-mode #saveArticleToCardButton,
+.reading-mode #deleteCurrentArticleButton {
   display: inline-flex !important;
 }
 

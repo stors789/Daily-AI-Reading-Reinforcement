@@ -60,7 +60,10 @@
   <section class="panel history-panel" id="historyPanel" style="display: none;">
     <div class="panel-heading">
       <h2 id="historyHeading">历史文章</h2>
-      <button class="secondary-button" id="historyCloseButton">✕</button>
+      <div class="button-row">
+        <button class="danger-button" id="deleteDayArticlesButton" disabled>清空所选日期</button>
+        <button class="secondary-button" id="historyCloseButton">✕</button>
+      </div>
     </div>
     <div class="history-body" id="historyBody">
       <div class="history-decks" id="historyDecks">
@@ -208,6 +211,7 @@
           <button class="secondary-button" id="returnToSelectionButton" style="display: none;">Return to selection</button>
           <button class="secondary-button" id="regenerateButton" style="display: none;">Regenerate</button>
           <button class="secondary-button" id="saveArticleToCardButton" style="display: none;">Save to Card</button>
+          <button class="danger-button" id="deleteCurrentArticleButton" style="display: none;">Delete article</button>
           <div class="writing-mode-buttons" id="writingModeButtons" style="display: none;">
             <button class="secondary-button active" id="writingModeHorizontal" data-mode="horizontal">横</button>
             <button class="secondary-button" id="writingModeVertical" data-mode="vertical">縦</button>
