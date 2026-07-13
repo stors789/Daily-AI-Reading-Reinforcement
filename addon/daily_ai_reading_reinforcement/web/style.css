@@ -1319,6 +1319,12 @@ h2 {
 .reading-mode .vertical-rl .article-scroll {
   overflow-x: auto;
   overflow-y: hidden;
+  scrollbar-width: none;
+}
+
+.reading-mode .vertical-rl .article-scroll::-webkit-scrollbar,
+.vertical-rl .reading-body::-webkit-scrollbar {
+  display: none;
 }
 
 .reading-mode .notes-panel {
@@ -1435,6 +1441,7 @@ h2 {
   /* No vertical scrollbar — overflow creates new columns to the left */
   overflow-y: hidden;
   overflow-x: auto;
+  scrollbar-width: none;
   padding: 20px 10px;
   line-height: 2.0;
   letter-spacing: 0.04em;
@@ -1499,8 +1506,7 @@ h2 {
   line-height: 2.0;
   letter-spacing: 0.04em;
   margin: 0;
-  max-width: 10em;
-  overflow: auto;
+  overflow: visible;
   padding: 8px 12px;
   position: absolute;
   right: calc(100% + 0.45em);

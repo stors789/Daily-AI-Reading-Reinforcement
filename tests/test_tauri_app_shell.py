@@ -184,7 +184,21 @@ class TauriAppShellTests(unittest.TestCase):
         rule = css[start:css.index("}", start)]
         self.assertIn("position: absolute", rule)
         self.assertIn("right: calc(100% + 0.45em)", rule)
+        self.assertIn("overflow: visible", rule)
+        self.assertNotIn("overflow: auto", rule)
         self.assertNotIn(".vertical-rl .translation-open", css)
+
+        scroll_rule_start = css.index(".reading-mode .vertical-rl .article-scroll {")
+        scroll_rule = css[scroll_rule_start:css.index("}", scroll_rule_start)]
+        self.assertIn("scrollbar-width: none", scroll_rule)
+        self.assertIn(".vertical-rl .reading-body::-webkit-scrollbar", css)
+
+    def test_translation_toggle_uses_compact_localized_labels(self) -> None:
+        js = (WEB_DIR / "app.js").read_text()
+        self.assertIn('translateButtonShort: "译"', js)
+        self.assertIn('translateButtonShort: "TR"', js)
+        self.assertIn('translateButtonShort: "訳"', js)
+        self.assertIn("updateTranslationToggleLabels();", js)
 
     def test_web_index_local_asset_references_are_not_broken(self) -> None:
         parser = _AssetParser()
