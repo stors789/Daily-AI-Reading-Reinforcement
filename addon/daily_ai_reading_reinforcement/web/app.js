@@ -1876,6 +1876,11 @@
   function alignVerticalArticleRight() {
     if (!el.articleScroll) return;
     window.requestAnimationFrame(() => {
+      const readingBody = el.articleScroll.querySelector(".reading-body");
+      if (readingBody) {
+        const availableHeight = Math.max(160, el.articleScroll.clientHeight - 56);
+        readingBody.style.setProperty("--vertical-flow-height", `${availableHeight}px`);
+      }
       const maxScrollLeft = el.articleScroll.scrollWidth - el.articleScroll.clientWidth;
       if (maxScrollLeft <= 0) return;
       el.articleScroll.scrollLeft = maxScrollLeft;
@@ -1955,6 +1960,10 @@
       setWritingMode("vertical");
     });
   }
+
+  window.addEventListener("resize", () => {
+    if (state.writingMode === "vertical") alignVerticalArticleRight();
+  });
 
   if (el.regenerateButton) {
     el.regenerateButton.addEventListener("click", () => {

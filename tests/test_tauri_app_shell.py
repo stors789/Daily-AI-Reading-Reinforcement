@@ -178,6 +178,14 @@ class TauriAppShellTests(unittest.TestCase):
         self.assertIn('fetch("/api/bridge"', page)
         self.assertIn('<main class="app-shell">', page)
 
+    def test_vertical_translation_is_overlay_and_does_not_reflow_article(self) -> None:
+        css = (WEB_DIR / "style.css").read_text()
+        start = css.index(".vertical-rl .para-translation {")
+        rule = css[start:css.index("}", start)]
+        self.assertIn("position: absolute", rule)
+        self.assertIn("right: calc(100% + 0.45em)", rule)
+        self.assertNotIn(".vertical-rl .translation-open", css)
+
     def test_web_index_local_asset_references_are_not_broken(self) -> None:
         parser = _AssetParser()
         parser.feed((WEB_DIR / "index.html").read_text())

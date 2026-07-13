@@ -1429,7 +1429,8 @@ h2 {
   writing-mode: vertical-rl;
   text-orientation: mixed;
   width: max-content;
-  height: 100%;
+  height: var(--vertical-flow-height, calc(100dvh - 250px));
+  min-height: 160px;
   max-height: none;
   /* No vertical scrollbar — overflow creates new columns to the left */
   overflow-y: hidden;
@@ -1451,7 +1452,8 @@ h2 {
   align-items: flex-start;
   display: flex;
   justify-content: flex-end;
-  height: 100%;
+  height: auto;
+  min-height: 100%;
   max-width: none;
   width: 100%;
 }
@@ -1477,29 +1479,34 @@ h2 {
   padding: 6px 10px;
 }
 
-/* Vertical writing mode: translation expands to the LEFT of the paragraph,
-   pushing unread content leftward without disturbing the right-side text. */
+/* Vertical writing mode: translation is an anchored overlay. It must not
+   participate in the vertical text flow, otherwise every surrounding column
+   is recomputed when the translation opens. */
 .vertical-rl .reading-para-group {
-  /* In vertical-rl, child blocks flow right-to-left.
-     The <p> appears on the right, the translation <div> appears to its left. */
   display: block;
+  position: relative;
 }
 
 .vertical-rl .para-translation {
-  /* Inherit vertical-rl from parent — translation text is vertical */
-  background: rgba(47, 111, 115, 0.1);
+  background: color-mix(in srgb, var(--surface-strong) 94%, var(--accent));
   border-right: 2px solid var(--accent);
-  border-radius: var(--btn-radius) 0 0 var(--btn-radius);
+  border-left: 1px solid color-mix(in srgb, var(--accent) 38%, transparent);
+  border-radius: var(--btn-radius);
+  box-shadow: 0 10px 28px rgba(0, 0, 0, 0.24);
   color: var(--muted);
   font-size: 15px;
+  height: min(calc(var(--vertical-flow-height, 70vh) - 32px), 34em);
   line-height: 2.0;
   letter-spacing: 0.04em;
   margin: 0;
+  max-width: 10em;
+  overflow: auto;
   padding: 8px 12px;
-}
-
-.vertical-rl .translation-open {
-  margin-left: 0.8em;
+  position: absolute;
+  right: calc(100% + 0.45em);
+  top: 0;
+  width: max-content;
+  z-index: 5;
 }
 
 /* Reset the toggle button in vertical mode — keep it inline but subtle */
