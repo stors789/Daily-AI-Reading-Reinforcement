@@ -9,6 +9,7 @@ import json
 import os
 import sys
 import tempfile
+import time
 import unittest
 from pathlib import Path
 from unittest.mock import patch
@@ -212,6 +213,43 @@ class TestHandleAction(unittest.TestCase):
         self.assertEqual(result["event"], "articleLoaded")
         self.assertEqual(result["payload"]["path"], path)
         self.assertIn("Saved article", result["payload"]["article"])
+
+    def test_delete_article_removes_saved_pair(self) -> None:
+        with tempfile.TemporaryDirectory() as tmpdir, patch.dict(
+            os.environ, {"DESKTOP_OUTPUT_DIR": tmpdir}, clear=False
+        ):
+            saved = _main.DesktopDeckAdapter().save_article("Saved Deck", [], "Body.")
+            result = _main.handle_action("deleteArticle", {"path": str(saved["markdown"])})
+
+        self.assertEqual(result["event"], "articleDeleted")
+        self.assertFalse(saved["markdown"].exists())
+        self.assertFalse(saved["html"].exists())
+
+    def test_delete_all_articles_clears_history(self) -> None:
+        with tempfile.TemporaryDirectory() as tmpdir, patch.dict(
+            os.environ, {"DESKTOP_OUTPUT_DIR": tmpdir}, clear=False
+        ):
+            adapter = _main.DesktopDeckAdapter()
+            adapter.save_article("Deck A", [], "First.")
+            adapter.save_article("Deck B", [], "Second.")
+            result = _main.handle_action("deleteAllArticles", {})
+
+        self.assertEqual(result, {"event": "articlesDeleted", "payload": {"deleted": 2}})
+
+    def test_delete_articles_by_day_only_clears_selected_date(self) -> None:
+        with tempfile.TemporaryDirectory() as tmpdir, patch.dict(
+            os.environ, {"DESKTOP_OUTPUT_DIR": tmpdir}, clear=False
+        ):
+            adapter = _main.DesktopDeckAdapter()
+            saved = adapter.save_article("Deck A", [], "First.")
+            result = _main.handle_action(
+                "deleteArticlesByDay",
+                {"generatedDay": time.strftime("%Y-%m-%d")},
+            )
+
+        self.assertEqual(result["event"], "articlesDeletedByDay")
+        self.assertEqual(result["payload"]["deleted"], 1)
+        self.assertFalse(saved["markdown"].exists())
 
     def test_unknown_action_returns_error_without_raising(self) -> None:
         result = _main.handle_action("doesNotExist", {})

@@ -204,6 +204,21 @@ class DesktopDeckAdapter:
         """Load one real desktop article while enforcing its storage boundary."""
         return _core_article.load_saved_article(path, articles_dir=self._articles_dir)
 
+    def delete_saved_article(self, path: str) -> dict[str, Any]:
+        """Delete one desktop article and its rendered companion."""
+        return _core_article.delete_saved_article(path, articles_dir=self._articles_dir)
+
+    def delete_all_saved_articles(self) -> dict[str, int]:
+        """Delete every article stored by this desktop app."""
+        return _core_article.delete_all_saved_articles(articles_dir=self._articles_dir)
+
+    def delete_saved_articles_by_day(self, generated_day: str) -> dict[str, Any]:
+        """Delete desktop articles generated on one calendar day."""
+        return _core_article.delete_saved_articles_by_day(
+            generated_day,
+            articles_dir=self._articles_dir,
+        )
+
     def save_article_card(
         self,
         source_deck_name: str,

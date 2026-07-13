@@ -830,6 +830,33 @@ def handle_action(action: str, payload: dict[str, Any]) -> dict[str, Any]:
         path = str((payload or {}).get("path") or "")
         return {"event": "articleLoaded", "payload": _load_desktop_article(path)}
 
+    if action == "deleteArticle":
+        if not _DESKTOP_ADAPTERS_AVAILABLE:
+            return {"event": "error", "payload": {"message": "Article deletion is unavailable."}}
+        path = str((payload or {}).get("path") or "")
+        try:
+            deleted = DesktopDeckAdapter().delete_saved_article(path)
+            return {"event": "articleDeleted", "payload": deleted}
+        except RuntimeError as exc:
+            return {"event": "error", "payload": {"message": str(exc)}}
+
+    if action == "deleteAllArticles":
+        if not _DESKTOP_ADAPTERS_AVAILABLE:
+            return {"event": "error", "payload": {"message": "Article deletion is unavailable."}}
+        deleted = DesktopDeckAdapter().delete_all_saved_articles()
+        return {"event": "articlesDeleted", "payload": deleted}
+
+    if action == "deleteArticlesByDay":
+        if not _DESKTOP_ADAPTERS_AVAILABLE:
+            return {"event": "error", "payload": {"message": "Article deletion is unavailable."}}
+        try:
+            deleted = DesktopDeckAdapter().delete_saved_articles_by_day(
+                str((payload or {}).get("generatedDay") or "")
+            )
+            return {"event": "articlesDeletedByDay", "payload": deleted}
+        except RuntimeError as exc:
+            return {"event": "error", "payload": {"message": str(exc)}}
+
     if action == "fetchModels":
         if _DESKTOP_ADAPTERS_AVAILABLE:
             try:

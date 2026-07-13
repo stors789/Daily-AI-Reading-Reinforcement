@@ -22,6 +22,9 @@ from .anki_config_store import AnkiConfigStore
 from .anki_deck_provider import AnkiDeckProvider
 from .anki_card_saver import AnkiCardSaver
 from .core.article import (
+    delete_all_saved_articles,
+    delete_saved_article,
+    delete_saved_articles_by_day,
     list_saved_articles,
     load_saved_article,
     parse_article_frontmatter,
@@ -184,6 +187,15 @@ window.addEventListener("error", function (event) {
                 self._list_articles()
             elif action == "loadArticle":
                 self._load_article(str(payload.get("path", "")))
+            elif action == "deleteArticle":
+                self._emit("articleDeleted", delete_saved_article(str(payload.get("path", ""))))
+            elif action == "deleteAllArticles":
+                self._emit("articlesDeleted", delete_all_saved_articles())
+            elif action == "deleteArticlesByDay":
+                self._emit(
+                    "articlesDeletedByDay",
+                    delete_saved_articles_by_day(str(payload.get("generatedDay", ""))),
+                )
             else:
                 self._emit("error", {"message": f"Unknown command: {action}"})
         except Exception as exc:

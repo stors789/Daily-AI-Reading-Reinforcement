@@ -148,3 +148,60 @@ def load_saved_article(
         "article": body,
         "htmlPath": str(html_path) if html_path.is_file() else "",
     }
+
+
+def delete_saved_article(
+    path: str,
+    *,
+    articles_dir: Path | None = None,
+) -> dict[str, Any]:
+    """Delete one saved article and its rendered HTML companion."""
+    destination = (articles_dir or ARTICLES_DIR).resolve()
+    article_path = Path(path).resolve()
+    try:
+        article_path.relative_to(destination)
+    except ValueError as exc:
+        raise RuntimeError("Access denied: path outside articles directory.") from exc
+    if article_path.suffix.lower() != ".md":
+        raise RuntimeError("Only saved Markdown articles can be deleted.")
+    if not article_path.is_file():
+        raise RuntimeError(f"Article file not found: {path}")
+
+    html_path = article_path.with_suffix(".html")
+    article_path.unlink()
+    html_deleted = False
+    if html_path.is_file():
+        html_path.unlink()
+        html_deleted = True
+    return {"path": str(article_path), "htmlDeleted": html_deleted}
+
+
+def delete_all_saved_articles(*, articles_dir: Path | None = None) -> dict[str, int]:
+    """Delete all saved article pairs inside the configured storage directory."""
+    destination = articles_dir or ARTICLES_DIR
+    if not destination.is_dir():
+        return {"deleted": 0}
+    deleted = 0
+    for article in list_saved_articles(articles_dir=destination):
+        delete_saved_article(article["path"], articles_dir=destination)
+        deleted += 1
+    return {"deleted": deleted}
+
+
+def delete_saved_articles_by_day(
+    generated_day: str,
+    *,
+    articles_dir: Path | None = None,
+) -> dict[str, Any]:
+    """Delete saved article pairs belonging to one explicit calendar day."""
+    day = str(generated_day or "").strip()
+    if len(day) != 10 or day[4] != "-" or day[7] != "-" or not day.replace("-", "").isdigit():
+        raise RuntimeError("Choose a valid article date before deleting.")
+    destination = articles_dir or ARTICLES_DIR
+    deleted = 0
+    for article in list_saved_articles(articles_dir=destination):
+        if article.get("generated_day") != day:
+            continue
+        delete_saved_article(article["path"], articles_dir=destination)
+        deleted += 1
+    return {"deleted": deleted, "generatedDay": day}

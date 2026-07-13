@@ -28,3 +28,15 @@ def list_saved_articles() -> list[dict[str, str]]:
 
 def load_saved_article(path: str) -> dict[str, Any]:
     return _article.load_saved_article(path, articles_dir=ARTICLES_DIR)
+
+
+def delete_saved_article(path: str) -> dict[str, Any]:
+    return _article.delete_saved_article(path, articles_dir=ARTICLES_DIR)
+
+
+def delete_all_saved_articles() -> dict[str, int]:
+    return _article.delete_all_saved_articles(articles_dir=ARTICLES_DIR)
+
+
+def delete_saved_articles_by_day(generated_day: str) -> dict[str, Any]:
+    return _article.delete_saved_articles_by_day(generated_day, articles_dir=ARTICLES_DIR)

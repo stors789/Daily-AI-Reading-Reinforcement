@@ -10,6 +10,9 @@ sys.path.insert(0, str(Path(__file__).resolve().parent.parent / "addon" / "daily
 
 import core.article as article_mod
 from core.article import (
+    delete_all_saved_articles,
+    delete_saved_article,
+    delete_saved_articles_by_day,
     parse_article_frontmatter,
     save_article,
     list_saved_articles,
@@ -194,6 +197,51 @@ class TestSaveListLoadArticle(unittest.TestCase):
         finally:
             if outside_path.exists():
                 outside_path.unlink()
+
+    def test_delete_saved_article_removes_markdown_and_html(self):
+        saved = save_article("Delete Deck", [], "Body.")
+
+        result = delete_saved_article(str(saved["markdown"]))
+
+        self.assertEqual(result["path"], str(saved["markdown"].resolve()))
+        self.assertTrue(result["htmlDeleted"])
+        self.assertFalse(saved["markdown"].exists())
+        self.assertFalse(saved["html"].exists())
+
+    def test_delete_saved_article_rejects_path_outside_storage(self):
+        with self.assertRaises(RuntimeError) as ctx:
+            delete_saved_article("/tmp/outside.md")
+        self.assertIn("outside articles directory", str(ctx.exception))
+
+    def test_delete_all_saved_articles_removes_every_pair(self):
+        save_article("Deck A", [], "First.")
+        save_article("Deck B", [], "Second.")
+
+        result = delete_all_saved_articles()
+
+        self.assertEqual(result["deleted"], 2)
+        self.assertEqual(list_saved_articles(), [])
+
+    def test_delete_saved_articles_by_day_only_removes_selected_day(self):
+        first = save_article("Deck A", [], "First.")
+        second = save_article("Deck B", [], "Second.")
+        saved_day = time.strftime("%Y-%m-%d")
+        selected_day = "2001-02-03"
+        first_text = first["markdown"].read_text(encoding="utf-8")
+        first["markdown"].write_text(
+            first_text.replace(f"generated_day: {saved_day}", f"generated_day: {selected_day}"),
+            encoding="utf-8",
+        )
+
+        result = delete_saved_articles_by_day(selected_day)
+
+        self.assertEqual(result, {"deleted": 1, "generatedDay": selected_day})
+        self.assertFalse(first["markdown"].exists())
+        self.assertTrue(second["markdown"].exists())
+
+    def test_delete_saved_articles_by_day_rejects_invalid_date(self):
+        with self.assertRaises(RuntimeError):
+            delete_saved_articles_by_day("all")
 
     def test_save_article_slugifies_deck_name(self):
         cards = [self._make_mock_card("term")]
