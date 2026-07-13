@@ -8,6 +8,7 @@ version = "0.1.0"
 description = "Platform-agnostic core for Daily AI Reading Reinforcement"
 requires-python = ">=3.11"
 authors = [{ name = "DAIRR" }]
+license = { text = "AGPL-3.0-or-later" }
 
 [tool.setuptools.packages.find]
 where = ["src"]

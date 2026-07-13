@@ -2,6 +2,7 @@
   "name": "dairr-desktop-tauri",
   "version": "0.1.0",
   "private": true,
+  "license": "AGPL-3.0-or-later",
   "description": "Tauri proof-of-concept shell for Daily AI Reading Reinforcement.",
   "scripts": {
     "dev": "tauri dev",
