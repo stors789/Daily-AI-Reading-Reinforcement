@@ -27,21 +27,21 @@ Status legend: `NOT STARTED`, `IN PROGRESS`, `BLOCKED`, `IMPLEMENTED`, `VERIFIED
 
 | ID | Requirement group | Planned implementation surface | Owner | Status | Evidence/commit |
 |---|---|---|---|---|---|
-| R01 | Existing-article translation/back-translation practice | Shared practice domain/service, existing history adapter, integrated web UI | Practice foundation complete; integration owner TBD | IN PROGRESS | `f5cef40` |
-| R02 | Arbitrary pasted-text practice offline from Anki | Shared practice domain/service and local persistence, integrated web UI | Practice foundation complete; integration owner TBD | IN PROGRESS | `f5cef40` |
+| R01 | Existing-article translation/back-translation practice | Shared practice domain/service, existing history adapter, integrated web UI | Core service complete; host/UI integration TBD | IN PROGRESS | `f5cef40`, `125fb27` |
+| R02 | Arbitrary pasted-text practice offline from Anki | Shared practice domain/service and local persistence, integrated web UI | Core service complete; host/UI integration TBD | IN PROGRESS | `f5cef40`, `125fb27` |
 | R03 | Segmentation, manual edits, long-text limits | Practice segmentation service and validation | `/root/audit_ui_release` foundation | IMPLEMENTED | `f5cef40` |
-| R04 | AI review, revision/resubmission, reference/no-reference | Review prompts, parsing, service, attempts persistence | Prompt/review and practice foundations complete; pipeline integration TBD | IN PROGRESS | `f5cef40`, `c41c1ac` |
+| R04 | AI review, revision/resubmission, reference/no-reference | Review prompts, parsing, service, attempts persistence | Shared review pipeline complete; host/UI integration TBD | IN PROGRESS | `f5cef40`, `c41c1ac`, `125fb27` |
 | R05 | Configurable reinforcement-priority scoring | Normalized review models, scoring engine/presets/explanations | `/root/audit_architecture` foundation | IMPLEMENTED | `b170444` |
 | R06 | Manual target controls and four target categories | Shared target selection domain plus later generation/UI integration | `/root/audit_architecture` foundation | IN PROGRESS | `b170444` |
-| R07 | Standard AnkiConnect compatibility and degradation | Desktop adapter, timeout/cancel/error mapping, capabilities | TBD after audit | NOT STARTED | — |
-| R08 | Supported Anki add-on APIs and safe lifecycle | Thin add-on adapter/background lifecycle | TBD after audit | NOT STARTED | — |
+| R07 | Standard AnkiConnect compatibility and degradation | Desktop adapter, timeout/cancel/error mapping, capabilities | Normalized adapter complete; host integration TBD | IN PROGRESS | `5dd9aa8` |
+| R08 | Supported Anki add-on APIs and safe lifecycle | Thin add-on adapter/background lifecycle | Normalized adapter complete; dialog lifecycle integration TBD | IN PROGRESS | `5dd9aa8` |
 | R09 | Explicit capability model | Shared typed capability/status/reason model | `/root/audit_architecture` foundation | IMPLEMENTED | `b170444` |
-| R10 | Coherent target-aware generation and untrusted parsing | Shared generation service, target mapping, recovery parser | TBD after audit | NOT STARTED | — |
-| R11 | Fully customizable visible prompts | Shared prompt registry/templates/render preview/presets/migration | Prompt foundation complete; config/UI integration TBD | IN PROGRESS | `c41c1ac` |
-| R12 | Capability-aware reasoning/thinking settings | Provider capability/request models and diagnostics | Provider foundation complete; transport/config/UI integration TBD | IN PROGRESS | `c41c1ac` |
+| R10 | Coherent target-aware generation and untrusted parsing | Shared generation service, target mapping, recovery parser | Shared generation pipeline complete; legacy/UI integration TBD | IN PROGRESS | `125fb27`, `5e68952` |
+| R11 | Fully customizable visible prompts | Shared prompt registry/templates/render preview/presets/migration | Config/transport integrated; host/UI editor TBD | IN PROGRESS | `c41c1ac`, `090d6b7` |
+| R12 | Capability-aware reasoning/thinking settings | Provider capability/request models and diagnostics | Config/transport integrated; host/UI controls TBD | IN PROGRESS | `c41c1ac`, `090d6b7` |
 | R13 | Dual-mode architecture boundaries | Core/application/adapters/UI layering; ADRs | Orchestrator + reviewers | IN PROGRESS | ADR-0003 initial |
 | R14 | Integrated asynchronous/cancellable UI | Shared web navigation/bridge and platform lifecycle | TBD after audit | NOT STARTED | — |
-| R15 | Backward-compatible persistence/migration | Extend existing article/history store; atomic tolerant migration | Practice repository foundation complete; host/history integration TBD | IN PROGRESS | `f5cef40` |
+| R15 | Backward-compatible persistence/migration | Extend existing article/history store; atomic tolerant migration | Practice v2 + config/article manifest v2 implemented; host integration TBD | IN PROGRESS | `f5cef40`, `090d6b7`, `d77d797` |
 | R16 | Privacy, security, reliability hardening | Redaction, response validation, safe writes/timeouts/cancel | TBD after audit | NOT STARTED | — |
 | R17 | Comprehensive automated/integration testing | Focused tests per unit plus full suite | All implementers + reviewers | NOT STARTED | — |
 | R18 | Documentation, release notes, manual verification | README/docs/changelog/release guide | TBD after audit | NOT STARTED | — |
@@ -96,6 +96,9 @@ Status legend: `NOT STARTED`, `IN PROGRESS`, `BLOCKED`, `IMPLEMENTED`, `VERIFIED
 | Desktop bridge/server/adapters | TBD | Exclusive by module group |
 | Packaging metadata and release scripts | TBD | One release owner |
 | Shared docs/README | TBD | One documentation owner after implementation |
+| Shared application/generation services (`practice_service.py`, `generation.py` or equivalent) + focused tests/ADR | `/root/shared_services` | Exclusive; no hosts, config, legacy `llm.py`, or UI |
+| Normalized Anki adapters (`desktop_mock/ankiconnect_provider.py`, new normalized adapter modules, `anki_review_history.py`) + tests/ADR | `/root/anki_adapters` | Exclusive; no add-on wrapper integration yet |
+| Persistence/config/provider transport (`article.py`, `desktop_adapters.py`, dirty config files, `prompt.py`, `llm.py`) + tests/ADR | `/root/provider_persistence` | Exclusive; preserve existing theme config; no UI or host dispatcher edits |
 
 ## Subagent handoffs
 
@@ -142,6 +145,21 @@ Implementation-agent reports must include: requirements addressed, assumptions, 
 - `/root/audit_domain_provider` implemented complete prompt registry/rendering, provider reasoning capabilities/request construction, tolerant response parsing, and translation-review parsing. Orchestrator independently ran 43 focused/core tests in 0.025s, all passed; compile and forbidden-import/sensitive-pattern scan passed. Commit: `c41c1ac`.
 - Integration review follow-ups: decide whether practice autosave should avoid mutating the passed session; preserve shape-valid but semantically rejected attempts; wire prompt/preset migration into config; ensure preview content is never used as default diagnostics; map legacy rating sets to unavailable ordered evidence rather than fabricated events.
 
+### Phases 3–6 implementation units dispatched
+
+- `/root/shared_services`: host-neutral practice review orchestration and target-aware article generation/validation/recovery using the Phase 2 contracts.
+- `/root/anki_adapters`: honest standard AnkiConnect and add-on normalization with explicit unavailable evidence and ordered add-on review events.
+- `/root/provider_persistence`: atomic/thread-safe article/config persistence, prompt/preset/reasoning migration, provider request transport integration, redacted failures, and removal of silent mock-success behavior from the owned layer.
+- Central host dispatchers, add-on wrapper, and shared UI remain reserved for the subsequent serialized integration phase.
+
+### Phases 3–6 completed service/adapter/transport handoffs
+
+- `/root/shared_services`: 30 new service tests; 177 focused/compatibility tests passed in 0.172s. Added cancellable operation contracts, complete practice orchestration, and defensive target-aware generation. Commits `125fb27`, `5e68952`.
+- `/root/anki_adapters`: 19 focused and 99 adjacent tests passed; add-on archive inspection passed. Added classified AnkiConnect transport failures, optional probed `getReviewsOfCards`, normalized standard/add-on adapters, ordered add-on events, and lifecycle-safe collection access. Commit `5dd9aa8`.
+- `/root/provider_persistence`: 65 combined and 101 orchestrator-selected tests passed; 19 persistence tests passed after concurrency repair. Added config schema v2, exact rendered-prompt transport, reasoning migration, atomic private config/article/manifest persistence, and thread-safe manifest updates. Commits `090d6b7`, `d77d797`.
+- Post-slice full suite: 597 tests; only the original 1 vertical CSS failure and 2 pywebview fake-signature errors remain.
+- Required follow-ups: add `desktop_mock/ankiconnect_data_adapter.py` to desktop packaging; wire normalized adapters and services to hosts; remove desktop dispatcher mock-success fallback/raw config exposure; add request IDs/cancellation; integrate add-on lifecycle; expose UI.
+
 ## Architecture decisions
 
 - ADR-0003 (`docs/architecture/adr-0003-next-major-release-boundaries.md`): initial boundary and compatibility constraints; status Proposed pending Phase 1 audit.
@@ -169,11 +187,14 @@ Implementation-agent reports must include: requirements addressed, assumptions, 
 - Practice foundation independent verification: 18 tests in 0.026s, OK; compile OK.
 - Scoring/capability/target independent verification: 38 tests in 0.029s, OK; compile/import scans OK.
 - Prompt/provider/review independent verification: 43 tests in 0.025s, OK; compile/import/sensitive-pattern scans OK.
+- Post-Phase-2 full baseline: `python3 -m unittest discover -s tests` ran 540 tests in 0.206s; the 85 added foundation tests pass and the result still has exactly the same 1 vertical-flow assertion failure plus 2 pywebview fake-signature errors recorded above. No new Phase-2 regression detected; all three baseline failures remain assigned for repair.
+- Post-service/adapter/transport full suite: 597 tests in 0.273s; FAILED only on the same 1 vertical CSS assertion plus 2 `desktop_native` fake callback signature errors. All new unit, service, adapter, transport, migration, privacy, and persistence tests pass.
 
 ## Migration status
 
 - Existing article schema audited and preserved unchanged.
 - Practice repository schema v2 implemented with flat-v0 and envelope-v1 migration, atomic `fsync` + replace, stable relative article reference plus snapshot fallback, unknown-field retention, and corrupt optional data tolerance. Host/history wiring remains pending.
+- Config schema v2 and article manifest schema v2 implemented. Legacy config/article history remains readable; unknown config/manifest fields are retained; writes are atomic and private. Article Markdown remains authoritative.
 - Required properties: non-destructive, partial/corrupt optional data tolerant, unknown-field preserving, recoverable/atomic where practical.
 
 ## Documentation status
@@ -197,6 +218,11 @@ Implementation-agent reports must include: requirements addressed, assumptions, 
 - `f5cef40` — `feat(practice): add translation session persistence`.
 - `b170444` — `feat(scoring): add configurable reinforcement priority`.
 - `c41c1ac` — `feat(prompts): add customizable provider-aware workflows`.
+- `125fb27` — `feat(core): add cancellable practice and target generation services`.
+- `5dd9aa8` — `feat(anki): add normalized capability-aware adapters`.
+- `090d6b7` — `feat(core): integrate prompt transport and atomic persistence`.
+- `d77d797` — `fix(persistence): serialize article manifest updates`.
+- `5e68952` — `test(core): harden long-text generation checks`.
 
 ## Final verification checklist
 
