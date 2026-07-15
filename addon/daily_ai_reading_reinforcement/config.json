@@ -1,4 +1,5 @@
 {
+  "config_schema_version": 2,
   "api_key": "",
   "base_url": "https://api.openai.com/v1",
   "model": "gpt-4.1-mini",
@@ -11,6 +12,7 @@
   "last_selected_deck_id": "",
   "collapsed_deck_groups": [],
   "ui_language": "zh",
+  "ui_theme": "light",
   "prompt_presets": [
     {
       "id": "default",
@@ -23,5 +25,16 @@
       "prompt_template": ""
     }
   ],
-  "selected_prompt_preset_id": "default"
+  "selected_prompt_preset_id": "default",
+  "ai_prompt_config": {
+    "schema_version": 1,
+    "task_overrides": {},
+    "provider_overrides": {},
+    "profile_overrides": {}
+  },
+  "reasoning": {
+    "mode": "provider_default"
+  },
+  "scoring_presets": [],
+  "selected_scoring_preset_id": "recommended-v1"
 }

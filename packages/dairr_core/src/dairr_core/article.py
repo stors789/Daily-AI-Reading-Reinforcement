@@ -4,9 +4,12 @@ from __future__ import annotations
 
 import time
 import uuid
+import json
+from copy import deepcopy
 from pathlib import Path
-from typing import Any
+from typing import Any, Mapping
 
+from .atomic_persistence import atomic_write_json, atomic_write_text
 from .rendering import parse_article_response, render_article_html
 from .utils import slugify
 
@@ -67,6 +70,7 @@ def save_article(
     article: str,
     *,
     articles_dir: Path | None = None,
+    generation_metadata: Mapping[str, Any] | None = None,
 ) -> dict[str, Path]:
     destination = articles_dir or ARTICLES_DIR
     destination.mkdir(parents=True, exist_ok=True)
@@ -77,35 +81,55 @@ def save_article(
     basename = f"{date_part}-{slug}-{time_part}-{unique_part}"
     markdown_path = destination / f"{basename}.md"
     html_path = destination / f"{basename}.html"
+    manifest_path = destination / f"{basename}.manifest.json"
+
+    generated_at = time.strftime('%Y-%m-%d %H:%M:%S')
+    manifest = _build_article_manifest(
+        deck_name_value,
+        cards,
+        generated_at,
+        date_part,
+        _article_title(article),
+        generation_metadata,
+    )
 
     metadata = [
         "---",
-        f"deck: {deck_name_value}",
-        f"generated_at: {time.strftime('%Y-%m-%d %H:%M:%S')}",
+        f"schema_version: 2",
+        f"deck: {_frontmatter_value(deck_name_value)}",
+        f"generated_at: {generated_at}",
         f"generated_day: {date_part}",
-        f"title: {_article_title(article)}",
+        f"title: {_frontmatter_value(_article_title(article))}",
         f"card_count: {len(cards)}",
+        f"manifest: {manifest_path.name}",
         "---",
         "",
     ]
-    markdown_path.write_text("\n".join(metadata) + article + "\n", encoding="utf-8")
-    html_path.write_text(render_article_html(deck_name_value, cards, article), encoding="utf-8")
+    markdown_text = "\n".join(metadata) + article + "\n"
+    html_text = render_article_html(deck_name_value, cards, article)
+    # Markdown is the authoritative history record and is replaced last. A
+    # crash can leave an ignored auxiliary orphan, never a half-written article.
+    atomic_write_json(manifest_path, manifest, private=True)
+    atomic_write_text(html_path, html_text, private=True)
+    atomic_write_text(markdown_path, markdown_text, private=True)
     return {"markdown": markdown_path, "html": html_path}
 
 
-def list_saved_articles(*, articles_dir: Path | None = None) -> list[dict[str, str]]:
+def list_saved_articles(*, articles_dir: Path | None = None) -> list[dict[str, Any]]:
     destination = articles_dir or ARTICLES_DIR
     if not destination.is_dir():
         return []
-    articles = []
+    articles: list[dict[str, Any]] = []
     for md_file in sorted(destination.glob("*.md"), reverse=True):
         try:
+            md_file = _contained_article_path(md_file, destination)
             text = md_file.read_text(encoding="utf-8")
         except Exception:
             continue
         meta = parse_article_frontmatter(text)
         title, generated_day = _article_metadata(text, meta)
-        articles.append({
+        manifest = _load_manifest(md_file, meta)
+        item: dict[str, Any] = {
             "path": str(md_file),
             "filename": md_file.name,
             "deck": meta.get("deck", ""),
@@ -113,7 +137,13 @@ def list_saved_articles(*, articles_dir: Path | None = None) -> list[dict[str, s
             "generated_day": generated_day,
             "title": title,
             "card_count": meta.get("card_count", ""),
-        })
+        }
+        if manifest:
+            item["targetUsage"] = deepcopy(manifest.get("target_usage", []))
+            item["unusedTargets"] = deepcopy(manifest.get("unused_targets", []))
+            item["targetReuse"] = deepcopy(manifest.get("target_reuse", {}))
+            item["manifestVersion"] = manifest.get("schema_version", 1)
+        articles.append(item)
     return articles
 
 
@@ -123,11 +153,7 @@ def load_saved_article(
     articles_dir: Path | None = None,
 ) -> dict[str, Any]:
     destination = articles_dir or ARTICLES_DIR
-    article_path = Path(path)
-    if not article_path.is_file():
-        raise RuntimeError(f"Article file not found: {path}")
-    if not str(article_path).startswith(str(destination)):
-        raise RuntimeError("Access denied: path outside articles directory.")
+    article_path = _contained_article_path(Path(path), destination)
     text = article_path.read_text(encoding="utf-8")
     meta = parse_article_frontmatter(text)
     # Strip frontmatter to get article body
@@ -138,6 +164,7 @@ def load_saved_article(
             body = text[end + 3:].strip()
     html_path = article_path.with_suffix(".html")
     title, generated_day = _article_metadata(body, meta)
+    manifest = _load_manifest(article_path, meta)
     return {
         "path": str(article_path),
         "deck": meta.get("deck", ""),
@@ -147,6 +174,10 @@ def load_saved_article(
         "card_count": meta.get("card_count", ""),
         "article": body,
         "htmlPath": str(html_path) if html_path.is_file() else "",
+        "metadata": deepcopy(manifest),
+        "targetUsage": deepcopy(manifest.get("target_usage", [])),
+        "unusedTargets": deepcopy(manifest.get("unused_targets", [])),
+        "targetReuse": deepcopy(manifest.get("target_reuse", {})),
     }
 
 
@@ -156,16 +187,16 @@ def delete_saved_article(
     articles_dir: Path | None = None,
 ) -> dict[str, Any]:
     """Delete one saved article and its rendered HTML companion."""
-    destination = (articles_dir or ARTICLES_DIR).resolve()
-    article_path = Path(path).resolve()
+    destination = articles_dir or ARTICLES_DIR
+    root = Path(destination).resolve(strict=False)
+    candidate = Path(path)
+    if not candidate.is_absolute():
+        candidate = root / candidate
     try:
-        article_path.relative_to(destination)
+        candidate.resolve(strict=False).relative_to(root)
     except ValueError as exc:
         raise RuntimeError("Access denied: path outside articles directory.") from exc
-    if article_path.suffix.lower() != ".md":
-        raise RuntimeError("Only saved Markdown articles can be deleted.")
-    if not article_path.is_file():
-        raise RuntimeError(f"Article file not found: {path}")
+    article_path = _contained_article_path(Path(path), destination)
 
     html_path = article_path.with_suffix(".html")
     article_path.unlink()
@@ -173,7 +204,12 @@ def delete_saved_article(
     if html_path.is_file():
         html_path.unlink()
         html_deleted = True
-    return {"path": str(article_path), "htmlDeleted": html_deleted}
+    manifest_path = article_path.with_suffix(".manifest.json")
+    manifest_deleted = False
+    if manifest_path.is_file():
+        manifest_path.unlink()
+        manifest_deleted = True
+    return {"path": str(article_path), "htmlDeleted": html_deleted, "manifestDeleted": manifest_deleted}
 
 
 def delete_all_saved_articles(*, articles_dir: Path | None = None) -> dict[str, int]:
@@ -205,3 +241,98 @@ def delete_saved_articles_by_day(
         delete_saved_article(article["path"], articles_dir=destination)
         deleted += 1
     return {"deleted": deleted, "generatedDay": day}
+
+
+def update_article_manifest(
+    path: str,
+    updates: Mapping[str, Any],
+    *,
+    articles_dir: Path | None = None,
+) -> dict[str, Any]:
+    """Merge article metadata atomically, retaining unknown extension fields."""
+    destination = articles_dir or ARTICLES_DIR
+    article_path = _contained_article_path(Path(path), destination)
+    text = article_path.read_text(encoding="utf-8")
+    meta = parse_article_frontmatter(text)
+    manifest = _load_manifest(article_path, meta)
+    for key, value in updates.items():
+        if _sensitive_metadata_key(str(key)):
+            continue
+        manifest[str(key)] = deepcopy(value)
+    manifest.setdefault("schema_version", 2)
+    manifest_path = article_path.with_suffix(".manifest.json")
+    atomic_write_json(manifest_path, manifest, private=True)
+    return deepcopy(manifest)
+
+
+def _contained_article_path(path: Path, destination: Path) -> Path:
+    lexical_root = Path(destination).absolute()
+    root = lexical_root.resolve(strict=False)
+    candidate = Path(path)
+    if not candidate.is_absolute():
+        candidate = lexical_root / candidate
+    if not candidate.is_file():
+        raise RuntimeError("Article file not found.")
+    resolved = candidate.resolve(strict=False)
+    try:
+        resolved.relative_to(root)
+    except ValueError as exc:
+        raise RuntimeError("Access denied: path outside articles directory.") from exc
+    if resolved.suffix.lower() != ".md":
+        raise RuntimeError("Only saved Markdown articles can be accessed.")
+    return candidate.absolute()
+
+
+def _frontmatter_value(value: Any) -> str:
+    return " ".join(str(value or "").replace("\x00", "").splitlines()).strip()
+
+
+def _build_article_manifest(
+    deck_name: str,
+    cards: list[Any],
+    generated_at: str,
+    generated_day: str,
+    title: str,
+    supplied: Mapping[str, Any] | None,
+) -> dict[str, Any]:
+    manifest: dict[str, Any] = {
+        "schema_version": 2,
+        "deck": deck_name,
+        "generated_at": generated_at,
+        "generated_day": generated_day,
+        "title": title,
+        "card_count": len(cards),
+        "targets": [
+            {
+                "card_id": str(getattr(card, "cid", getattr(card, "card_id", "")) or ""),
+                "term": str(getattr(card, "term", "") or ""),
+            }
+            for card in cards
+        ],
+        "target_usage": [],
+        "unused_targets": [],
+        "target_reuse": {},
+    }
+    for key, value in (supplied or {}).items():
+        if not _sensitive_metadata_key(str(key)):
+            manifest[str(key)] = deepcopy(value)
+    return manifest
+
+
+def _load_manifest(article_path: Path, frontmatter: Mapping[str, str]) -> dict[str, Any]:
+    name = str(frontmatter.get("manifest") or article_path.with_suffix(".manifest.json").name)
+    candidate = article_path.parent / name
+    try:
+        resolved = candidate.resolve(strict=False)
+        resolved.relative_to(article_path.parent.resolve(strict=False))
+        if not resolved.is_file():
+            return {}
+        payload = json.loads(resolved.read_text(encoding="utf-8"))
+        return dict(payload) if isinstance(payload, dict) else {}
+    except (ValueError, OSError, UnicodeError, json.JSONDecodeError):
+        return {}
+
+
+def _sensitive_metadata_key(key: str) -> bool:
+    lowered = key.lower()
+    return any(part in lowered for part in ("api_key", "authorization", "password", "secret", "access_token"))

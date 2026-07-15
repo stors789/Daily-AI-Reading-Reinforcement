@@ -13,6 +13,7 @@ import importlib
 import json
 import os
 import threading
+from copy import deepcopy
 from pathlib import Path
 from typing import Any, Callable, TypeVar
 
@@ -32,6 +33,7 @@ _core_article = _import_core("article")
 _core_article_generator = _import_core("article_generator")
 _core_llm = _import_core("llm")
 _core_rendering = _import_core("rendering")
+_core_atomic = _import_core("atomic_persistence")
 
 DEFAULT_CONFIG = dict(_core_config.DEFAULT_CONFIG)
 
@@ -93,7 +95,7 @@ class DesktopConfigAdapter:
         "ui_language": "DAIRR_UI_LANGUAGE",
     }
 
-    __slots__ = ("_file_path", "_cache")
+    __slots__ = ("_file_path", "_cache", "_lock")
 
     def __init__(self, file_path: str | None = None) -> None:
         if file_path:
@@ -106,51 +108,59 @@ class DesktopConfigAdapter:
                 legacy_path = legacy_config_path()
                 self._file_path = legacy_path if legacy_path.is_file() else app_config_path()
         self._cache: dict[str, Any] | None = None
+        self._lock = threading.RLock()
 
     def load(self) -> dict[str, Any] | None:
-        if self._cache is not None:
-            return self._cache
+        with self._lock:
+            if self._cache is not None:
+                return deepcopy(self._cache)
 
-        config: dict[str, Any] = DEFAULT_CONFIG.copy()
+            config: dict[str, Any] = deepcopy(DEFAULT_CONFIG)
 
-        # Layer 2: JSON file
-        if self._file_path.is_file():
-            try:
-                with open(self._file_path, encoding="utf-8") as fh:
-                    file_config = json.load(fh)
-                if isinstance(file_config, dict):
-                    config.update(file_config)
-            except Exception:
-                pass
+            # Layer 2: JSON file. A corrupt file is left untouched and the
+            # defaults remain usable; no private values are included in errors.
+            if self._file_path.is_file():
+                try:
+                    with open(self._file_path, encoding="utf-8") as fh:
+                        file_config = json.load(fh)
+                    if isinstance(file_config, dict):
+                        config.update(file_config)
+                    else:
+                        config["config_load_warning"] = "invalid_config_root"
+                except (OSError, UnicodeError, json.JSONDecodeError):
+                    config["config_load_warning"] = "unreadable_config"
 
-        # Layer 1: environment variables (highest priority)
-        for config_key, env_key in self.ENV_MAP.items():
-            env_value = os.environ.get(env_key)
-            if env_value is not None:
-                if config_key in ("temperature",):
-                    try:
-                        config[config_key] = float(env_value)
-                    except ValueError:
-                        pass
-                elif config_key in ("max_tokens",):
-                    try:
-                        config[config_key] = int(env_value)
-                    except ValueError:
-                        pass
-                else:
-                    config[config_key] = env_value
+            # Layer 1: environment variables (highest priority)
+            for config_key, env_key in self.ENV_MAP.items():
+                env_value = os.environ.get(env_key)
+                if env_value is not None:
+                    if config_key in ("temperature",):
+                        try:
+                            config[config_key] = float(env_value)
+                        except ValueError:
+                            pass
+                    elif config_key in ("max_tokens",):
+                        try:
+                            config[config_key] = int(env_value)
+                        except ValueError:
+                            pass
+                    else:
+                        config[config_key] = env_value
 
-        self._cache = config
-        return config
+            self._cache = _core_config.normalize_config(config)
+            return deepcopy(self._cache)
 
     def save(self, config: dict[str, Any]) -> None:
-        self._cache = dict(config)
-        try:
-            self._file_path.parent.mkdir(parents=True, exist_ok=True)
-            with open(self._file_path, "w", encoding="utf-8") as fh:
-                json.dump(config, fh, ensure_ascii=False, indent=2)
-        except Exception:
-            pass
+        normalized = _core_config.normalize_config(config)
+        with self._lock:
+            try:
+                _core_atomic.atomic_write_json(self._file_path, normalized, private=True)
+            except PermissionError:
+                # Sandboxed/read-only hosts can continue the current session;
+                # retain an explicit warning in memory rather than fabricating
+                # a durable save or exposing the path/private config values.
+                normalized["config_save_warning"] = "permission_denied"
+            self._cache = deepcopy(normalized)
 
 
 # ---------------------------------------------------------------------------
@@ -186,15 +196,17 @@ class DesktopDeckAdapter:
         deck_name_value: str,
         cards: list[Any],
         article: str,
+        *,
+        generation_metadata: dict[str, Any] | None = None,
     ) -> dict[str, Path]:
         """Persist article using the pure core function, but to the desktop output dir."""
-        # Override the articles directory temporarily so core_article saves to our output dir.
-        original_dir = _core_article.ARTICLES_DIR
-        try:
-            _core_article.ARTICLES_DIR = self._articles_dir
-            return _core_article.save_article(deck_name_value, cards, article)
-        finally:
-            _core_article.ARTICLES_DIR = original_dir
+        return _core_article.save_article(
+            deck_name_value,
+            cards,
+            article,
+            articles_dir=self._articles_dir,
+            generation_metadata=generation_metadata,
+        )
 
     def list_saved_articles(self) -> list[dict[str, str]]:
         """Return the real history stored in this desktop app's data folder."""
