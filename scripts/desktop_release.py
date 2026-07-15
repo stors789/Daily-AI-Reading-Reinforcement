@@ -14,6 +14,7 @@ import argparse
 import json
 import re
 import shutil
+import subprocess
 import sys
 from datetime import datetime, timezone
 from pathlib import Path
@@ -25,10 +26,15 @@ DESKTOP_DIR = ROOT / "apps" / "desktop"
 RELEASE_METADATA_PATH = DESKTOP_DIR / "release.json"
 TAURI_CONFIG_PATH = DESKTOP_DIR / "src-tauri" / "tauri.conf.json"
 CARGO_TOML_PATH = DESKTOP_DIR / "src-tauri" / "Cargo.toml"
+CARGO_LOCK_PATH = DESKTOP_DIR / "src-tauri" / "Cargo.lock"
 PACKAGE_JSON_PATH = DESKTOP_DIR / "package.json"
 PACKAGE_LOCK_PATH = DESKTOP_DIR / "package-lock.json"
 SEMVER_RE = re.compile(r"^(?:0|[1-9]\d*)\.(?:0|[1-9]\d*)\.(?:0|[1-9]\d*)(?:-[0-9A-Za-z.-]+)?(?:\+[0-9A-Za-z.-]+)?$")
 REQUIRED_TARGETS = ("darwin-aarch64", "darwin-x86_64", "windows-x86_64")
+WEB_APP_PATH = ROOT / "addon" / "daily_ai_reading_reinforcement" / "web" / "app.js"
+ANDROID_VALIDATOR_PATH = ROOT / "apps" / "android" / "tests" / "validate_scaffold.py"
+SIDECAR_SCRIPT_PATH = ROOT / "package_tauri_sidecar.py"
+DESKTOP_PACKAGE_SCRIPT_PATH = ROOT / "package_desktop.py"
 
 
 def read_json(path: Path) -> dict[str, Any]:
@@ -83,6 +89,30 @@ def set_cargo_version(version: str) -> None:
     CARGO_TOML_PATH.write_text(updated, encoding="utf-8")
 
 
+def cargo_lock_version() -> str:
+    content = CARGO_LOCK_PATH.read_text(encoding="utf-8")
+    match = re.search(
+        r'(?ms)^\[\[package\]\]\nname = "dairr-desktop"\nversion = "([^"]+)"$',
+        content,
+    )
+    if match is None:
+        raise ValueError("Cargo.lock does not have the dairr-desktop package record")
+    return match.group(1)
+
+
+def set_cargo_lock_version(version: str) -> None:
+    content = CARGO_LOCK_PATH.read_text(encoding="utf-8")
+    updated, count = re.subn(
+        r'(?ms)(^\[\[package\]\]\nname = "dairr-desktop"\nversion = ")[^"]+("$)',
+        rf"\g<1>{version}\g<2>",
+        content,
+        count=1,
+    )
+    if count != 1:
+        raise ValueError("Cargo.lock does not have exactly one dairr-desktop package record")
+    CARGO_LOCK_PATH.write_text(updated, encoding="utf-8")
+
+
 def configured_versions() -> dict[str, str]:
     release = metadata()
     tauri = read_json(TAURI_CONFIG_PATH)
@@ -93,6 +123,7 @@ def configured_versions() -> dict[str, str]:
         "release.json": release["version"],
         "tauri.conf.json": str(tauri.get("version", "")),
         "Cargo.toml": cargo_version(),
+        "Cargo.lock": cargo_lock_version(),
         "package.json": str(package.get("version", "")),
         "package-lock.json": str(package_lock.get("version", "")),
         "package-lock root": str(lock_root.get("version", "")),
@@ -106,6 +137,113 @@ def assert_versions_in_sync() -> str:
         rendered = ", ".join(f"{name}={version}" for name, version in versions.items())
         raise ValueError(f"desktop version metadata is out of sync: {rendered}")
     return next(iter(unique))
+
+
+def assert_checked_in_release_config_safe() -> str:
+    """Validate metadata while ensuring no signing material is checked in."""
+    version = assert_versions_in_sync()
+    release = metadata()
+    tauri = read_json(TAURI_CONFIG_PATH)
+    updater = tauri.get("plugins", {}).get("updater", {})
+    if updater.get("pubkey") or updater.get("endpoints"):
+        raise ValueError("checked-in Tauri updater config must not contain release credentials or endpoints")
+    bundle = tauri.get("bundle", {})
+    if bundle.get("createUpdaterArtifacts"):
+        raise ValueError("checked-in Tauri config must not create unsigned updater artifacts")
+    macos = bundle.get("macOS", {})
+    windows = bundle.get("windows", {})
+    if macos.get("signingIdentity") or windows.get("certificateThumbprint"):
+        raise ValueError("checked-in Tauri config must not contain signing identities")
+    if bundle.get("resources") != ["binaries/dairr-backend"]:
+        raise ValueError("Tauri bundle must contain only the reviewed Python sidecar resource")
+    endpoint = str(release["updater_endpoint"])
+    if not endpoint.endswith("/releases/latest/download/latest.json"):
+        raise ValueError("updater endpoint must target the static latest.json release asset")
+    return version
+
+
+def _import_check_source() -> str:
+    return (
+        "import importlib,pkgutil,sys;"
+        "sys.path.insert(0,'packages/dairr_core/src');"
+        "import dairr_core;"
+        "[importlib.import_module('dairr_core.'+m.name) for m in pkgutil.iter_modules(dairr_core.__path__)];"
+        "import desktop_app,desktop_native;"
+        "print('Production import check passed.')"
+    )
+
+
+def pre_publish_checks() -> list[tuple[str, list[str], Path, str | None]]:
+    """Return the complete credential-free release gate in execution order."""
+    python = sys.executable
+    return [
+        (
+            "Python compile",
+            [
+                python, "-m", "compileall", "-q",
+                "package_desktop.py", "package_tauri_sidecar.py", "scripts", "packages",
+                "addon", "desktop_mock", "tests", "desktop_app.py", "desktop_native.py",
+            ],
+            ROOT,
+            None,
+        ),
+        ("Production imports", [python, "-c", _import_check_source()], ROOT, None),
+        ("Full unittest suite", [python, "-m", "unittest", "discover", "-s", "tests", "-v"], ROOT, None),
+        (
+            "Add-on package privacy",
+            [python, "-m", "unittest", "-v", "tests.test_package_addon_release"],
+            ROOT,
+            None,
+        ),
+        (
+            "Portable web UI static tests",
+            [
+                python, "-m", "unittest", "-v", "tests.test_web_i18n",
+                "tests.test_web_card_interactions", "tests.test_web_release_workbench",
+                "tests.test_tauri_app_shell",
+            ],
+            ROOT,
+            None,
+        ),
+        ("Web JavaScript syntax", ["node", "--check", str(WEB_APP_PATH)], ROOT, "node"),
+        ("Android static validator", [python, str(ANDROID_VALIDATOR_PATH)], ROOT, None),
+        (
+            "Browser desktop package dry-run",
+            [python, str(DESKTOP_PACKAGE_SCRIPT_PATH), "--entry", "browser", "--windowed", "--clean", "--dry-run"],
+            ROOT,
+            None,
+        ),
+        (
+            "Native desktop package dry-run",
+            [python, str(DESKTOP_PACKAGE_SCRIPT_PATH), "--entry", "native", "--windowed", "--clean", "--dry-run"],
+            ROOT,
+            None,
+        ),
+        (
+            "Tauri sidecar package dry-run",
+            [python, str(SIDECAR_SCRIPT_PATH), "--dry-run"],
+            ROOT,
+            None,
+        ),
+        ("Tauri npm metadata", ["npm", "run", "info"], DESKTOP_DIR, "npm"),
+        ("Tauri Cargo check", ["cargo", "check", "--locked"], DESKTOP_DIR / "src-tauri", "cargo"),
+    ]
+
+
+def run_pre_publish_gate(*, allow_missing_tooling: bool = False) -> None:
+    version = assert_checked_in_release_config_safe()
+    print(f"Verified credential-free desktop release metadata for {version}.")
+    for label, command, cwd, tool in pre_publish_checks():
+        if tool is not None and shutil.which(tool) is None:
+            if allow_missing_tooling:
+                print(f"SKIP {label}: {tool} is unavailable")
+                continue
+            raise ValueError(f"{label} requires {tool} on PATH")
+        print(f"\n==> {label}", flush=True)
+        result = subprocess.run(command, cwd=cwd, check=False)
+        if result.returncode != 0:
+            raise ValueError(f"{label} failed with exit code {result.returncode}")
+    print("\nPre-publish verification passed.")
 
 
 def sync_version(version: str) -> None:
@@ -130,6 +268,7 @@ def sync_version(version: str) -> None:
     packages[""]["version"] = version
     write_json(PACKAGE_LOCK_PATH, package_lock)
     set_cargo_version(version)
+    set_cargo_lock_version(version)
 
 
 def updater_config(
@@ -240,7 +379,17 @@ def build_parser() -> argparse.ArgumentParser:
     parser = argparse.ArgumentParser(description=__doc__)
     subparsers = parser.add_subparsers(dest="command", required=True)
 
-    subparsers.add_parser("verify", help="ensure all checked-in desktop versions match")
+    subparsers.add_parser("verify", help="validate checked-in desktop release metadata")
+
+    pre_publish = subparsers.add_parser(
+        "pre-publish",
+        help="run the complete credential-free test, static, import, and packaging gate",
+    )
+    pre_publish.add_argument(
+        "--allow-missing-tooling",
+        action="store_true",
+        help="report and skip unavailable Node/npm/Cargo checks (never used by release CI)",
+    )
 
     sync = subparsers.add_parser("sync-version", help="set all desktop version records")
     sync.add_argument("--version", required=True)
@@ -270,7 +419,9 @@ def main(argv: Sequence[str] | None = None) -> int:
     args = build_parser().parse_args(argv)
     try:
         if args.command == "verify":
-            print(assert_versions_in_sync())
+            print(assert_checked_in_release_config_safe())
+        elif args.command == "pre-publish":
+            run_pre_publish_gate(allow_missing_tooling=args.allow_missing_tooling)
         elif args.command == "sync-version":
             sync_version(args.version)
             print(assert_versions_in_sync())

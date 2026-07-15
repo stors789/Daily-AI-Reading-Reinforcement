@@ -1,8 +1,8 @@
-"""PyInstaller packaging scaffold for DAIRR desktop entry points.
+"""PyInstaller packaging entry point for DAIRR desktop applications.
 
-This script intentionally does not install PyInstaller or optional native-shell
-dependencies. It only standardizes the command future packaging environments
-can run.
+Only reviewed runtime sources and public web assets are added as data.  Local
+configuration, article history, practice sessions, logs, caches, and build
+outputs are deliberately outside this manifest.
 """
 
 from __future__ import annotations
@@ -35,9 +35,16 @@ DESKTOP_MOCK_FILES = (
     "momo_provider.py",
     "real_momo_provider.py",
 )
-DATA_PATHS = (
-    (ROOT / "packages" / "dairr_core" / "src" / "dairr_core", Path("dairr_core")),
-    (ROOT / "addon" / "daily_ai_reading_reinforcement" / "web", Path("addon/daily_ai_reading_reinforcement/web")),
+CORE_SOURCE_DIR = ROOT / "packages" / "dairr_core" / "src" / "dairr_core"
+WEB_SOURCE_DIR = ROOT / "addon" / "daily_ai_reading_reinforcement" / "web"
+WEB_ASSET_SUFFIXES = frozenset({".css", ".html", ".js", ".svg", ".png", ".ico", ".webp"})
+DATA_PATHS = tuple(
+    (source, Path("dairr_core"))
+    for source in sorted(CORE_SOURCE_DIR.glob("*.py"))
+) + tuple(
+    (source, Path("addon/daily_ai_reading_reinforcement/web") / source.relative_to(WEB_SOURCE_DIR).parent)
+    for source in sorted(WEB_SOURCE_DIR.rglob("*"))
+    if source.is_file() and source.suffix.lower() in WEB_ASSET_SUFFIXES
 ) + tuple(
     (ROOT / "desktop_mock" / filename, Path("desktop_mock"))
     for filename in DESKTOP_MOCK_FILES
@@ -80,6 +87,12 @@ def build_pyinstaller_command(
         pyinstaller,
         "--name",
         name,
+        "--distpath",
+        str(ROOT / "dist"),
+        "--workpath",
+        str(ROOT / "build" / "pyinstaller-work"),
+        "--specpath",
+        str(ROOT / "build" / "pyinstaller-specs"),
     ]
     if onefile:
         command.append("--onefile")

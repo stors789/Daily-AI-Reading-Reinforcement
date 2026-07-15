@@ -34,8 +34,31 @@ jobs:
           echo "value=$VERSION" >> "$GITHUB_OUTPUT"
           echo "tag=v$VERSION" >> "$GITHUB_OUTPUT"
 
-  build:
+  pre-publish:
     needs: verify-release
+    # Tauri's locked Cargo check needs the native WebKit toolchain; the macOS
+    # release runner already provides it and is one of our shipping targets.
+    runs-on: macos-14
+    timeout-minutes: 30
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "22"
+          cache: npm
+          cache-dependency-path: apps/desktop/package-lock.json
+      - uses: dtolnay/rust-toolchain@stable
+      - name: Install locked desktop tooling
+        working-directory: apps/desktop
+        run: npm ci
+      - name: Run credential-free pre-publish verification
+        run: python3 scripts/desktop_release.py pre-publish
+
+  build:
+    needs: [verify-release, pre-publish]
     strategy:
       fail-fast: false
       matrix:
@@ -43,7 +66,7 @@ jobs:
           - runner: macos-14
             updater_target: darwin-aarch64
             sidecar_target: aarch64-apple-darwin
-          - runner: macos-13
+          - runner: macos-15-intel
             updater_target: darwin-x86_64
             sidecar_target: x86_64-apple-darwin
           - runner: windows-latest
@@ -87,7 +110,7 @@ jobs:
           test -n "$APPLE_CERTIFICATE"
           test -n "$APPLE_CERTIFICATE_PASSWORD"
           test -n "$KEYCHAIN_PASSWORD"
-          echo "$APPLE_CERTIFICATE" | base64 --decode > "$RUNNER_TEMP/certificate.p12"
+          python -c 'import base64, os, pathlib; pathlib.Path(os.environ["RUNNER_TEMP"], "certificate.p12").write_bytes(base64.b64decode(os.environ["APPLE_CERTIFICATE"], validate=True))'
           security create-keychain -p "$KEYCHAIN_PASSWORD" build.keychain
           security default-keychain -s build.keychain
           security unlock-keychain -p "$KEYCHAIN_PASSWORD" build.keychain
@@ -114,7 +137,7 @@ jobs:
           test -n "$TAURI_UPDATER_PUBLIC_KEY"
           test -n "$WINDOWS_CERTIFICATE_THUMBPRINT"
           test -n "$WINDOWS_TIMESTAMP_URL"
-          python3 scripts/desktop_release.py prepare-config \
+          python scripts/desktop_release.py prepare-config \
             --version "${{ needs.verify-release.outputs.version }}" \
             --updater-public-key "$TAURI_UPDATER_PUBLIC_KEY" \
             --windows-certificate-thumbprint "$WINDOWS_CERTIFICATE_THUMBPRINT" \
@@ -123,8 +146,8 @@ jobs:
       - name: Build native Python sidecar
         shell: bash
         run: |
-          python3 package_tauri_sidecar.py --target-triple "${{ matrix.sidecar_target }}" --clean
-          python3 package_tauri_sidecar.py --target-triple "${{ matrix.sidecar_target }}" --check-placeholder
+          python package_tauri_sidecar.py --target-triple "${{ matrix.sidecar_target }}" --clean
+          python package_tauri_sidecar.py --target-triple "${{ matrix.sidecar_target }}" --check-placeholder
       - name: Build signed Tauri updater bundle
         working-directory: apps/desktop
         shell: bash
@@ -132,7 +155,7 @@ jobs:
       - name: Stage updater artifacts
         shell: bash
         run: |
-          python3 scripts/desktop_release.py collect-artifacts \
+          python scripts/desktop_release.py collect-artifacts \
             --target "${{ matrix.updater_target }}" \
             --bundle-dir apps/desktop/src-tauri/target/release/bundle \
             --output-dir release-assets

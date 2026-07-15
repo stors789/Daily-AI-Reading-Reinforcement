@@ -34,6 +34,7 @@ from typing import Callable, Sequence, TextIO
 ROOT = Path(__file__).resolve().parent
 SIDECAR_BINARIES_DIR = ROOT / "apps" / "desktop" / "src-tauri" / "binaries"
 SIDECAR_RUNTIME_DIR = SIDECAR_BINARIES_DIR / "dairr-backend"
+SIDECAR_RUNTIME_KEEPFILE = SIDECAR_RUNTIME_DIR / ".gitkeep"
 ENTRY_POINT = ROOT / "desktop_app.py"
 
 TARGET_TRIPLES = frozenset({
@@ -44,6 +45,7 @@ TARGET_TRIPLES = frozenset({
 
 DESKTOP_MOCK_FILES = (
     "ankiconnect_card_saver.py",
+    "ankiconnect_data_adapter.py",
     "ankiconnect_provider.py",
     "desktop_adapters.py",
     "dairr_core_runtime.py",
@@ -56,10 +58,16 @@ DESKTOP_MOCK_FILES = (
     "real_momo_provider.py",
 )
 
-DATA_PATHS = (
-    (ROOT / "packages" / "dairr_core" / "src" / "dairr_core", Path("dairr_core")),
-    (ROOT / "addon" / "daily_ai_reading_reinforcement" / "web",
-     Path("addon/daily_ai_reading_reinforcement/web")),
+CORE_SOURCE_DIR = ROOT / "packages" / "dairr_core" / "src" / "dairr_core"
+WEB_SOURCE_DIR = ROOT / "addon" / "daily_ai_reading_reinforcement" / "web"
+WEB_ASSET_SUFFIXES = frozenset({".css", ".html", ".js", ".svg", ".png", ".ico", ".webp"})
+DATA_PATHS = tuple(
+    (source, Path("dairr_core"))
+    for source in sorted(CORE_SOURCE_DIR.glob("*.py"))
+) + tuple(
+    (source, Path("addon/daily_ai_reading_reinforcement/web") / source.relative_to(WEB_SOURCE_DIR).parent)
+    for source in sorted(WEB_SOURCE_DIR.rglob("*"))
+    if source.is_file() and source.suffix.lower() in WEB_ASSET_SUFFIXES
 ) + tuple(
     (ROOT / "desktop_mock" / filename, Path("desktop_mock"))
     for filename in DESKTOP_MOCK_FILES
@@ -119,6 +127,12 @@ def sidecar_output_path(target_triple: str) -> Path:
 def sidecar_runtime_path(target_triple: str) -> Path:
     suffix = ".exe" if target_triple.startswith("x86_64-pc-windows") else ""
     return SIDECAR_RUNTIME_DIR / f"{sidecar_basename()}{suffix}"
+
+
+def restore_runtime_keepfile() -> None:
+    """Keep an otherwise empty runtime directory represented after local builds."""
+    SIDECAR_RUNTIME_DIR.mkdir(parents=True, exist_ok=True)
+    SIDECAR_RUNTIME_KEEPFILE.write_text("\n", encoding="utf-8")
 
 
 def add_data_separator(platform: str | None = None) -> str:
@@ -279,6 +293,7 @@ def run_packager(
     if subprocess_run is None:
         subprocess_run = subprocess.run
     result = subprocess_run(command, check=False)
+    restore_runtime_keepfile()
     if result.returncode != 0:
         print(f"PyInstaller exited with code {result.returncode}", file=err)
         return int(result.returncode)

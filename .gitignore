@@ -4,6 +4,8 @@ __pycache__/
 .uv-cache/
 .vendor-aqt/
 dist/
+build/
+config/
 desktop_mock/output/
 addon/daily_ai_reading_reinforcement/user_files/
 !addon/daily_ai_reading_reinforcement/user_files/
@@ -16,3 +18,6 @@ apps/desktop/src-tauri/binaries/dairr-backend/*
 !apps/desktop/src-tauri/binaries/dairr-backend/.gitkeep
 apps/desktop/src-tauri/binaries/*.spec
 apps/desktop/node_modules/
+apps/desktop/src-tauri/target/
+release-assets/
+*.release.json
