@@ -538,7 +538,9 @@ def _unreported_outcomes(request: ArticleGenerationRequest) -> tuple[TargetOutco
         TargetOutcome(
             target.id,
             target.category,
-            TargetOutcomeStatus.EXCLUDED if target.category is TargetCategory.EXCLUDED else TargetOutcomeStatus.UNREPORTED,
+            TargetOutcomeStatus.EXCLUDED
+            if target.category is TargetCategory.EXCLUDED
+            else TargetOutcomeStatus.UNREPORTED,
             reason="" if target.category is TargetCategory.EXCLUDED else "Plain-text mode has no target-usage mapping.",
         )
         for target in request.targets
@@ -599,7 +601,12 @@ def _string_list(
     result: list[str] = []
     skipped = 0
     for item in value:
-        text = item.strip() if isinstance(item, str) else _first_string(item, nested_keys) if isinstance(item, Mapping) else ""
+        if isinstance(item, str):
+            text = item.strip()
+        elif isinstance(item, Mapping):
+            text = _first_string(item, nested_keys)
+        else:
+            text = ""
         if text:
             result.append(text)
         else:

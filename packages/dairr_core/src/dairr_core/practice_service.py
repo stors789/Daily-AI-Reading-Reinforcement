@@ -263,10 +263,15 @@ class PracticeService:
             raise OperationError("operation_mismatch", "The review response no longer matches this request.")
         context.cancellation.raise_if_cancelled()
         segment = self._attempt_segment(prepared.session, prepared.attempt)
+        reference_was_provided = bool(
+            segment.reference_text
+            if segment
+            else self._complete_reference(prepared.session)
+        )
         parsed = parse_translation_review(
             response.content,
             mode=prepared.prompt.response_mode,
-            reference_was_provided=bool(segment.reference_text if segment else self._complete_reference(prepared.session)),
+            reference_was_provided=reference_was_provided,
             finish_reason=response.finish_reason,
         )
         categories = {

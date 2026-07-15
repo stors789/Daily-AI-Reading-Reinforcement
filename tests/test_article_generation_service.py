@@ -222,6 +222,10 @@ class ArticleGenerationServiceTests(unittest.TestCase):
             with self.subTest(raw=raw), self.assertRaises(ResponseParseError):
                 parse_article_generation_response(request(), raw, mode=ResponseMode.STRUCTURED)
 
+    def test_oversized_source_is_rejected_instead_of_silently_truncated(self) -> None:
+        with self.assertRaisesRegex(ValueError, "explicit size limit"):
+            ArticleGenerationRequest("English", source_text="x" * 500_001)
+
 
 if __name__ == "__main__":
     unittest.main()
