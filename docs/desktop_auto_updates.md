@@ -1,10 +1,17 @@
 # DAIRR desktop automatic updates
 
-The packaged macOS and Windows app uses the official Tauri v2 updater. It
-checks the static `latest.json` attached to the latest GitHub Release, verifies
-the Tauri updater signature, asks the user in a native dialog, downloads the
-matching package, installs it, and restarts DAIRR. The browser launcher and
-Anki add-on are intentionally outside this update path.
+The desktop release pipeline is designed around the official Tauri v2 updater.
+A release build with an injected public key and updater endpoint can check the
+static `latest.json` attached to a GitHub Release, verify its Tauri signature,
+ask the user in a native dialog, install the matching package, and restart
+DAIRR. The checked-in development configuration intentionally contains no
+active updater key or endpoint, so source/dev builds must not be described as
+receiving production updates. The browser launcher and Anki add-on are outside
+this update path.
+
+No update is considered production-verified until a signed test release has
+successfully upgraded an installed macOS and Windows build while preserving
+local config, article history, and practice history.
 
 ## Release inputs
 

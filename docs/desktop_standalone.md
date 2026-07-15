@@ -1,262 +1,125 @@
-# Desktop Standalone Mode
+# Desktop standalone reference
 
-This document summarizes the Phase 28/29/30 desktop architecture, provider
-modes, diagnostics, and release-time manual acceptance checklist.
+Standalone DAIRR runs the shared workbench in a native Tauri window, with the browser and pywebview launchers retained as development/fallback paths. It uses the same platform-neutral practice, scoring, prompt, provider, parsing, generation, and persistence core as the Anki add-on, but it accesses Anki **only through standard AnkiConnect**.
 
-## Current Architecture
+For task-level instructions, start with the [user guide](user-guide.md). This document focuses on the desktop host, providers, diagnostics, paths, bridge, and fallbacks.
 
-Standalone desktop mode reuses the same web UI and pure core logic as the Anki
-add-on:
+## Runtime boundary
 
 ```text
-desktop_app.py
-  -> desktop_mock/main.py
-    -> addon/daily_ai_reading_reinforcement/web/
-      -> provider/adapters
+Tauri / desktop_app.py / desktop_native.py
+  -> local Python backend (desktop_mock/main.py)
+    -> authenticated loopback bridge v2
+      -> shared application services (dairr_core)
+      -> standard AnkiConnect, MoMo, or explicit mock provider
+      -> local config, article history, and practice repository
 ```
 
-- `desktop_app.py` is the dependency-free launcher. It configures the provider,
-  starts the local HTTP server, and opens the system browser unless
-  `--no-browser` is passed.
-- `desktop_mock/main.py` serves the shared HTML/CSS/JS UI and injects a browser
-  bridge that posts UI actions to `/api/bridge`.
-- The shared web UI is `addon/daily_ai_reading_reinforcement/web/`, also used
-  by the Anki add-on.
-- Provider and adapter modules keep desktop mode decoupled from Anki's internal
-  `aqt` runtime:
-  - deck providers load today's studied cards;
-  - `DesktopConfigAdapter` reads and writes desktop config;
-  - `DesktopDeckAdapter` writes generated Markdown/HTML and, in AnkiConnect
-    mode, writes article cards back to Anki.
+- The backend binds only to loopback and serves the portable UI plus `/api/bridge` and `/api/health`.
+- Bridge requests carry protocol version and request ID. Long operations return an operation ID, run in a bounded executor, and are polled/cancelled without freezing the UI.
+- Every bridge POST requires a per-process token injected into the same-origin page. Host/Origin, JSON content type, request size, and security headers are enforced.
+- The standalone process does not import `aqt`, `mw`, Anki collection objects, scheduler internals, Qt objects, internal database handles, or add-on hooks.
 
-Phase 28 added Anki/MoMo newly learned card detection and the UI
-`新学` / `New` / `新規` filter. Phase 29 added the dependency-free
-`desktop_app.py` launcher. Phase 30 added AnkiConnect read support for today's
-cards plus AnkiConnect article-card writeback.
+## Provider modes
 
-## Provider Modes
-
-Desktop mode selects a deck provider with `--provider` or
-`DAIRR_DESKTOP_PROVIDER`.
-
-### `mock`
-
-Uses in-repository mock MoMo-like data. This mode is best for UI smoke testing
-and does not require Anki, AnkiConnect, MoMo, or network credentials.
-
-### `real_momo`
-
-Uses the real MoMo API provider. It requires `MOMO_TOKEN` or `Maimemo_key` in
-the environment. It is intended for validating external MoMo data shape while
-still running the shared desktop UI.
+Select with `--provider` or `DAIRR_DESKTOP_PROVIDER`.
 
 ### `ankiconnect`
 
-Uses a local Anki instance through the AnkiConnect add-on. It does not import
-Anki's internal Python modules and can run outside the Anki process. This mode
-supports:
+The normal standalone learning-source mode. It supports deck/card reads, normalized partial study signals, local article generation/history, and suspended article-card writeback when configured. Anki must be running for Anki-backed actions, but local pasted-text practice remains available when it is not.
 
-- reading today's studied cards;
-- grouping cards by deck and parent deck groups;
-- identifying failed and newly learned cards with conservative AnkiConnect
-  queries;
-- generating Markdown/HTML through the shared core pipeline;
-- writing generated article cards back to Anki when `create_article_cards=true`.
+Standard action coverage and limitations:
 
-## AnkiConnect Data Flow
+- `findCards` and `cardsInfo` provide candidates, identity, fields, lifetime repetitions, lapses, and state-like values where present.
+- The richer standard `getReviewsOfCards` action is optional. Ordered current-day events are used only when valid rows and authoritative Anki-day bounds are supplied; a guessed midnight is never treated as evidence.
+- `cardsInfo.reps` is lifetime metadata, not same-day attempts.
+- Standard `cardsInfo` exposes no normalized FSRS retrievability, difficulty, or stability. Those score contributions remain unavailable/zero.
+- Connection, timeout, malformed response, unsupported action, incompatible version, partial response, stale connection, and cancellation failures are classified and redacted.
 
-The Anki add-on can inspect Anki internals directly, including revlog SQL. The
-standalone AnkiConnect provider cannot access those internals, so it uses a
-conservative mapping from AnkiConnect search queries and `cardsInfo`.
+Article-card writeback uses `createDeck`, `modelNames`/`createModel`, `addNote`, `findCards`, and `suspend`. The note type is `Daily AI Reading Reinforcement Article`. An existing incompatible note type is reported rather than rewritten silently.
 
-### Reading Today's Cards
+### `real_momo`
 
-1. Candidate cards come from:
+Uses the official MoMo API provider and requires `MOMO_TOKEN` or `Maimemo_key`. MoMo is a learning source, not a substitute for AnkiConnect writeback or Anki review/FSRS evidence. Validate endpoint semantics with the repository’s MoMo probes and `api_bundle.yaml`; do not infer them from mock data.
 
-   ```text
-   findCards query="rated:1"
-   ```
+### `mock`
 
-2. Failed-today cards prefer:
+Explicit demo/test data. It requires no Anki or external credential. A real-provider failure never falls back to mock success; mock generation occurs only when mock/demo was selected.
 
-   ```text
-   findCards query="rated:1:1"
-   ```
+## Run and diagnose
 
-   If that query is unavailable or incomplete, card queue/type values from
-   `cardsInfo` provide a secondary relearning signal.
-
-3. Newly learned cards prefer:
-
-   ```text
-   findCards query="introduced:1"
-   ```
-
-   If unavailable, the provider falls back to `rated:1` plus low repetition
-   count (`reps <= 1`), excluding cards already marked failed today.
-
-4. Card rows are populated from:
-
-   ```text
-   cardsInfo cards=[...]
-   ```
-
-   The provider uses `cardId`, `note`/`noteId`, `deckName`, `fields`,
-   `question`, `reps`, `queue`, and `type` when present. Frontend rows expose
-   `cid`, `nid`, `term`, `fields`, `is_new`, `is_failed`, and `review_count`.
-
-### Writing Article Cards
-
-When `create_article_cards=true` and desktop mode is using `ankiconnect`,
-`DesktopDeckAdapter.save_article_card()` delegates to
-`AnkiConnectArticleCardSaver`.
-
-The write path is:
-
-```text
-DesktopDeckAdapter.save_article_card()
-  -> AnkiConnectArticleCardSaver.save_article_card()
-    -> createDeck
-    -> modelNames / createModel
-    -> addNote
-    -> findCards nid:<noteId>
-    -> suspend
-```
-
-Article notes use the `Daily AI Reading Reinforcement Article` note type. If the
-note type is missing, the saver creates it with the expected fields and card
-template. Created article cards are suspended by default.
-
-## Running Desktop Mode
-
-Run from the repository root.
+From the repository root:
 
 ```bash
 python3 desktop_app.py --provider mock
 python3 desktop_app.py --provider ankiconnect
 python3 desktop_app.py --provider ankiconnect --check
 python3 desktop_app.py --provider ankiconnect --check-write
-```
-
-Useful optional flags:
-
-```bash
 python3 desktop_app.py --provider ankiconnect --ankiconnect-url http://127.0.0.1:8765
 python3 desktop_app.py --provider mock --no-browser
 ```
 
-The launcher starts the local server at `http://127.0.0.1:8755` by default.
+`--check` is read-only. It validates the AnkiConnect version envelope, current-day search, sample `cardsInfo`, and DAIRR article note-type fields. `--check-write` is intentionally mutating: it creates and suspends one smoke-test reading card. Remove the test note afterward if it is unwanted.
 
-## Environment Variables
-
-- `DAIRR_DESKTOP_PROVIDER`: provider mode used by `desktop_mock/main.py`.
-  Supported values are `mock`, `real_momo`, and `ankiconnect`.
-- `DAIRR_ANKICONNECT_URL`: AnkiConnect endpoint. Defaults to
-  `http://127.0.0.1:8765`.
-- `MOMO_TOKEN` / `Maimemo_key`: token used by the `real_momo` provider.
-- `DESKTOP_OUTPUT_DIR`: base output directory for generated desktop
-  Markdown/HTML. Defaults to the packaged-app user data directory:
-  macOS `~/Library/Application Support/DAIRR/articles/`, Windows
-  `%APPDATA%/DAIRR/articles/`, and Linux `~/.local/share/dairr/articles/`.
-- `DESKTOP_CONFIG_PATH`: config JSON path used by `DesktopConfigAdapter`.
-  When unset, desktop mode reads an existing legacy `~/.dairr_config.json`
-  for compatibility. If that legacy file does not exist, it uses the
-  packaged-app user data directory: macOS
-  `~/Library/Application Support/DAIRR/config.json`, Windows
-  `%APPDATA%/DAIRR/config.json`, and Linux
-  `~/.local/share/dairr/config.json`.
-
-Related generation/config environment variables are handled by
-`DesktopConfigAdapter`, including `DAIRR_API_KEY`, `DAIRR_BASE_URL`,
-`DAIRR_MODEL`, `DAIRR_TEMPERATURE`, `DAIRR_MAX_TOKENS`, `DAIRR_PROVIDER`, and
-`DAIRR_UI_LANGUAGE`.
-
-## Diagnostics
-
-Use diagnostics before investigating UI behavior.
+Native development shell:
 
 ```bash
-python3 desktop_app.py --provider ankiconnect --check
+cd apps/desktop
+npm install
+npm run dev
 ```
 
-This verifies the AnkiConnect endpoint, response envelope, note types,
-`rated:1` search, sample `cardsInfo`, and DAIRR article note type compatibility.
+See [native shell](native_shell.md) and [packaging](packaging.md) for Tauri, sidecar, browser, and pywebview paths.
 
-```bash
-python3 desktop_app.py --provider ankiconnect --check-write
-```
+## Configuration and storage
 
-This performs an explicit write smoke test. It creates one suspended
-DAIRR smoke-test article card in Anki under the `DAIRR Smoke Test` source deck
-path and verifies that `suspend` was attempted and accepted.
+Configuration priority is:
 
-### Troubleshooting Generation Language
+1. Supported `DAIRR_*` environment variables.
+2. `DESKTOP_CONFIG_PATH` when set.
+3. Legacy `~/.dairr_config.json` when that file already exists.
+4. The platform app-data config.
+5. Core defaults.
 
-If a request for Japanese generation produces English output, use the
-development-only `debugPrompt` bridge action to inspect the preset and prompt
-that standalone desktop mode would send to the LLM. Start the standalone server
-without opening a browser:
+Platform defaults:
 
-```bash
-python3 desktop_app.py --provider ankiconnect --no-browser
-```
+| Platform | Root | Config | Articles | Practice |
+| --- | --- | --- | --- | --- |
+| macOS | `~/Library/Application Support/DAIRR/` | `config.json` | `articles/` | `practice_sessions/` |
+| Windows | `%APPDATA%\DAIRR\` | `config.json` | `articles\` | `practice_sessions\` |
+| Linux/dev | `~/.local/share/dairr/` | `config.json` | `articles/` | `practice_sessions/` |
 
-Then call the diagnostic CLI:
+`DESKTOP_OUTPUT_DIR` overrides the data root used for articles/practice. Supported generation/config overrides include `DAIRR_API_KEY`, `DAIRR_BASE_URL`, `DAIRR_MODEL`, `DAIRR_TEMPERATURE`, `DAIRR_MAX_TOKENS`, `DAIRR_PROVIDER`, and `DAIRR_UI_LANGUAGE`.
 
-```bash
-python3 tools/debug_prompt.py --deck-id "deck-japanese" --preset-id "japanese"
-```
+Config schema v2 preserves unknown/local fields while adding prompt scopes, reasoning intent, and scoring presets. Invalid optional additions fall back individually. Writes use private same-directory temporary files, `fsync`, and atomic replace where supported.
 
-Pass repeated card ids when you want to inspect the same selected-card path as
-the UI:
+## Troubleshooting
 
-```bash
-python3 tools/debug_prompt.py --deck-id "deck-japanese" --preset-id "japanese" --card-id 1001 --card-id 1002
-```
+### Anki-backed controls are unavailable
 
-The tool POSTs this bridge envelope to `/api/bridge`:
+1. Start Anki and open the intended profile.
+2. Verify AnkiConnect is enabled and restart Anki after installing/updating it.
+3. Run `python3 desktop_app.py --provider ankiconnect --check`.
+4. Confirm the endpoint (default `http://127.0.0.1:8765`) and local security software.
+5. Retry the specific operation. Pasted practice/history/config remain usable during the outage.
 
-```json
-{
-  "action": "debugPrompt",
-  "payload": {
-    "deckId": "deck-japanese",
-    "presetId": "japanese",
-    "cardIds": [1001, 1002]
-  }
-}
-```
+### A scoring signal says unavailable
 
-By default, the CLI prints a short summary containing the requested preset id,
-saved selected preset id, selected fields, selected card count, a prompt preview,
-whether that preview contains the resolved article language, and the resolved
-article/reader languages. If `articleLanguage` is `Japanese` and
-`promptContainsArticleLanguage` is true, the prompt language instruction reached
-the LLM path and the remaining issue is likely downstream model behavior. If
-they are missing or incorrect, inspect preset selection, `presetId` propagation,
-desktop config persistence, or preset field-name mismatches. Use `--json` to
-print the complete debug response. The debug payload does not include API keys.
+Open the candidate’s Evidence details. Unavailability is expected when the host cannot prove ordered review history, FSRS values, or another optional field. Do not substitute a neutral number. The remaining available signals still contribute.
 
-## Known Limitations
+### Provider generation/review fails
 
-- AnkiConnect mode is less precise than the Anki add-on's internal revlog SQL.
-- `review_count` comes from `cardsInfo.reps`, so it is closer to a cumulative
-  repetition count than a strict today-only review count.
-- If the DAIRR article note type already exists but is missing required fields,
-  diagnostics report the mismatch, but the saver does not automatically migrate
-  the note type.
-- `--check-write` creates one suspended smoke-test card in Anki. Delete it
-  manually after confirming the write path if you do not want to keep it.
+Open **API / Reasoning** and preview effective non-secret settings. Verify provider ID, base URL, model, response mode, and reasoning capability. Unknown compatible providers expose no guessed explicit reasoning fields. Public errors deliberately omit raw response bodies and prompts.
 
-## Manual Acceptance Checklist
+### Prompt language/content is unexpected
 
-- [ ] `python3 desktop_app.py --provider mock` opens the shared UI.
-- [ ] `python3 desktop_app.py --provider ankiconnect --check` passes with Anki
-  running and AnkiConnect enabled.
-- [ ] `python3 desktop_app.py --provider ankiconnect --check-write` creates a
-  suspended smoke-test card.
-- [ ] `python3 desktop_app.py --provider ankiconnect` shows today's decks.
-- [ ] Generating an article creates Markdown and HTML output.
-- [ ] With `create_article_cards=true`, generating/saving writes an article card
-  through AnkiConnect.
-- [ ] `python3 package_addon.py` still packages the Anki add-on.
+Use **Prompts → Render exact preview** for the relevant task. The rendered system/user messages are the messages transported; no substantive hidden suffix is appended. Treat the preview as private because it can contain card or pasted text.
+
+The developer `tools/debug_prompt.py` client must authenticate to the current bridge. It is for local diagnosis and does not include API keys in its summary; avoid sharing its full JSON when it contains private prompt content.
+
+## Known desktop limits
+
+- Standard AnkiConnect cannot provide the same evidence as the in-process add-on.
+- Cooperative cancellation cannot forcibly interrupt an already-blocked standard-library HTTP call; the finite timeout is the upper bound.
+- The per-process bridge token mitigates browser drive-by requests, not another local process running as the same OS user.
+- A successful local/dry-run build does not prove signed macOS notarization, Windows Authenticode/SmartScreen reputation, updater publication, or another platform’s package.

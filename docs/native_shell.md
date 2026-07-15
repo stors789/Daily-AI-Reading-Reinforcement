@@ -1,6 +1,39 @@
-# Native Shell Scaffold
+# Desktop shells
 
-DAIRR currently includes an optional pywebview native shell scaffold:
+DAIRR’s preferred standalone product shell is Tauri. The dependency-free browser launcher and optional pywebview launcher remain useful for development, diagnosis, and fallback.
+
+## Tauri (preferred)
+
+Tauri owns the native window and starts the Python backend/sidecar. The backend continues to own providers, the authenticated loopback bridge, persistence, and the portable UI.
+
+```bash
+cd apps/desktop
+npm install
+npm run dev
+```
+
+Provider examples:
+
+```bash
+DAIRR_DESKTOP_PROVIDER=ankiconnect npm run dev
+DAIRR_DESKTOP_PROVIDER=real_momo MOMO_TOKEN=your-test-token npm run dev
+```
+
+Debug builds normally start the Python development launcher. Release builds expect a real PyInstaller sidecar under the Tauri resources. Checked-in placeholders are validation aids, not distributable backends; run the sidecar build and placeholder check before building an artifact.
+
+The shell probes `/api/health` before loading the UI so another process on the configured port is not mistaken for DAIRR. The bridge itself additionally requires the per-process token and exact loopback security policy.
+
+## Browser fallback
+
+```bash
+python3 desktop_app.py --provider mock
+python3 desktop_app.py --provider ankiconnect
+python3 desktop_app.py --provider ankiconnect --no-browser
+```
+
+This is the simplest way to isolate backend/UI issues. It uses the same server, UI, actions, local data, and provider adapters as the native shell.
+
+## pywebview transition shell
 
 ```bash
 python3 desktop_native.py --provider mock
@@ -8,43 +41,18 @@ python3 desktop_native.py --provider ankiconnect
 python3 desktop_native.py --provider ankiconnect --fallback-browser
 ```
 
-This is a first native-shell entry point, not a final packaged macOS/Windows
-application. It starts the existing `desktop_mock/main.py` local server and, if
-pywebview is available in the current Python environment, opens the shared web
-UI at `http://127.0.0.1:8755` in a native window.
+pywebview is optional and is not auto-installed by the launcher. When installed, the launcher opens the same loopback UI in a native window with persistent app storage so local draft recovery continues to work. Older pywebview versions are retried without the newer `private_mode` keyword only when that exact signature is unsupported.
 
-pywebview is intentionally not committed as a project dependency. The project
-does not add a requirements file or auto-install anything from this launcher.
-If pywebview is missing, `desktop_native.py` prints:
+Supported options include `--provider mock|real_momo|ankiconnect`, `--host`, `--port`, `--ankiconnect-url`, and `--fallback-browser`. The host remains constrained to loopback by the server.
 
-```text
-pywebview is not installed. Use python3 desktop_app.py --provider mock instead.
-```
+## Distribution boundary
 
-The dependency-free launcher remains the stable standalone entry point:
+Tauri, pywebview, and browser launchers are not equivalent release evidence:
 
-```bash
-python3 desktop_app.py --provider mock
-python3 desktop_app.py --provider ankiconnect
-```
+- browser/pywebview package checks prove only those fallback entries;
+- a Tauri release requires a real target-native sidecar and installed-app smoke test;
+- macOS distribution additionally requires signature/notarization verification;
+- Windows distribution additionally requires target-native build, installer, Authenticode/timestamp, and SmartScreen validation;
+- updater signing is independent from OS signing.
 
-Use `--fallback-browser` when you want the native shell command to fall back to
-the stable browser launcher if pywebview is unavailable:
-
-```bash
-python3 desktop_native.py --provider ankiconnect --fallback-browser
-```
-
-Supported native-shell options:
-
-```text
---provider mock|real_momo|ankiconnect
---host 127.0.0.1
---port 8755
---ankiconnect-url http://127.0.0.1:8765
---fallback-browser
-```
-
-Future formal packaging can evaluate pywebview, PyQt6, Tauri, or another native
-shell option. This scaffold keeps that decision open while preserving the
-current shared server, web UI, and provider flow.
+See [packaging](packaging.md), [automatic updates](desktop_auto_updates.md), and the [manual verification guide](manual-verification.md).
