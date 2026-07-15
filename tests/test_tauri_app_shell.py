@@ -178,15 +178,24 @@ class TauriAppShellTests(unittest.TestCase):
         self.assertIn('fetch("/api/bridge"', page)
         self.assertIn('<main class="app-shell">', page)
 
-    def test_vertical_translation_is_overlay_and_does_not_reflow_article(self) -> None:
+    def test_vertical_translation_participates_in_flow_without_covering_columns(self) -> None:
         css = (WEB_DIR / "style.css").read_text()
         start = css.index(".vertical-rl .para-translation {")
         rule = css[start:css.index("}", start)]
-        self.assertIn("position: absolute", rule)
-        self.assertIn("right: calc(100% + 0.45em)", rule)
-        self.assertIn("overflow: visible", rule)
+        self.assertIn("position: static", rule)
+        self.assertIn("width: auto", rule)
+        self.assertIn("height: auto", rule)
+        self.assertNotIn("position: absolute", rule)
+        self.assertNotIn("right: calc(100%", rule)
         self.assertNotIn("overflow: auto", rule)
-        self.assertNotIn(".vertical-rl .translation-open", css)
+
+        group_start = css.index(".vertical-rl .reading-para-group {")
+        group_rule = css[group_start:css.index("}", group_start)]
+        self.assertIn("display: block", group_rule)
+
+        open_start = css.index(".vertical-rl .translation-open {")
+        open_rule = css[open_start:css.index("}", open_start)]
+        self.assertIn("margin-left: 0.8em", open_rule)
 
         scroll_rule_start = css.index(".reading-mode .vertical-rl .article-scroll {")
         scroll_rule = css[scroll_rule_start:css.index("}", scroll_rule_start)]

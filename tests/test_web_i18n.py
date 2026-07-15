@@ -41,9 +41,9 @@ class WebI18nTests(unittest.TestCase):
         ):
             self.assertIn(f'tr("{key}")', source)
         self.assertIn('setStatus("savingToCard")', source)
+        self.assertIn('newApiProfileOption.textContent = tr("newApiProfile")', source)
         self.assertNotIn('state.uiLanguage === "zh" ? "新建配置"', source)
         self.assertNotIn('{ message: "Saving to card..." }', source)
-
 
 if __name__ == "__main__":
     unittest.main()

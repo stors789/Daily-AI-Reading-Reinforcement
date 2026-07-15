@@ -325,6 +325,25 @@
       momoKeySaved: "墨墨 API 已保存",
       momoNoKey: "未保存墨墨 API",
       enterNewMomoKey: "留空则保留已保存墨墨 API",
+      navGenerate: "生成",
+      navPractice: "翻译练习",
+      navArticles: "文章",
+      navPracticeHistory: "练习历史",
+      navScoring: "巩固评分",
+      navPrompts: "提示词",
+      navApiReasoning: "API / 推理",
+      createPractice: "创建练习",
+      saveSession: "保存练习",
+      reviewTranslation: "点评翻译",
+      refreshPracticeHistory: "刷新",
+      previewCandidates: "预览候选卡",
+      useTargetPlan: "使用目标方案",
+      saveScoring: "保存评分设置",
+      renderPromptPreview: "渲染最终预览",
+      savePrompt: "保存提示词",
+      editApiProfile: "编辑 API 配置",
+      previewReasoning: "预览有效设置",
+      saveReasoning: "保存推理设置",
      writingHorizontal: "横排",
      writingVertical: "竖排",
      weekdays: ["日", "一", "二", "三", "四", "五", "六"],
@@ -499,6 +518,25 @@
       momoKeySaved: "MoMo API saved",
       momoNoKey: "No MoMo API",
       enterNewMomoKey: "Leave blank to keep saved MoMo API",
+      navGenerate: "Generate",
+      navPractice: "Practice",
+      navArticles: "Articles",
+      navPracticeHistory: "Practice history",
+      navScoring: "Scoring",
+      navPrompts: "Prompts",
+      navApiReasoning: "API / Reasoning",
+      createPractice: "Create practice",
+      saveSession: "Save session",
+      reviewTranslation: "Review translation",
+      refreshPracticeHistory: "Refresh",
+      previewCandidates: "Preview candidates",
+      useTargetPlan: "Use target plan",
+      saveScoring: "Save scoring",
+      renderPromptPreview: "Render exact preview",
+      savePrompt: "Save prompt",
+      editApiProfile: "Edit API profile",
+      previewReasoning: "Preview effective settings",
+      saveReasoning: "Save reasoning",
      writingHorizontal: "Horizontal",
      writingVertical: "Vertical",
      weekdays: ["S", "M", "T", "W", "T", "F", "S"],
@@ -673,6 +711,25 @@
       momoKeySaved: "MoMo API 保存済み",
       momoNoKey: "MoMo API なし",
       enterNewMomoKey: "空欄なら保存済み MoMo API を保持",
+      navGenerate: "生成",
+      navPractice: "翻訳練習",
+      navArticles: "記事",
+      navPracticeHistory: "練習履歴",
+      navScoring: "強化スコア",
+      navPrompts: "プロンプト",
+      navApiReasoning: "API / 推論",
+      createPractice: "練習を作成",
+      saveSession: "練習を保存",
+      reviewTranslation: "翻訳を添削",
+      refreshPracticeHistory: "更新",
+      previewCandidates: "候補をプレビュー",
+      useTargetPlan: "対象プランを使用",
+      saveScoring: "スコア設定を保存",
+      renderPromptPreview: "最終プレビュー",
+      savePrompt: "プロンプトを保存",
+      editApiProfile: "API 設定を編集",
+      previewReasoning: "有効な設定を確認",
+      saveReasoning: "推論設定を保存",
      writingHorizontal: "横",
      writingVertical: "縦",
      weekdays: ["日", "月", "火", "水", "木", "金", "土"],
@@ -756,6 +813,8 @@
     if (el.apiProfileLabel) el.apiProfileLabel.textContent = tr("apiProfiles");
     if (el.apiProfileNameLabel) el.apiProfileNameLabel.textContent = tr("apiProfileName");
     if (el.apiProfileNameInput) el.apiProfileNameInput.placeholder = tr("apiProfileNamePlaceholder");
+    const newApiProfileOption = el.apiProfileSelect.querySelector('option[value=""]');
+    if (newApiProfileOption) newApiProfileOption.textContent = tr("newApiProfile");
     el.providerLabel.textContent = tr("provider");
     el.baseUrlLabel.textContent = tr("baseUrl");
     el.modelLabel.textContent = tr("model");
@@ -1116,7 +1175,8 @@
         const checked = state.selectedCardIds.has(cardId) ? " checked" : "";
         const selected = checked ? " selected" : "";
         const f = String(card.first_response || "").toUpperCase();
-        const isVague = f === "VAGUE";
+        const grades = Array.isArray(card.response_grades) ? card.response_grades : [];
+        const isVague = f === "VAGUE" || grades.includes(2);
 
         const tags = [
           card.is_new ? `<span class="tag">${tr("newCount")}</span>` : "",
@@ -1587,6 +1647,9 @@
   }
 
   window.DAIRR = {
+    saveUiTheme(uiTheme) {
+      send("saveUiTheme", { uiTheme });
+    },
     receive(message) {
       const { event, payload } = message;
       if (event === "state") {
@@ -1599,6 +1662,7 @@
         state.promptPresets = payload.promptPresets || [];
         state.selectedPromptPresetId = payload.selectedPromptPresetId || "default";
         state.uiLanguage = payload.uiLanguage || state.uiLanguage;
+        if (payload.uiTheme) applyTheme(payload.uiTheme, true);
         state.providerProfiles = payload.providerProfiles || [];
         state.apiSettings = payload.apiSettings || state.apiSettings;
         state.articleCardSettings = payload.articleCardSettings || state.articleCardSettings;
@@ -2176,6 +2240,15 @@
   let isDraggingCard = false;
   let dragSelectCardValue = true;
 
+  // Card-body selection is applied on mousedown so dragging can paint the
+  // same value across multiple cards.  Cancel the label's later default click
+  // action, otherwise Qt WebEngine toggles the nested checkbox a second time.
+  el.cardList.addEventListener("click", (e) => {
+    if (e.target.tagName !== "INPUT" && e.target.closest(".card-item")) {
+      e.preventDefault();
+    }
+  });
+
   el.cardList.addEventListener("mousedown", (e) => {
     const item = e.target.closest(".card-item");
     if (!item) return;
@@ -2387,6 +2460,901 @@
 })();
 
 
+// --- Next-major workbench integration ---------------------------------------
+// This layer consumes only the versioned host contract. Domain decisions remain
+// in dairr_core; the portable UI owns navigation, editable drafts, and stale
+// response suppression.
+(function initReleaseWorkbench() {
+  "use strict";
+
+  const BRIDGE_VERSION = 2;
+  const MAX_PASTED_CHARACTERS = 50000;
+  const releaseState = {
+    view: "generate",
+    capabilities: {},
+    practiceLimits: { maxSourceCharacters: MAX_PASTED_CHARACTERS },
+    practiceKind: "pasted_text",
+    practiceScope: "segment",
+    practiceSession: null,
+    practiceSessions: [],
+    selectedSegmentIndex: 0,
+    revisionOf: null,
+    draftDirty: false,
+    autosaveTimer: null,
+    latestRequests: new Map(),
+    requestActions: new Map(),
+    activeOperations: new Map(),
+    operationActions: new Map(),
+    operationPolls: new Map(),
+    scoringConfig: null,
+    scoringMode: "simple",
+    scoringCandidates: [],
+    scoringOverrides: new Map(),
+    targetPlanActive: false,
+    promptTemplate: null,
+    reasoningCapabilities: null,
+    pendingImportKind: null,
+  };
+
+  const $ = (id) => document.getElementById(id);
+  const qa = (selector, root = document) => Array.from(root.querySelectorAll(selector));
+
+  function requestId() {
+    if (window.crypto && typeof window.crypto.randomUUID === "function") return window.crypto.randomUUID();
+    return `ui-${Date.now().toString(36)}-${Math.random().toString(36).slice(2)}`;
+  }
+
+  function sendV2(action, payload = {}, options = {}) {
+    const id = requestId();
+    const envelope = { version: BRIDGE_VERSION, requestId: id, action, payload };
+    releaseState.latestRequests.set(options.channel || action, id);
+    releaseState.requestActions.set(id, { action, channel: options.channel || action });
+    const bridge = window.__DAIRR_BRIDGE__;
+    if (bridge && typeof bridge.sendRequest === "function") {
+      bridge.sendRequest(envelope);
+    } else if (bridge && typeof bridge.send === "function") {
+      bridge.send(action, payload, envelope);
+    } else if (typeof window.pycmd === "function") {
+      window.pycmd(JSON.stringify(envelope));
+    }
+    return id;
+  }
+
+  function isCurrent(message) {
+    const meta = releaseState.requestActions.get(message.requestId);
+    if (!meta) return true; // Legacy bridge may have generated the request ID.
+    return releaseState.latestRequests.get(meta.channel) === message.requestId;
+  }
+
+  function escapeText(value) {
+    return String(value == null ? "" : value)
+      .replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;")
+      .replace(/"/g, "&quot;").replace(/'/g, "&#39;");
+  }
+
+  function showToast(message) {
+    const region = $("toastRegion");
+    if (!region || !message) return;
+    const toast = document.createElement("div");
+    toast.className = "workbench-toast";
+    toast.textContent = message;
+    region.appendChild(toast);
+    window.setTimeout(() => toast.remove(), 3600);
+  }
+
+  function setError(id, message) {
+    const target = $(id);
+    if (target) target.textContent = message || "";
+  }
+
+  function setView(view) {
+    if (view === "articles") {
+      const historyButton = $("historyButton");
+      if (historyButton) historyButton.click();
+      return;
+    }
+    releaseState.view = view;
+    qa("[data-view-panel]").forEach((panel) => {
+      const active = panel.dataset.viewPanel === view;
+      panel.hidden = !active;
+      panel.classList.toggle("active", active);
+    });
+    qa(".workbench-nav-item").forEach((button) => {
+      const active = button.dataset.view === view;
+      button.classList.toggle("active", active);
+      if (active) button.setAttribute("aria-current", "page");
+      else button.removeAttribute("aria-current");
+    });
+    if (view === "practice-history") sendV2("listPracticeSessions", {}, { channel: "practiceHistory" });
+    if (view === "scoring" && !releaseState.scoringConfig) sendV2("getScoringConfig");
+    if (view === "prompts") loadPromptTemplate();
+    if (view === "api") sendV2("getReasoningSettings");
+    window.scrollTo({ top: 0, behavior: "smooth" });
+  }
+
+  function renderCapabilities(payload) {
+    releaseState.capabilities = payload.capabilities || {};
+    releaseState.practiceLimits = payload.practiceLimits || releaseState.practiceLimits;
+    const values = Object.values(releaseState.capabilities);
+    const available = values.filter((item) => item.status === "available").length;
+    const summary = $("capabilitySummary");
+    if (summary) summary.textContent = `${available} of ${values.length} workspace capabilities available · Pasted-text practice stays local and independent of Anki.`;
+    const dot = document.querySelector(".capability-dot");
+    if (dot) {
+      dot.classList.remove("checking");
+      dot.classList.toggle("limited", available < values.length);
+    }
+    const pasted = releaseState.capabilities.pasted_text_practice;
+    const create = $("createPracticeButton");
+    if (create && pasted && pasted.status !== "available") {
+      create.disabled = true;
+      create.title = pasted.message || pasted.detail || "Pasted-text practice is unavailable.";
+    }
+    const reasoning = releaseState.capabilities.provider_reasoning;
+    if (reasoning) renderReasoningCapabilityReason(reasoning.message || reasoning.detail, reasoning.status === "available");
+  }
+
+  function setPracticeKind(kind) {
+    releaseState.practiceKind = kind;
+    qa("[data-practice-kind]").forEach((button) => button.classList.toggle("active", button.dataset.practiceKind === kind));
+    $("pastedPracticeSetup").hidden = kind !== "pasted_text";
+    $("articlePracticeSetup").hidden = kind !== "article";
+    if (kind === "article") {
+      const historyButton = $("historyButton");
+      if (historyButton) historyButton.click();
+      window.setTimeout(() => { if ($("historyCloseButton")) $("historyCloseButton").click(); }, 0);
+    }
+  }
+
+  function practiceStorageKey(sessionId) { return `dairr.practice-draft.v2.${sessionId}`; }
+
+  function rememberLocalDraft() {
+    const session = releaseState.practiceSession;
+    if (!session) return;
+    const snapshot = {
+      sessionId: session.id,
+      revision: session.revision,
+      segmentId: currentSegment() ? currentSegment().id : null,
+      scope: releaseState.practiceScope,
+      translation: $("practiceTranslation").value,
+      segments: (session.segments || []).map((segment) => ({ ...segment })),
+      savedAt: new Date().toISOString(),
+    };
+    try { localStorage.setItem(practiceStorageKey(session.id), JSON.stringify(snapshot)); } catch (_error) { /* storage may be disabled */ }
+  }
+
+  function recoverLocalDraft(session) {
+    try {
+      const raw = localStorage.getItem(practiceStorageKey(session.id));
+      if (!raw) return null;
+      const saved = JSON.parse(raw);
+      if (saved && saved.revision === session.revision && typeof saved.translation === "string") return saved;
+    } catch (_error) { /* corrupt local recovery data is optional */ }
+    return null;
+  }
+
+  function currentSegment() {
+    const session = releaseState.practiceSession;
+    return session && session.segments ? session.segments[releaseState.selectedSegmentIndex] : null;
+  }
+
+  function currentPracticeTranslation(session = releaseState.practiceSession) {
+    if (!session) return "";
+    if (releaseState.practiceScope === "complete_text") return session.completeTextDraft || "";
+    const segment = currentSegment();
+    return segment ? (session.segmentDrafts || {})[segment.id] || "" : "";
+  }
+
+  function applyPracticeSession(session, options = {}) {
+    releaseState.practiceSession = session;
+    releaseState.selectedSegmentIndex = Math.min(releaseState.selectedSegmentIndex, Math.max(0, (session.segments || []).length - 1));
+    releaseState.draftDirty = false;
+    $("practiceEmpty").hidden = true;
+    $("practiceEditor").hidden = false;
+    $("savePracticeButton").disabled = false;
+    $("practiceSessionLabel").textContent = `${session.kind === "article" ? "Article" : "Pasted text"} · ${session.sourceLanguage} → ${session.targetLanguage}`;
+    setDraftState(session.lastAutosavedAt ? `Saved ${formatRelativeTime(session.lastAutosavedAt)}` : "Not saved yet", false);
+    renderPracticeEditor();
+    renderPracticeAttempts();
+    const recovered = options.recover === false ? null : recoverLocalDraft(session);
+    if (recovered) {
+      releaseState.practiceScope = recovered.scope === "complete_text" ? "complete_text" : "segment";
+      const recoveredIndex = (session.segments || []).findIndex((item) => item.id === recovered.segmentId);
+      if (recoveredIndex >= 0) releaseState.selectedSegmentIndex = recoveredIndex;
+      if (Array.isArray(recovered.segments) && recovered.segments.length) {
+        session.segments = recovered.segments;
+        session.sourceText = recovered.segments.map((segment) => segment.sourceText).join("\n\n");
+      }
+      renderPracticeEditor();
+      $("practiceTranslation").value = recovered.translation;
+      markPracticeDirty("Recovered a local unsaved draft");
+    }
+  }
+
+  function formatRelativeTime(value) {
+    const time = Date.parse(value || "");
+    if (!Number.isFinite(time)) return "locally";
+    const seconds = Math.max(0, Math.round((Date.now() - time) / 1000));
+    if (seconds < 60) return "just now";
+    if (seconds < 3600) return `${Math.floor(seconds / 60)}m ago`;
+    return new Date(time).toLocaleString();
+  }
+
+  function setDraftState(text, dirty) {
+    const state = $("practiceDraftState");
+    if (!state) return;
+    state.textContent = text;
+    state.classList.toggle("unsaved", Boolean(dirty));
+  }
+
+  function markPracticeDirty(message = "Unsaved changes") {
+    releaseState.draftDirty = true;
+    setDraftState(message, true);
+    rememberLocalDraft();
+    window.clearTimeout(releaseState.autosaveTimer);
+    releaseState.autosaveTimer = window.setTimeout(() => savePracticeDraft(false), 900);
+  }
+
+  function setPracticeScope(scope) {
+    saveDraftInMemory();
+    releaseState.practiceScope = scope;
+    qa("[data-practice-scope]").forEach((button) => button.classList.toggle("active", button.dataset.practiceScope === scope));
+    renderPracticeEditor();
+  }
+
+  function saveDraftInMemory() {
+    const session = releaseState.practiceSession;
+    if (!session || !$("practiceTranslation")) return;
+    if (releaseState.practiceScope === "complete_text") session.completeTextDraft = $("practiceTranslation").value;
+    else {
+      const segment = currentSegment();
+      if (segment) {
+        session.segmentDrafts = session.segmentDrafts || {};
+        session.segmentDrafts[segment.id] = $("practiceTranslation").value;
+      }
+    }
+  }
+
+  function selectSegment(index) {
+    saveDraftInMemory();
+    releaseState.selectedSegmentIndex = Math.max(0, Math.min(index, releaseState.practiceSession.segments.length - 1));
+    releaseState.practiceScope = "segment";
+    renderPracticeEditor();
+  }
+
+  function segmentReviewed(segmentId) {
+    return (releaseState.practiceSession.attempts || []).some((attempt) => (attempt.segmentIds || []).includes(segmentId) && attempt.review);
+  }
+
+  function renderPracticeEditor() {
+    const session = releaseState.practiceSession;
+    if (!session) return;
+    const segment = currentSegment();
+    qa("[data-practice-scope]").forEach((button) => button.classList.toggle("active", button.dataset.practiceScope === releaseState.practiceScope));
+    $("segmentRail").innerHTML = (session.segments || []).map((item, index) => {
+      const classes = ["segment-marker"];
+      if (index === releaseState.selectedSegmentIndex && releaseState.practiceScope === "segment") classes.push("active");
+      if ((session.segmentDrafts || {})[item.id]) classes.push("has-draft");
+      if (segmentReviewed(item.id)) classes.push("reviewed");
+      return `<button type="button" class="${classes.join(" ")}" data-segment-index="${index}" aria-label="Open segment ${index + 1}">${index + 1}</button>`;
+    }).join("");
+    const complete = releaseState.practiceScope === "complete_text";
+    $("segmentPosition").textContent = complete ? `Complete text · ${session.segments.length} segments` : `Segment ${releaseState.selectedSegmentIndex + 1} of ${session.segments.length}`;
+    $("segmentLanguagePair").textContent = `${session.sourceLanguage} → ${session.targetLanguage}`;
+    $("segmentSourceEditor").value = complete ? session.sourceText : (segment ? segment.sourceText : "");
+    $("segmentSourceEditor").readOnly = complete || Boolean((session.attempts || []).length);
+    $("practiceTranslation").value = currentPracticeTranslation();
+    const reference = !complete && segment ? segment.referenceText : null;
+    $("practiceReferenceBlock").hidden = !reference;
+    $("practiceReferenceText").textContent = reference || "";
+    $("practiceReferenceText").hidden = true;
+    $("revealReferenceButton").setAttribute("aria-expanded", "false");
+    $("revealReferenceButton").textContent = "Reveal reference";
+    ["splitSegmentButton", "mergeSegmentButton", "moveSegmentUpButton", "moveSegmentDownButton"].forEach((id) => { $(id).disabled = complete || Boolean((session.attempts || []).length); });
+    $("moveSegmentUpButton").disabled = complete || releaseState.selectedSegmentIndex === 0 || Boolean((session.attempts || []).length);
+    $("moveSegmentDownButton").disabled = complete || releaseState.selectedSegmentIndex >= session.segments.length - 1 || Boolean((session.attempts || []).length);
+  }
+
+  function renderPracticeAttempts() {
+    const session = releaseState.practiceSession;
+    const container = $("practiceAttempts");
+    if (!session || !(session.attempts || []).length) {
+      container.innerHTML = '<p class="empty-state">No reviewed attempts yet.</p>';
+      return;
+    }
+    container.innerHTML = session.attempts.slice().reverse().map((attempt, index) => `
+      <article class="attempt-row">
+        <strong>${session.attempts.length - index}</strong>
+        <span>${escapeText(attempt.scope === "segment" ? "Segment attempt" : "Complete-text attempt")} · ${escapeText(formatRelativeTime(attempt.createdAt))}</span>
+        <button class="text-button" type="button" data-revise-attempt="${escapeText(attempt.id)}">Revise</button>
+        <p>${escapeText(attempt.translation)}</p>
+      </article>`).join("");
+  }
+
+  function savePracticeDraft(persist = true) {
+    const session = releaseState.practiceSession;
+    if (!session) return;
+    saveDraftInMemory();
+    const segment = releaseState.practiceScope === "segment" ? currentSegment() : null;
+    sendV2("savePracticeDraft", {
+      sessionId: session.id,
+      revision: session.revision,
+      segmentId: segment ? segment.id : null,
+      translation: currentPracticeTranslation(),
+      persist,
+    }, { channel: "practiceDraft" });
+    setDraftState(persist ? "Saving session…" : "Autosaving…", true);
+  }
+
+  function commitSegments(segments) {
+    const session = releaseState.practiceSession;
+    if (!session) return;
+    session.segments = segments.map((segment, position) => ({ ...segment, position }));
+    session.sourceText = session.segments.map((segment) => segment.sourceText).join("\n\n");
+    renderPracticeEditor();
+    setDraftState("Saving segmentation…", true);
+    sendV2("updatePracticeSegments", { sessionId: session.id, revision: session.revision, segments: session.segments, persist: true }, { channel: "practiceSegments" });
+  }
+
+  function splitCurrentSegment() {
+    const editor = $("segmentSourceEditor");
+    const segment = currentSegment();
+    if (!segment || releaseState.practiceScope !== "segment") return;
+    const cursor = editor.selectionStart;
+    const before = editor.value.slice(0, cursor).trim();
+    const after = editor.value.slice(cursor).trim();
+    if (!before || !after) return setError("practiceEditorError", "Place the cursor between two non-empty parts of the segment.");
+    const segments = releaseState.practiceSession.segments.slice();
+    segments.splice(releaseState.selectedSegmentIndex, 1,
+      { ...segment, sourceText: before, referenceText: null },
+      { id: `segment-${Date.now().toString(36)}`, position: 0, sourceText: after, referenceText: null });
+    commitSegments(segments);
+  }
+
+  function mergeNextSegment() {
+    const session = releaseState.practiceSession;
+    const index = releaseState.selectedSegmentIndex;
+    if (!session || index >= session.segments.length - 1) return;
+    const current = session.segments[index], next = session.segments[index + 1];
+    const merged = { ...current, sourceText: `${current.sourceText}\n\n${next.sourceText}`, referenceText: [current.referenceText, next.referenceText].filter(Boolean).join("\n\n") || null };
+    const segments = session.segments.slice();
+    segments.splice(index, 2, merged);
+    commitSegments(segments);
+  }
+
+  function moveSegment(delta) {
+    const segments = releaseState.practiceSession.segments.slice();
+    const from = releaseState.selectedSegmentIndex, to = from + delta;
+    if (to < 0 || to >= segments.length) return;
+    [segments[from], segments[to]] = [segments[to], segments[from]];
+    releaseState.selectedSegmentIndex = to;
+    commitSegments(segments);
+  }
+
+  function showPracticeOperation(operationId, title = "Reviewing translation…") {
+    releaseState.activeOperations.set("practice", operationId);
+    $("practiceOperation").hidden = false;
+    $("practiceOperationTitle").textContent = title;
+    $("practiceOperationDetail").textContent = "You can cancel without losing the draft.";
+    $("practiceOperationProgress").style.width = "8%";
+    $("cancelPracticeOperationButton").hidden = false;
+    $("submitPracticeButton").disabled = true;
+  }
+
+  function clearPracticeOperation() {
+    $("practiceOperation").hidden = true;
+    $("cancelPracticeOperationButton").hidden = true;
+    $("submitPracticeButton").disabled = false;
+    releaseState.activeOperations.delete("practice");
+  }
+
+  function pollOperation(operationId) {
+    window.clearTimeout(releaseState.operationPolls.get(operationId));
+    releaseState.operationPolls.set(operationId, window.setTimeout(() => sendV2("operationStatus", { operationId }, { channel: `poll:${operationId}` }), 300));
+  }
+
+  function renderReview(result) {
+    const review = result.review || {};
+    $("practiceFeedback").hidden = false;
+    $("feedbackSummary").textContent = review.overall || "Review feedback";
+    $("feedbackScore").textContent = review.score != null ? String(review.score) : "";
+    const categories = review.categories || {};
+    $("feedbackCategories").innerHTML = Object.entries(categories).map(([name, value]) => {
+      const text = Array.isArray(value) ? value.join(" · ") : value;
+      return `<article class="feedback-category"><strong>${escapeText(name.replace(/_/g, " "))}</strong><p>${escapeText(text)}</p></article>`;
+    }).join("") || '<p class="field-help">The provider returned plain-text feedback.</p>';
+    const suggestion = review.suggestedRevision || review.suggestedTranslation;
+    $("suggestedRevision").hidden = !suggestion;
+    if (suggestion) $("suggestedRevision").querySelector("p").textContent = suggestion;
+    $("practiceFeedback").scrollIntoView({ behavior: "smooth", block: "nearest" });
+  }
+
+  function renderPracticeHistory(sessions) {
+    releaseState.practiceSessions = sessions || [];
+    const container = $("practiceHistoryList");
+    if (!releaseState.practiceSessions.length) {
+      container.innerHTML = '<div class="empty-state">No saved practice sessions yet. Save one from Practice to reopen it here.</div>';
+      return;
+    }
+    container.innerHTML = releaseState.practiceSessions.map((session) => `
+      <article class="practice-history-card">
+        <button type="button" class="practice-history-open" data-practice-session-id="${escapeText(session.id)}">
+          <span class="panel-kicker">${escapeText(session.kind === "article" ? "Article" : "Pasted text")}</span>
+          <h3>${escapeText(session.articleTitle || `${session.sourceLanguage} → ${session.targetLanguage}`)}</h3>
+          <p>${escapeText(session.status)} · ${Number(session.attemptCount || 0)} attempts · ${escapeText(formatRelativeTime(session.updatedAt))}</p>
+        </button>
+        <button class="text-button history-delete-action" type="button" data-delete-practice-session="${escapeText(session.id)}">Delete</button>
+      </article>`).join("");
+  }
+
+  function scoringScopePayload() {
+    const selected = releaseState.scoringConfig && releaseState.scoringConfig.presets
+      ? releaseState.scoringConfig.presets.find((item) => item.id === $("scoringPreset").value) : null;
+    if (!selected) return null;
+    const preset = JSON.parse(JSON.stringify(selected));
+    preset.mode = releaseState.scoringMode;
+    preset.normalization = $("scoreNormalization").value;
+    preset.selection = {
+      minimumInclusionScore: Number($("minimumInclusionScore").value),
+      maximumSelectedCards: Number($("maximumSelectedCards").value),
+      requiredTargetCount: Number($("requiredTargetCount").value),
+      preferredTargetCount: Number($("preferredTargetCount").value),
+      optionalTargetCount: Number($("optionalTargetCount").value),
+    };
+    qa("[data-signal-rule]").forEach((row) => {
+      const rule = preset.rules[row.dataset.signalRule];
+      if (!rule) return;
+      rule.enabled = row.querySelector('[data-role="enabled"]').checked;
+      rule.weight = Number(row.querySelector('[data-role="weight"]').value);
+      rule.transform = row.querySelector('[data-role="transform"]').value;
+    });
+    return preset;
+  }
+
+  function renderScoringConfig(payload) {
+    releaseState.scoringConfig = payload;
+    const select = $("scoringPreset");
+    select.innerHTML = (payload.presets || []).map((preset) => `<option value="${escapeText(preset.id)}">${escapeText(preset.name)}</option>`).join("");
+    select.value = payload.selectedPresetId || (payload.presets && payload.presets[0] ? payload.presets[0].id : "");
+    renderSelectedScoringPreset();
+  }
+
+  function renderSelectedScoringPreset() {
+    const payload = releaseState.scoringConfig;
+    if (!payload) return;
+    const preset = (payload.presets || []).find((item) => item.id === $("scoringPreset").value) || payload.presets[0];
+    if (!preset) return;
+    const selection = preset.selection || {};
+    $("minimumInclusionScore").value = selection.minimumInclusionScore ?? 0;
+    $("maximumSelectedCards").value = selection.maximumSelectedCards ?? 20;
+    $("requiredTargetCount").value = selection.requiredTargetCount ?? 5;
+    $("preferredTargetCount").value = selection.preferredTargetCount ?? 8;
+    $("optionalTargetCount").value = selection.optionalTargetCount ?? 7;
+    $("scoreNormalization").value = preset.normalization || "none";
+    const metadata = payload.signalMetadata ? payload.signalMetadata[releaseState.scoringMode] || [] : [];
+    $("scoringSignalList").innerHTML = metadata.map((meta) => {
+      const rule = (preset.rules || {})[meta.signal] || { enabled: false, weight: 0, transform: "linear" };
+      return `<div class="signal-row" data-signal-rule="${escapeText(meta.signal)}">
+        <label class="signal-name"><strong>${escapeText(meta.label)}</strong><small>${escapeText(meta.explanation)}</small></label>
+        <label class="inline-check"><input data-role="enabled" type="checkbox" ${rule.enabled ? "checked" : ""}><span>Use</span></label>
+        <label><span class="sr-only">Weight</span><input data-role="weight" type="number" step="0.5" value="${Number(rule.weight || 0)}" title="Signal weight"></label>
+        <label><span class="sr-only">Transform</span><select data-role="transform" title="Nonlinear transform"><option value="linear">Linear</option><option value="sqrt">Square root</option><option value="log1p">Log</option><option value="square">Square</option></select></label>
+      </div>`;
+    }).join("");
+    qa("[data-signal-rule]").forEach((row) => { row.querySelector('[data-role="transform"]').value = (preset.rules[row.dataset.signalRule] || {}).transform || "linear"; });
+  }
+
+  function renderScoringCandidates(result) {
+    const assignments = result.selection && result.selection.assignments ? result.selection.assignments : [];
+    releaseState.scoringCandidates = assignments;
+    releaseState.targetPlanActive = false;
+    $("useTargetPlanButton").disabled = !assignments.length;
+    if ($("useTargetPlanButton").dataset.baseLabel) $("useTargetPlanButton").textContent = $("useTargetPlanButton").dataset.baseLabel;
+    $("scoringCandidates").innerHTML = assignments.map((assignment) => {
+      const score = assignment.score || {}, contributions = score.contributions || [];
+      const unavailable = contributions.filter((item) => item.status === "unavailable");
+      const applied = contributions.filter((item) => item.status === "applied" && item.contribution !== 0);
+      return `<tr data-card-id="${escapeText(assignment.cardId)}">
+        <td><input type="checkbox" data-target-enabled aria-label="Include ${escapeText(score.term || assignment.cardId)}" ${assignment.selected ? "checked" : ""}></td>
+        <td><strong>${escapeText(score.term || assignment.cardId)}</strong><div class="muted">${escapeText(assignment.explanation || "")}</div></td>
+        <td class="score-cell">${Number(score.total || 0).toFixed(1)}</td>
+        <td><select data-target-category aria-label="Target category"><option value="required">Required</option><option value="preferred">Preferred</option><option value="optional">Optional</option><option value="excluded">Excluded</option></select></td>
+        <td><details><summary>${applied.length} contributions · ${unavailable.length} unavailable</summary><div class="contribution-list">${contributions.map((item) => `<span class="${item.contribution < 0 ? "contribution-negative" : "contribution-positive"}">${escapeText(item.signal)}: ${item.status === "unavailable" ? `unavailable (${item.reason})` : Number(item.contribution || 0).toFixed(1)}</span>`).join("")}</div></details></td>
+      </tr>`;
+    }).join("") || '<tr><td colspan="5" class="empty-state">No candidates were returned. Check the Anki capability reason above.</td></tr>';
+    qa("#scoringCandidates tr[data-card-id]").forEach((row) => { row.querySelector("[data-target-category]").value = assignments.find((item) => item.cardId === row.dataset.cardId).category; });
+  }
+
+  function promptScopePayload() {
+    const scope = $("promptOverrideScope").value;
+    return {
+      task: $("promptTask").value,
+      scope: scope === "default" ? "task" : scope,
+      providerId: scope === "provider" ? ($("providerSelect").value || "custom") : "",
+      profileId: scope === "profile" ? $("apiProfileSelect").value : "",
+    };
+  }
+
+  function loadPromptTemplate() { sendV2("getPromptTemplate", promptScopePayload(), { channel: "promptTemplate" }); }
+
+  function templatePayload() {
+    return {
+      task: $("promptTask").value,
+      systemTemplate: $("promptSystemTemplate").value,
+      userTemplate: $("promptUserTemplate").value,
+      responseMode: $("promptResponseMode").value,
+      responseContract: $("promptResponseContract").value,
+    };
+  }
+
+  function renderPromptTemplate(template) {
+    releaseState.promptTemplate = template;
+    $("promptSystemTemplate").value = template.systemTemplate || "";
+    $("promptUserTemplate").value = template.userTemplate || "";
+    $("promptResponseMode").value = template.responseMode || "structured";
+    $("promptResponseContract").value = template.responseContract || "";
+    $("promptVariables").innerHTML = (template.variables || []).map((variable) => `<button class="variable-chip" type="button" data-prompt-variable="${escapeText(variable.name)}" title="${escapeText(variable.description || "Insert variable")}">{${escapeText(variable.name)}}</button>`).join("");
+  }
+
+  function promptExampleValues() {
+    const values = {};
+    ((releaseState.promptTemplate && releaseState.promptTemplate.variables) || []).forEach((variable) => {
+      const examples = {
+        source_text: "Example source paragraph.", source_language: "English", target_language: "Japanese",
+        user_translation: "学習者の翻訳。", reference_translation: "参考訳（任意）。", proficiency_level: "B2",
+        selected_vocabulary: "example", required_targets: "example", preferred_targets: "", optional_targets: "", excluded_targets: "",
+        custom_instructions: "Keep the tone natural.", segmentation_instructions: "Prefer paragraph boundaries.",
+        article_genre: "short essay", desired_length: "300 words", output_format_contract: $("promptResponseContract").value,
+      };
+      values[variable.name] = variable.example || examples[variable.name] || "Example value";
+    });
+    return values;
+  }
+
+  function renderPromptPreview(payload) {
+    $("renderedPromptPreview").hidden = false;
+    const missing = payload.missingVariables || [];
+    if (missing.length) {
+      setError("promptError", `Missing variables: ${missing.join(", ")}`);
+      $("renderedPromptMessages").innerHTML = "";
+      return;
+    }
+    setError("promptError", "");
+    const messages = payload.messages || [{ role: "system", content: payload.system }, { role: "user", content: payload.user }].filter((item) => item.content);
+    $("renderedPromptMessages").innerHTML = messages.map((message) => `<article class="preview-message"><strong>${escapeText(message.role)}</strong><pre>${escapeText(message.content)}</pre></article>`).join("");
+    $("renderedPromptContract").textContent = payload.responseContract || "No structured response contract (plain-text mode).";
+    $("promptEffectiveSettings").textContent = JSON.stringify(payload.effectiveSettings || {}, null, 2);
+  }
+
+  function reasoningPayload() {
+    const mode = (document.querySelector('input[name="reasoningMode"]:checked') || {}).value || "provider_default";
+    if (mode !== "explicit") return { mode, control: null, effort: null, budgetTokens: null };
+    const control = $("reasoningControl").value;
+    return {
+      mode, control,
+      effort: control === "effort" ? $("reasoningEffort").value : null,
+      budgetTokens: control === "budget" ? Number($("reasoningBudget").value) : null,
+    };
+  }
+
+  function renderReasoning(payload) {
+    const intent = payload.reasoning || {};
+    releaseState.reasoningCapabilities = payload.capabilities || {};
+    const radio = document.querySelector(`input[name="reasoningMode"][value="${intent.mode || "provider_default"}"]`);
+    if (radio) radio.checked = true;
+    const caps = releaseState.reasoningCapabilities;
+    $("reasoningEffort").innerHTML = (caps.effortLevels || []).map((level) => `<option value="${escapeText(level)}">${escapeText(level)}</option>`).join("");
+    if (intent.control) $("reasoningControl").value = intent.control;
+    if (intent.effort) $("reasoningEffort").value = intent.effort;
+    if (intent.budgetTokens != null) $("reasoningBudget").value = intent.budgetTokens;
+    qa('input[name="reasoningMode"][value="explicit"]').forEach((item) => { item.disabled = !caps.supportsReasoning; });
+    renderReasoningCapabilityReason(caps.supportsReasoning ? "Explicit controls are supported by this provider." : "This provider declares no safe explicit reasoning controls. Disabled and provider default remain available.", caps.supportsReasoning);
+    updateReasoningFields();
+  }
+
+  function renderReasoningCapabilityReason(message, available) {
+    if ($("reasoningCapability")) $("reasoningCapability").textContent = available ? "Supported" : "Explicit control unavailable";
+    if ($("reasoningCapabilityReason")) $("reasoningCapabilityReason").textContent = message || "";
+  }
+
+  function updateReasoningFields() {
+    const intent = reasoningPayload();
+    $("reasoningExplicit").hidden = intent.mode !== "explicit";
+    const control = $("reasoningControl").value;
+    $("reasoningEffortField").hidden = control !== "effort";
+    $("reasoningBudgetField").hidden = control !== "budget";
+  }
+
+  function downloadJson(filename, serialized) {
+    const blob = new Blob([serialized], { type: "application/json" });
+    const url = URL.createObjectURL(blob), anchor = document.createElement("a");
+    anchor.href = url; anchor.download = filename; anchor.click();
+    window.setTimeout(() => URL.revokeObjectURL(url), 0);
+  }
+
+  function receiveReleaseMessage(message) {
+    if (!message || message.version !== BRIDGE_VERSION) return;
+    const { event, payload = {}, operationId } = message;
+    if (!isCurrent(message) && !["operationProgress", "operationCompleted", "operationFailed", "operationCancelled"].includes(event)) return;
+    if (event === "operationAccepted") {
+      const action = payload.action || (releaseState.requestActions.get(message.requestId) || {}).action;
+      releaseState.activeOperations.set(action || operationId, operationId);
+      releaseState.operationActions.set(operationId, action || "");
+      if (action === "submitPracticeReview") showPracticeOperation(operationId);
+      pollOperation(operationId);
+      return;
+    }
+    if (event === "operationProgress") {
+      const progress = Number(payload.progress ?? payload.fraction ?? 0.2);
+      if ($("practiceOperationProgress")) $("practiceOperationProgress").style.width = `${Math.max(8, Math.min(100, progress <= 1 ? progress * 100 : progress))}%`;
+      if ($("practiceOperationDetail") && payload.message) $("practiceOperationDetail").textContent = payload.message;
+      pollOperation(operationId);
+      return;
+    }
+    if (["operationCompleted", "operationFailed", "operationCancelled"].includes(event)) {
+      window.clearTimeout(releaseState.operationPolls.get(operationId));
+      releaseState.operationPolls.delete(operationId);
+      const action = payload.action || releaseState.operationActions.get(operationId) || ((releaseState.requestActions.get(message.requestId) || {}).action) || "";
+      releaseState.operationActions.delete(operationId);
+      if (action === "submitPracticeReview" || releaseState.activeOperations.get("practice") === operationId) clearPracticeOperation();
+      if (event === "operationCompleted") {
+        const result = payload.result || {};
+        if (action === "submitPracticeReview") {
+          applyPracticeSession(result.session, { recover: false });
+          renderReview(result);
+          releaseState.revisionOf = result.attemptId || null;
+          showToast("Translation reviewed. You can revise and resubmit.");
+        } else if (action === "previewScoring") renderScoringCandidates(result);
+        else if (action === "generateTargetAware") {
+          const paragraphs = String(result.article || "").split(/\n\s*\n/);
+          const translations = Array.isArray(result.paragraphTranslations) ? result.paragraphTranslations : [];
+          const body = paragraphs.map((paragraph, index) => translations[index] ? `${paragraph}\n[T] ${translations[index]}` : paragraph).join("\n\n");
+          const saved = result.savedArticle || {};
+          $("generateButton").disabled = false;
+          $("generateButton").textContent = $("generateButton").dataset.preTargetText || "Generate";
+          if (window.DAIRR && typeof window.DAIRR.receive === "function") {
+            window.DAIRR.receive({ event: "article", payload: {
+              deckName: "Priority target plan",
+              article: `[ARTICLE_TITLE]\n${result.title || "Reading article"}\n[MAIN_ARTICLE]\n${body}`,
+              markdownPath: saved.markdown || "",
+              htmlPath: saved.html || "",
+              targetOutcomes: result.targetOutcomes || [],
+              generationWarnings: result.warnings || [],
+            }});
+          }
+          showToast(result.warnings && result.warnings.length ? `Article generated with ${result.warnings.length} warning(s).` : "Article generated from the target plan.");
+        }
+      } else {
+        const error = payload.error || {};
+        const messageText = event === "operationCancelled" ? "Operation cancelled. Your draft is still here." : (error.message || "The operation failed.");
+        if (action === "submitPracticeReview" || releaseState.view === "practice") setError("practiceEditorError", messageText);
+        if (action.toLowerCase().includes("scoring")) setError("scoringError", messageText);
+        if (action.toLowerCase().includes("prompt")) setError("promptError", messageText);
+        if (action.toLowerCase().includes("reasoning")) setError("reasoningError", messageText);
+        if (action === "generateTargetAware") {
+          $("generateButton").disabled = false;
+          $("generateButton").textContent = $("generateButton").dataset.preTargetText || "Generate";
+        }
+        showToast(messageText);
+      }
+      return;
+    }
+    if (event === "operationFailed") return;
+    if (event === "capabilitiesLoaded" || event === "capabilities") renderCapabilities(payload);
+    else if (event === "practiceSessionCreated" || event === "practiceSessionLoaded" || event === "practiceDraftSaved" || event === "practiceSegmentsUpdated") {
+      const localDraft = event === "practiceDraftSaved" && releaseState.draftDirty ? $("practiceTranslation").value : null;
+      applyPracticeSession(payload.session, { recover: event === "practiceSessionLoaded" });
+      if (event === "practiceDraftSaved") {
+        const serverDraft = $("practiceTranslation").value;
+        if (localDraft !== null && localDraft !== serverDraft) {
+          $("practiceTranslation").value = localDraft;
+          markPracticeDirty("Newer changes not saved yet");
+        } else if (payload.persisted !== false) {
+          try { localStorage.removeItem(practiceStorageKey(payload.session.id)); } catch (_error) { /* optional */ }
+        } else {
+          rememberLocalDraft();
+        }
+        if (!releaseState.draftDirty) setDraftState(payload.persisted === false ? "Autosaved locally" : "Session saved", false);
+      }
+      setError("practiceSetupError", ""); setError("practiceEditorError", "");
+    } else if (event === "practiceSessionsLoaded") renderPracticeHistory(payload.sessions || []);
+    else if (event === "practiceSessionDeleted") { showToast("Practice session deleted."); sendV2("listPracticeSessions"); }
+    else if (event === "scoringConfigLoaded") renderScoringConfig(payload);
+    else if (event === "scoringConfigExported") downloadJson("dairr-scoring-preset.json", payload.serialized || "{}");
+    else if (event === "promptTemplateLoaded" || event === "promptTemplateSaved" || event === "promptTemplateReset") renderPromptTemplate(payload.template || {});
+    else if (event === "promptTemplatesLoaded") { showToast("Prompt presets imported."); loadPromptTemplate(); }
+    else if (event === "promptTemplatesExported") downloadJson("dairr-prompt-presets.json", payload.serialized || "{}");
+    else if (event === "promptPreview") renderPromptPreview(payload);
+    else if (event === "reasoningSettingsLoaded") { renderReasoning(payload); if (payload.effectiveSettings) $("reasoningPreview").textContent = JSON.stringify(payload.effectiveSettings, null, 2); }
+    else if (event === "reasoningSettingsPreview") { renderReasoning(payload); $("reasoningPreview").textContent = JSON.stringify(payload.effectiveSettings || {}, null, 2); }
+    else if (event === "operationFailed") showToast((payload.error || {}).message || "The request failed.");
+  }
+
+  const existingReceive = window.DAIRR && window.DAIRR.receive ? window.DAIRR.receive.bind(window.DAIRR) : null;
+  if (window.DAIRR) {
+    window.DAIRR.receive = function receiveAll(message) {
+      if (existingReceive) existingReceive(message);
+      if (message && message.event === "articleList") {
+        const articles = message.payload && message.payload.articles ? message.payload.articles : [];
+        const select = $("practiceArticleSelect");
+        if (select) select.innerHTML = '<option value="">Choose an article</option>' + articles.map((article) => `<option value="${escapeText(article.path)}">${escapeText(article.title || article.deck || article.path)}</option>`).join("");
+      }
+      receiveReleaseMessage(message);
+    };
+  }
+
+  qa(".workbench-nav-item").forEach((button) => button.addEventListener("click", () => setView(button.dataset.view)));
+  qa("[data-practice-kind]").forEach((button) => button.addEventListener("click", () => setPracticeKind(button.dataset.practiceKind)));
+  qa("[data-practice-scope]").forEach((button) => button.addEventListener("click", () => setPracticeScope(button.dataset.practiceScope)));
+
+  $("practiceSourceText").addEventListener("input", () => {
+    const limit = Number(releaseState.practiceLimits.maxSourceCharacters || MAX_PASTED_CHARACTERS);
+    const length = $("practiceSourceText").value.length;
+    $("practiceTextCount").textContent = `${length.toLocaleString()} / ${limit.toLocaleString()} characters`;
+    setError("practiceSetupError", length > limit ? `This text is ${length - limit} characters over the explicit limit. Split it into separate sessions.` : "");
+  });
+
+  $("createPracticeButton").addEventListener("click", () => {
+    const common = {
+      sourceLanguage: $("practiceSourceLanguage").value.trim() || "auto",
+      targetLanguage: $("practiceTargetLanguage").value.trim(),
+      direction: $("practiceDirection").value,
+      proficiencyLevel: $("practiceProficiency").value.trim() || null,
+      customReviewInstructions: $("practiceInstructions").value,
+      save: releaseState.practiceKind === "article",
+    };
+    if (!common.targetLanguage) return setError("practiceSetupError", "Choose a target language.");
+    if (releaseState.practiceKind === "pasted_text") {
+      const sourceText = $("practiceSourceText").value.trim();
+      const limit = Number(releaseState.practiceLimits.maxSourceCharacters || MAX_PASTED_CHARACTERS);
+      if (!sourceText) return setError("practiceSetupError", "Paste or write source text first.");
+      if (sourceText.length > limit) return setError("practiceSetupError", `Text exceeds the ${limit.toLocaleString()} character limit and was not sent.`);
+      sendV2("createPastedPractice", { ...common, sourceText });
+    } else {
+      const articlePath = $("practiceArticleSelect").value;
+      if (!articlePath) return setError("practiceSetupError", "Choose a saved DAIRR article.");
+      sendV2("createArticlePractice", { ...common, articlePath });
+    }
+  });
+
+  $("segmentRail").addEventListener("click", (event) => {
+    const marker = event.target.closest("[data-segment-index]");
+    if (marker) selectSegment(Number(marker.dataset.segmentIndex));
+  });
+  $("practiceTranslation").addEventListener("input", () => markPracticeDirty());
+  $("segmentSourceEditor").addEventListener("input", () => {
+    const segment = currentSegment(); if (segment && releaseState.practiceScope === "segment") { segment.sourceText = $("segmentSourceEditor").value; markPracticeDirty("Unsaved segmentation edit"); }
+  });
+  $("segmentSourceEditor").addEventListener("change", () => {
+    const session = releaseState.practiceSession;
+    if (session && !(session.attempts || []).length && releaseState.practiceScope === "segment") commitSegments(session.segments.slice());
+  });
+  $("splitSegmentButton").addEventListener("click", splitCurrentSegment);
+  $("mergeSegmentButton").addEventListener("click", mergeNextSegment);
+  $("moveSegmentUpButton").addEventListener("click", () => moveSegment(-1));
+  $("moveSegmentDownButton").addEventListener("click", () => moveSegment(1));
+  $("savePracticeButton").addEventListener("click", () => savePracticeDraft(true));
+  $("revealReferenceButton").addEventListener("click", () => {
+    const text = $("practiceReferenceText"), reveal = text.hidden;
+    text.hidden = !reveal; $("revealReferenceButton").setAttribute("aria-expanded", String(reveal));
+    $("revealReferenceButton").textContent = reveal ? "Hide reference" : "Reveal reference";
+  });
+  $("submitPracticeButton").addEventListener("click", () => {
+    const session = releaseState.practiceSession, translation = $("practiceTranslation").value.trim();
+    if (!translation) return setError("practiceEditorError", "Write a translation before requesting review.");
+    const segment = releaseState.practiceScope === "segment" ? currentSegment() : null;
+    setError("practiceEditorError", "");
+    sendV2("submitPracticeReview", { sessionId: session.id, revision: session.revision, translation, segmentId: segment ? segment.id : null, revisionOf: releaseState.revisionOf, persist: true }, { channel: "practiceReview" });
+  });
+  $("cancelPracticeOperationButton").addEventListener("click", () => {
+    const operationId = releaseState.activeOperations.get("practice");
+    if (operationId) sendV2("cancelOperation", { operationId }, { channel: `cancel:${operationId}` });
+  });
+  $("revisePracticeButton").addEventListener("click", () => { $("practiceTranslation").focus(); $("practiceFeedback").hidden = true; });
+  $("practiceAttempts").addEventListener("click", (event) => {
+    const button = event.target.closest("[data-revise-attempt]"); if (!button) return;
+    const attempt = releaseState.practiceSession.attempts.find((item) => item.id === button.dataset.reviseAttempt);
+    if (!attempt) return; releaseState.revisionOf = attempt.id; $("practiceTranslation").value = attempt.translation; markPracticeDirty("Revision draft"); $("practiceTranslation").focus();
+  });
+  $("practiceHistoryList").addEventListener("click", (event) => {
+    const remove = event.target.closest("[data-delete-practice-session]");
+    if (remove) {
+      if (remove.dataset.confirming === "true") {
+        sendV2("deletePracticeSession", { sessionId: remove.dataset.deletePracticeSession });
+      } else {
+        remove.dataset.confirming = "true";
+        remove.textContent = "Confirm delete";
+        window.setTimeout(() => { remove.dataset.confirming = ""; remove.textContent = "Delete"; }, 4000);
+      }
+      return;
+    }
+    const card = event.target.closest("[data-practice-session-id]");
+    if (card) { setView("practice"); sendV2("loadPracticeSession", { sessionId: card.dataset.practiceSessionId }); }
+  });
+  $("refreshPracticeHistoryButton").addEventListener("click", () => sendV2("listPracticeSessions", {}, { channel: "practiceHistory" }));
+
+  qa("[data-scoring-mode]").forEach((button) => button.addEventListener("click", () => { releaseState.scoringMode = button.dataset.scoringMode; qa("[data-scoring-mode]").forEach((item) => item.classList.toggle("active", item === button)); renderSelectedScoringPreset(); }));
+  $("scoringPreset").addEventListener("change", renderSelectedScoringPreset);
+  $("saveScoringButton").addEventListener("click", () => { const preset = scoringScopePayload(); if (preset) sendV2("saveScoringConfig", { preset }); });
+  $("previewScoringButton").addEventListener("click", () => { const preset = scoringScopePayload(); if (preset) sendV2("previewScoring", { preset, manualOverrides: Array.from(releaseState.scoringOverrides, ([cardId, category]) => ({ cardId, category })) }, { channel: "scoringPreview" }); });
+  $("useTargetPlanButton").addEventListener("click", () => {
+    $("useTargetPlanButton").dataset.baseLabel = $("useTargetPlanButton").dataset.baseLabel || $("useTargetPlanButton").textContent;
+    releaseState.targetPlanActive = true;
+    $("useTargetPlanButton").textContent = "Target plan active";
+    showToast("Target plan ready. Generate will preserve your required, preferred, optional, and excluded choices.");
+    setView("generate");
+  });
+  $("resetScoringButton").addEventListener("click", (event) => { const button = event.currentTarget; if (button.dataset.confirming === "true") { button.dataset.confirming = ""; button.textContent = "Reset"; sendV2("resetScoringConfig"); } else { button.dataset.confirming = "true"; button.textContent = "Confirm reset"; window.setTimeout(() => { button.dataset.confirming = ""; button.textContent = "Reset"; }, 4000); } });
+  $("exportScoringButton").addEventListener("click", () => sendV2("exportScoringConfig", { presetId: $("scoringPreset").value }));
+  $("importScoringButton").addEventListener("click", () => { releaseState.pendingImportKind = "scoring"; $("configurationFileInput").click(); });
+  $("scoringCandidates").addEventListener("change", (event) => {
+    const row = event.target.closest("tr[data-card-id]"); if (!row) return;
+    const enabled = row.querySelector("[data-target-enabled]"), select = row.querySelector("[data-target-category]");
+    let category = select.value;
+    if (event.target === enabled) category = enabled.checked ? (category === "excluded" ? "optional" : category) : "excluded";
+    if (event.target === select) enabled.checked = category !== "excluded";
+    select.value = category;
+    releaseState.scoringOverrides.set(row.dataset.cardId, category);
+    releaseState.targetPlanActive = false;
+    $("useTargetPlanButton").textContent = "Use updated target plan";
+  });
+
+  // Preserve the legacy generation path unless the learner explicitly activates
+  // a scored target plan. Capture-phase interception keeps old add-on behavior
+  // unchanged and routes only the new categorized workflow through the v2 service.
+  $("generateButton").addEventListener("click", (event) => {
+    if (!releaseState.targetPlanActive || !releaseState.scoringCandidates.length) return;
+    event.preventDefault();
+    event.stopImmediatePropagation();
+    const overrides = releaseState.scoringOverrides;
+    const targets = releaseState.scoringCandidates.map((assignment) => {
+      const score = assignment.score || {};
+      const category = overrides.get(assignment.cardId) || assignment.category || "optional";
+      return { id: assignment.cardId, text: score.term || assignment.cardId, category };
+    });
+    const included = targets.filter((target) => target.category !== "excluded");
+    if (!included.length) { showToast("The target plan excludes every candidate. Include at least one target."); return; }
+    $("generateButton").disabled = true;
+    $("generateButton").dataset.preTargetText = $("generateButton").textContent;
+    $("generateButton").textContent = "Generating…";
+    sendV2("generateTargetAware", {
+      targets,
+      sourceLanguage: $("presetReaderNativeLanguage").value,
+      targetLanguage: $("presetArticleLanguage").value,
+      proficiencyLevel: $("presetDifficulty").value,
+      desiredLength: $("presetMaxWords").value,
+      customInstructions: $("presetInstructions").value,
+      saveArticle: true,
+    }, { channel: "targetGeneration" });
+  }, true);
+
+  $("promptTask").addEventListener("change", loadPromptTemplate); $("promptOverrideScope").addEventListener("change", loadPromptTemplate);
+  $("promptVariables").addEventListener("click", (event) => { const chip = event.target.closest("[data-prompt-variable]"); if (!chip) return; const editor = $("promptUserTemplate"), insertion = `{${chip.dataset.promptVariable}}`, start = editor.selectionStart; editor.setRangeText(insertion, start, editor.selectionEnd, "end"); editor.focus(); });
+  $("previewPromptButton").addEventListener("click", () => sendV2("previewPrompt", { ...promptScopePayload(), template: templatePayload(), values: promptExampleValues() }, { channel: "promptPreview" }));
+  $("savePromptButton").addEventListener("click", () => sendV2("savePromptTemplate", { ...promptScopePayload(), template: templatePayload() }, { channel: "promptTemplate" }));
+  $("resetPromptButton").addEventListener("click", (event) => { const button = event.currentTarget; if (button.dataset.confirming === "true") { button.dataset.confirming = ""; button.textContent = "Reset task"; sendV2("resetPromptTemplate", promptScopePayload(), { channel: "promptTemplate" }); } else { button.dataset.confirming = "true"; button.textContent = "Confirm reset"; window.setTimeout(() => { button.dataset.confirming = ""; button.textContent = "Reset task"; }, 4000); } });
+  $("exportPromptButton").addEventListener("click", () => sendV2("exportPromptTemplates"));
+  $("importPromptButton").addEventListener("click", () => { releaseState.pendingImportKind = "prompts"; $("configurationFileInput").click(); });
+
+  qa('input[name="reasoningMode"]').forEach((radio) => radio.addEventListener("change", updateReasoningFields));
+  $("reasoningControl").addEventListener("change", updateReasoningFields);
+  $("saveReasoningButton").addEventListener("click", () => sendV2("saveReasoningSettings", { reasoning: reasoningPayload() }));
+  $("previewReasoningButton").addEventListener("click", () => sendV2("previewReasoningSettings", { reasoning: reasoningPayload() }, { channel: "reasoningPreview" }));
+  $("openApiProfileSettingsButton").addEventListener("click", () => { setView("generate"); window.setTimeout(() => { const panel = document.querySelector(".settings-panel"); if (panel) panel.scrollIntoView({ behavior: "smooth", block: "start" }); }, 0); });
+
+  $("configurationFileInput").addEventListener("change", (event) => {
+    const file = event.target.files && event.target.files[0]; if (!file) return;
+    const reader = new FileReader();
+    reader.onload = () => { const serialized = String(reader.result || ""); if (releaseState.pendingImportKind === "scoring") sendV2("importScoringConfig", { serialized }); else if (releaseState.pendingImportKind === "prompts") sendV2("importPromptTemplates", { serialized }); releaseState.pendingImportKind = null; event.target.value = ""; };
+    reader.readAsText(file);
+  });
+
+  window.addEventListener("beforeunload", (event) => { if (releaseState.draftDirty) { rememberLocalDraft(); event.preventDefault(); event.returnValue = ""; } });
+
+  sendV2("getCapabilities", {}, { channel: "capabilities" });
+})();
+
+
 // --- Theme Switching Logic ---
 function initTheme() {
   const themeSelect = document.getElementById('themeSelect');
@@ -2394,13 +3362,14 @@ function initTheme() {
   
   // Load saved theme or fallback to light
   const savedTheme = localStorage.getItem('dairr_theme') || 'light';
-  document.documentElement.setAttribute('data-theme', savedTheme);
-  themeSelect.value = savedTheme;
+  applyTheme(savedTheme);
   
   themeSelect.addEventListener('change', (e) => {
     const newTheme = e.target.value;
-    document.documentElement.setAttribute('data-theme', newTheme);
-    localStorage.setItem('dairr_theme', newTheme);
+    applyTheme(newTheme, true);
+    if (typeof window.pycmd === "function" && window.DAIRR) {
+      window.DAIRR.saveUiTheme(newTheme);
+    }
     
     // Update color-scheme so native OS elements (like dropdown scrollbars) match theme
     setTimeout(() => {
@@ -2422,6 +3391,14 @@ function initTheme() {
       document.documentElement.style.colorScheme = luma < 128 ? 'dark' : 'light';
     }
   }, 50);
+}
+
+function applyTheme(theme, persist = false) {
+  const themeSelect = document.getElementById('themeSelect');
+  if (!themeSelect || !Array.from(themeSelect.options).some((option) => option.value === theme)) return;
+  document.documentElement.setAttribute('data-theme', theme);
+  themeSelect.value = theme;
+  if (persist) localStorage.setItem('dairr_theme', theme);
 }
 
 // Initialize theme as soon as DOM is ready

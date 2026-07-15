@@ -57,6 +57,21 @@
     </div>
   </header>
 
+  <nav class="workbench-nav" id="workbenchNav" aria-label="DAIRR workbench">
+    <button class="workbench-nav-item active" type="button" data-view="generate" data-i18n="navGenerate" aria-current="page">Generate</button>
+    <button class="workbench-nav-item" type="button" data-view="practice" data-i18n="navPractice">Practice</button>
+    <button class="workbench-nav-item" type="button" data-view="articles" data-i18n="navArticles">Articles</button>
+    <button class="workbench-nav-item" type="button" data-view="practice-history" data-i18n="navPracticeHistory">Practice history</button>
+    <button class="workbench-nav-item" type="button" data-view="scoring" data-i18n="navScoring">Scoring</button>
+    <button class="workbench-nav-item" type="button" data-view="prompts" data-i18n="navPrompts">Prompts</button>
+    <button class="workbench-nav-item" type="button" data-view="api" data-i18n="navApiReasoning">API / Reasoning</button>
+  </nav>
+
+  <div class="capability-strip" id="capabilityStrip" aria-live="polite">
+    <span class="capability-dot checking" aria-hidden="true"></span>
+    <span id="capabilitySummary">Checking workspace capabilities…</span>
+  </div>
+
   <section class="panel history-panel" id="historyPanel" style="display: none;">
     <div class="panel-heading">
       <h2 id="historyHeading">历史文章</h2>
@@ -105,7 +120,7 @@
     </div>
   </section>
 
-  <section class="workspace">
+  <section class="workspace app-view active" id="generateView" data-view-panel="generate">
     <div class="left-stack">
       <aside class="panel deck-panel">
         <div class="panel-heading">
@@ -253,4 +268,161 @@
      <div class="saved-paths" id="savedPaths"></div>
     </section>
   </section>
+
+  <section class="app-view practice-workbench" id="practiceView" data-view-panel="practice" hidden>
+    <aside class="panel practice-setup-panel">
+      <div class="panel-heading">
+        <div><p class="panel-kicker">Translation studio</p><h2>Practice setup</h2></div>
+        <span class="draft-state" id="practiceDraftState" role="status">Not saved yet</span>
+      </div>
+      <div class="practice-setup-body">
+        <div class="segmented-control" role="group" aria-label="Practice source">
+          <button class="active" type="button" data-practice-kind="pasted_text">Pasted text</button>
+          <button type="button" data-practice-kind="article">DAIRR article</button>
+        </div>
+        <div id="pastedPracticeSetup">
+          <label class="form-field"><span>Source text</span>
+            <textarea id="practiceSourceText" rows="11" maxlength="50000" placeholder="Paste prose here. Paragraph breaks become the first set of segments."></textarea>
+          </label>
+          <div class="text-limit-row"><span id="practiceTextCount">0 / 50,000 characters</span><span>Nothing is truncated silently.</span></div>
+        </div>
+        <div id="articlePracticeSetup" hidden>
+          <label class="form-field"><span>Saved article</span><select id="practiceArticleSelect"><option value="">Choose an article</option></select></label>
+          <p class="field-help">The article reference is a comparison point, not a single canonical answer.</p>
+        </div>
+        <div class="form-grid two-column">
+          <label class="form-field"><span>Source language</span><input id="practiceSourceLanguage" value="auto" placeholder="Detect automatically"></label>
+          <label class="form-field"><span>Target language</span><input id="practiceTargetLanguage" placeholder="e.g. Japanese" required></label>
+          <label class="form-field"><span>Direction</span><select id="practiceDirection"><option value="source_to_target">Source → target</option><option value="back_translation">Back-translation</option></select></label>
+          <label class="form-field"><span>Proficiency (optional)</span><input id="practiceProficiency" placeholder="e.g. B2 / N2"></label>
+        </div>
+        <label class="form-field"><span>Review instructions (optional)</span><textarea id="practiceInstructions" rows="3" placeholder="Focus on tone, domain vocabulary, or another learning goal."></textarea></label>
+        <button class="primary-button full-button" id="createPracticeButton" type="button" data-i18n="createPractice">Create practice</button>
+        <p class="inline-validation" id="practiceSetupError" role="alert"></p>
+      </div>
+    </aside>
+
+    <section class="panel practice-editor-panel" aria-labelledby="practiceEditorHeading">
+      <div class="panel-heading">
+        <div><p class="panel-kicker" id="practiceSessionLabel">No session open</p><h2 id="practiceEditorHeading">Translation desk</h2></div>
+        <div class="button-row">
+          <button class="secondary-button" id="savePracticeButton" type="button" data-i18n="saveSession" disabled>Save session</button>
+          <button class="secondary-button" id="cancelPracticeOperationButton" type="button" hidden>Cancel</button>
+        </div>
+      </div>
+      <div class="operation-banner" id="practiceOperation" hidden aria-live="polite">
+        <span class="operation-spinner" aria-hidden="true"></span>
+        <div><strong id="practiceOperationTitle">Working…</strong><div class="operation-track"><span id="practiceOperationProgress"></span></div><small id="practiceOperationDetail"></small></div>
+      </div>
+      <div class="practice-empty" id="practiceEmpty">
+        <p class="empty-index">あ / A</p><h3>Bring any piece of writing.</h3>
+        <p>Create a pasted-text session, or choose a saved article. Practice continues even when Anki is unavailable.</p>
+      </div>
+      <div class="practice-editor" id="practiceEditor" hidden>
+        <div class="practice-toolbar">
+          <div class="segmented-control" role="group" aria-label="Practice scope">
+            <button class="active" type="button" data-practice-scope="segment">One segment</button>
+            <button type="button" data-practice-scope="complete_text">Complete text</button>
+          </div>
+          <div class="button-row">
+            <button class="secondary-button" id="splitSegmentButton" type="button" title="Split at the text cursor">Split</button>
+            <button class="secondary-button" id="mergeSegmentButton" type="button" title="Merge with the next segment">Merge next</button>
+            <button class="secondary-button" id="moveSegmentUpButton" type="button" aria-label="Move segment earlier">↑</button>
+            <button class="secondary-button" id="moveSegmentDownButton" type="button" aria-label="Move segment later">↓</button>
+          </div>
+        </div>
+        <div class="segment-stage">
+          <nav class="segment-rail" id="segmentRail" aria-label="Practice segments"></nav>
+          <article class="segment-sheet">
+            <header class="segment-meta"><span id="segmentPosition">Segment</span><span id="segmentLanguagePair"></span></header>
+            <label class="form-field source-segment-field"><span>Source segment</span><textarea id="segmentSourceEditor" rows="7"></textarea></label>
+            <div class="reference-block" id="practiceReferenceBlock" hidden>
+              <button class="text-button" id="revealReferenceButton" type="button" aria-expanded="false">Reveal reference</button>
+              <p id="practiceReferenceText" hidden></p>
+            </div>
+            <label class="form-field translation-field"><span>Your translation</span><textarea id="practiceTranslation" rows="9" placeholder="Write a meaning-preserving translation. Valid alternatives are welcome."></textarea></label>
+            <div class="practice-submit-row">
+              <span class="field-help" id="practiceAutosaveHint">Drafts recover locally on this device.</span>
+              <button class="primary-button" id="submitPracticeButton" type="button" data-i18n="reviewTranslation">Review translation</button>
+            </div>
+            <p class="inline-validation" id="practiceEditorError" role="alert"></p>
+          </article>
+        </div>
+        <section class="feedback-sheet" id="practiceFeedback" hidden aria-live="polite">
+          <div class="feedback-heading"><div><p class="panel-kicker">AI review</p><h3 id="feedbackSummary">Review feedback</h3></div><span class="feedback-score" id="feedbackScore"></span></div>
+          <div class="feedback-categories" id="feedbackCategories"></div>
+          <div class="suggested-revision" id="suggestedRevision" hidden><h4>Suggested revision</h4><p></p></div>
+          <button class="secondary-button" id="revisePracticeButton" type="button">Revise and resubmit</button>
+        </section>
+        <section class="attempts-list" aria-labelledby="attemptsHeading"><h3 id="attemptsHeading">Previous attempts</h3><div id="practiceAttempts"></div></section>
+      </div>
+    </section>
+  </section>
+
+  <section class="app-view collection-view" id="practiceHistoryView" data-view-panel="practice-history" hidden>
+    <div class="view-heading"><div><p class="panel-kicker">Local learning record</p><h2>Practice history</h2></div><button class="secondary-button" id="refreshPracticeHistoryButton" type="button" data-i18n="refreshPracticeHistory">Refresh</button></div>
+    <div class="history-card-grid" id="practiceHistoryList"><div class="empty-state">Saved practice sessions appear here.</div></div>
+  </section>
+
+  <section class="app-view configuration-view" id="scoringView" data-view-panel="scoring" hidden>
+    <div class="view-heading"><div><p class="panel-kicker">Transparent heuristic</p><h2>Reinforcement scoring</h2><p>Rank today’s candidates without pretending to measure intrinsic difficulty.</p></div><div class="button-row"><button class="secondary-button" id="importScoringButton" type="button">Import</button><button class="secondary-button" id="exportScoringButton" type="button">Export</button><button class="danger-button" id="resetScoringButton" type="button">Reset</button></div></div>
+    <div class="config-grid scoring-grid">
+      <aside class="panel config-sidebar">
+        <div class="panel-heading"><h2>Preset and selection</h2></div>
+        <div class="config-body">
+          <div class="segmented-control" role="group" aria-label="Scoring detail"><button class="active" type="button" data-scoring-mode="simple">Simple</button><button type="button" data-scoring-mode="advanced">Advanced</button></div>
+          <label class="form-field"><span>Preset</span><select id="scoringPreset"><option value="recommended">Recommended</option></select></label>
+          <label class="form-field"><span>Minimum inclusion score</span><input id="minimumInclusionScore" type="number" step="0.1" value="0"></label>
+          <label class="form-field"><span>Maximum selected cards</span><input id="maximumSelectedCards" type="number" min="1" value="20"></label>
+          <div class="form-grid three-column target-counts"><label class="form-field"><span>Required</span><input id="requiredTargetCount" type="number" min="0" value="5"></label><label class="form-field"><span>Preferred</span><input id="preferredTargetCount" type="number" min="0" value="8"></label><label class="form-field"><span>Optional</span><input id="optionalTargetCount" type="number" min="0" value="7"></label></div>
+          <label class="form-field"><span>Score normalization</span><select id="scoreNormalization"><option value="none">None</option><option value="clamp_0_100">Clamp 0–100</option><option value="min_max_0_100">Candidate min–max</option></select></label>
+          <button class="primary-button full-button" id="saveScoringButton" type="button" data-i18n="saveScoring">Save scoring</button>
+          <p class="inline-validation" id="scoringError" role="alert"></p>
+        </div>
+      </aside>
+      <section class="panel config-main">
+        <div class="panel-heading"><div><h2>Signals</h2><p class="muted">Unavailable evidence contributes zero.</p></div><div class="button-row"><button class="secondary-button" id="previewScoringButton" type="button" data-i18n="previewCandidates">Preview candidates</button><button class="primary-button" id="useTargetPlanButton" type="button" data-i18n="useTargetPlan" disabled>Use target plan</button></div></div>
+        <div class="signal-list" id="scoringSignalList"></div>
+        <div class="candidate-table-wrap"><table class="candidate-table"><thead><tr><th scope="col">Use</th><th scope="col">Candidate</th><th scope="col"><button class="table-sort" id="sortCandidatesButton" type="button">Priority ↓</button></th><th scope="col">Category</th><th scope="col">Evidence</th></tr></thead><tbody id="scoringCandidates"><tr><td colspan="5" class="empty-state">Preview scoring to inspect candidates and contributions.</td></tr></tbody></table></div>
+      </section>
+    </div>
+  </section>
+
+  <section class="app-view configuration-view" id="promptsView" data-view-panel="prompts" hidden>
+    <div class="view-heading"><div><p class="panel-kicker">Nothing important is hidden</p><h2>Prompt workshop</h2><p>Edit the wording and inspect the exact rendered messages and response contract.</p></div><div class="button-row"><button class="secondary-button" id="importPromptButton" type="button">Import</button><button class="secondary-button" id="exportPromptButton" type="button">Export</button><button class="danger-button" id="resetPromptButton" type="button">Reset task</button></div></div>
+    <div class="config-grid prompt-grid">
+      <aside class="panel config-sidebar"><div class="panel-heading"><h2>Prompt scope</h2></div><div class="config-body">
+        <label class="form-field"><span>Task</span><select id="promptTask"><option value="article_generation">Article generation</option><option value="translation_review">Translation review</option><option value="back_translation_review">Back-translation review</option><option value="target_usage_validation">Target usage validation</option><option value="text_segmentation">Text segmentation</option><option value="preprocessing">Preprocessing</option></select></label>
+        <label class="form-field"><span>Override</span><select id="promptOverrideScope"><option value="default">Project default</option><option value="provider">Current provider</option><option value="profile">Current API profile</option></select></label>
+        <label class="form-field"><span>Response mode</span><select id="promptResponseMode"><option value="structured">Structured output</option><option value="plain_text">Plain text</option></select></label>
+        <div><span class="field-label">Documented variables</span><div class="variable-chips" id="promptVariables"></div></div>
+      </div></aside>
+      <section class="panel config-main prompt-editor"><div class="prompt-editors">
+        <label class="form-field"><span>System prompt</span><textarea id="promptSystemTemplate" rows="9" spellcheck="true"></textarea></label>
+        <label class="form-field"><span>User prompt template</span><textarea id="promptUserTemplate" rows="14" spellcheck="true"></textarea></label>
+        <label class="form-field"><span>Visible response contract</span><textarea id="promptResponseContract" rows="8"></textarea></label>
+      </div><div class="prompt-actions"><p class="inline-validation" id="promptError" role="alert"></p><button class="secondary-button" id="previewPromptButton" type="button" data-i18n="renderPromptPreview">Render exact preview</button><button class="primary-button" id="savePromptButton" type="button" data-i18n="savePrompt">Save prompt</button></div>
+      <section class="rendered-preview" id="renderedPromptPreview" hidden><div class="preview-heading"><h3>Exact request preview</h3><span>Non-secret content only</span></div><div id="renderedPromptMessages"></div><div class="contract-preview"><h4>Response contract</h4><pre id="renderedPromptContract"></pre></div><div class="effective-settings"><h4>Effective request settings</h4><pre id="promptEffectiveSettings"></pre></div></section>
+      </section>
+    </div>
+  </section>
+
+  <section class="app-view configuration-view" id="apiReasoningView" data-view-panel="api" hidden>
+    <div class="view-heading"><div><p class="panel-kicker">Provider-aware controls</p><h2>API and reasoning</h2><p>Reasoning controls follow the selected provider’s declared capabilities.</p></div><button class="secondary-button" id="openApiProfileSettingsButton" type="button" data-i18n="editApiProfile">Edit API profile</button></div>
+    <div class="config-grid api-reasoning-grid">
+      <section class="panel config-main"><div class="panel-heading"><h2>Reasoning intent</h2><span class="capability-badge" id="reasoningCapability">Checking support…</span></div><div class="config-body">
+        <div class="reasoning-mode-grid" role="radiogroup" aria-label="Reasoning mode">
+          <label class="choice-card"><input type="radio" name="reasoningMode" value="disabled"><span><strong>Disabled</strong><small>Send no reasoning or thinking parameter.</small></span></label>
+          <label class="choice-card"><input type="radio" name="reasoningMode" value="provider_default" checked><span><strong>Provider default</strong><small>Do not send an override.</small></span></label>
+          <label class="choice-card"><input type="radio" name="reasoningMode" value="explicit"><span><strong>Explicit</strong><small>Use a provider-supported effort or budget.</small></span></label>
+        </div>
+        <div class="reasoning-explicit" id="reasoningExplicit" hidden><div class="form-grid two-column"><label class="form-field"><span>Control</span><select id="reasoningControl"><option value="effort">Named effort</option><option value="budget">Token budget</option></select></label><label class="form-field" id="reasoningEffortField"><span>Effort</span><select id="reasoningEffort"></select></label><label class="form-field" id="reasoningBudgetField" hidden><span>Thinking budget</span><input id="reasoningBudget" type="number" min="0" step="1"></label></div></div>
+        <p class="capability-reason" id="reasoningCapabilityReason"></p><p class="inline-validation" id="reasoningError" role="alert"></p><div class="button-row"><button class="secondary-button" id="previewReasoningButton" type="button" data-i18n="previewReasoning">Preview effective settings</button><button class="primary-button" id="saveReasoningButton" type="button" data-i18n="saveReasoning">Save reasoning</button></div>
+      </div></section>
+      <aside class="panel config-sidebar"><div class="panel-heading"><h2>Effective settings</h2></div><div class="config-body"><p class="field-help">API keys and private prompt content never appear here.</p><pre class="diagnostic-preview" id="reasoningPreview">Choose Preview effective settings.</pre></div></aside>
+    </div>
+  </section>
+
+  <input id="configurationFileInput" type="file" accept="application/json,.json" hidden>
+  <div class="toast-region" id="toastRegion" aria-live="polite" aria-atomic="true"></div>
 </main>
