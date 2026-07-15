@@ -1,53 +1,85 @@
-# DAIRR Android shell foundation
+# DAIRR Android offline-practice shell
 
-This is a deliberately small Android shell for DAIRR's existing portable
-HTML/CSS/JS interface. It is not a Python-backend port and it does not yet
-connect to AnkiDroid, MoMo, an LLM provider, or a local desktop process.
+The Android app packages DAIRR's portable HTML/CSS/JavaScript UI in a local
+WebView and now provides a production edge for **offline pasted-text
+translation practice**. It is not a Python runtime and does not duplicate the
+shared scoring, prompt, provider, or Anki business logic.
 
-## What is already wired
+## Available on Android
 
-- Gradle packages the current shared `web/index.html`, `web/style.css`, and
-  `web/app.js` into the APK at build time. The source UI remains outside this
-  Android project and is not copied into a second editable implementation.
-- The bootstrap provides the existing UI contract:
-  `window.__DAIRR_BRIDGE__.send(action, payload)`.
-- `DairrJavascriptBridge` validates the command envelope and returns events to
-  `window.DAIRR.receive({ event, payload })`.
-- `BridgeDispatcher` is the only integration point for Android provider,
-  article, export, and history adapters. The scaffold's dispatcher fails
-  closed: it makes no provider requests and stores no data.
-- `CredentialStore` defines the credential boundary. The supplied
-  `DisabledCredentialStore` intentionally refuses writes; do not replace it
-  with plaintext `SharedPreferences`.
+- Create a pasted-text practice session without Anki or a network connection.
+- Split text at blank lines, edit/split/merge/reorder segments in the portable
+  workspace, and translate a segment or the complete text.
+- Autosave drafts in memory/browser app-private storage and explicitly persist
+  them to an app-private JSON repository.
+- List, reopen, and delete saved practice sessions.
+- Reject stale edits through persisted optimistic revisions.
+- Preserve unknown JSON envelope/session/segment fields when an older Android
+  writer updates a record.
+- Use bridge protocol v2 request/response envelopes with `requestId` and
+  privacy-safe structured failures.
 
-## Build
+The repository stores one schema-v2 file per session under the application's
+private `filesDir/practice_sessions` directory. Writes use a same-directory
+temporary file, flush and file-descriptor sync, then atomic replacement when
+the filesystem supports it. Android backup is disabled for the application.
+No source text, translation, prompt, token, or exception detail is logged.
 
-Use Android Studio (JDK 17) or a local Gradle installation with Android SDK 35:
+Explicit limits are returned by `getCapabilities` and enforced without silent
+truncation:
+
+- 50,000 source characters per session;
+- 20,000 characters per segment;
+- 500 segments per session;
+- 100,000 characters per translation draft.
+
+## Deliberately unavailable
+
+This release has no supported Android adapter for saved desktop/add-on article
+history, Anki/AnkiDroid review data, FSRS, target scoring, AI generation or
+review, prompt customization, or provider reasoning controls. These actions
+return an `operationFailed` envelope with an actionable `data_absent`,
+`provider_unsupported`, or `unavailable_in_mode` capability reason. They never
+return fake success. Paste article prose into the offline practice workspace
+when article history is unavailable.
+
+`CredentialStore` remains fail closed. Do not accept provider secrets until a
+Keystore-backed implementation and a supported Android provider adapter are
+added; plaintext `SharedPreferences` is not acceptable.
+
+## Security and lifecycle boundary
+
+- Shared assets are served from the AndroidX WebView asset-loader HTTPS origin.
+- File/content access, mixed content, and external-origin navigation are
+  blocked; only `/assets/dairr/` on `appassets.androidplatform.net` is allowed.
+- The JavaScript interface accepts only an explicit action allow-list and
+  bounded JSON envelopes.
+- Repository work runs on a dedicated background executor.
+- Activity destruction closes the dispatcher, cancels queued work, removes the
+  JavaScript interface, and destroys the WebView before late events can arrive.
+- App-private DOM storage remains enabled solely for the portable UI's
+  unsaved-draft recovery and preferences.
+
+## Build and tests
+
+Use Android Studio with JDK 17 and Android SDK 35. The repository intentionally
+does not commit a Gradle wrapper or generated APKs. A compatible local Gradle
+installation can run:
 
 ```bash
 cd apps/android
+gradle :app:testDebugUnitTest
 gradle :app:assembleDebug
 ```
 
-The build needs network access on first run to resolve the Android Gradle and
-Kotlin plugins. This repository intentionally does not commit a Gradle wrapper
-or generated APKs.
-
-## Next adapter milestone
-
-1. Implement a Keystore-backed `CredentialStore` before accepting any token.
-2. Implement a `BridgeDispatcher` that calls the platform-agnostic DAIRR core
-   contract (not `desktop_mock/main.py`), then map only capabilities supported
-   by Android.
-3. Add an AnkiDroid/export adapter behind that dispatcher; do not add Anki
-   `aqt` APIs or desktop HTTP assumptions to this shell.
-4. Add device tests after a real provider has deterministic offline fixtures.
-
-## Validation
+First use may need network access for Android Gradle and Kotlin plugin
+resolution. The SDK-free production-edge validator is always available:
 
 ```bash
-python3 tests/validate_scaffold.py
+python3 apps/android/tests/validate_scaffold.py
 ```
 
-This static test checks the asset-generation task, the exact JavaScript bridge
-contract, local-only WebView navigation, and the fail-closed credential stub.
+JVM tests cover bridge identity/allow-listing, explicit capabilities,
+privacy-safe unsupported operations, persistence round trips, unknown-field
+preservation, atomic-write cleanup, revision conflicts, manual segmentation,
+and input limits.

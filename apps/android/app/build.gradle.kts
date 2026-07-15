@@ -33,8 +33,16 @@ android {
             val bridgeBootstrap = """
                 <script>
                 window.__DAIRR_BRIDGE__ = {
-                  send: function(action, payload) {
-                    window.AndroidDairrBridge.send(String(action), JSON.stringify(payload || {}));
+                  sendRequest: function(envelope) {
+                    window.AndroidDairrBridge.sendRequest(JSON.stringify(envelope || {}));
+                  },
+                  send: function(action, payload, envelope) {
+                    window.AndroidDairrBridge.sendRequest(JSON.stringify(envelope || {
+                      version: 2,
+                      requestId: "android-" + Date.now().toString(36) + "-" + Math.random().toString(36).slice(2),
+                      action: String(action),
+                      payload: payload || {}
+                    }));
                   }
                 };
                 </script>
@@ -71,4 +79,6 @@ android {
 dependencies {
     // Serves bundled assets from a secure HTTPS origin while keeping file access disabled.
     implementation("androidx.webkit:webkit:1.12.1")
+    testImplementation("junit:junit:4.13.2")
+    testImplementation("org.json:json:20240303")
 }
