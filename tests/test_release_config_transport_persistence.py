@@ -321,6 +321,26 @@ class ArticlePersistenceReleaseTests(unittest.TestCase):
             self.assertEqual(loaded["article"], "Legacy body")
             self.assertEqual(loaded["metadata"], {})
 
+    def test_concurrent_manifest_updates_do_not_lose_independent_fields(self) -> None:
+        with tempfile.TemporaryDirectory() as tmpdir:
+            root = Path(tmpdir)
+            saved = save_article("Deck", [], "Body", articles_dir=root)
+            threads = [
+                threading.Thread(
+                    target=update_article_manifest,
+                    args=(str(saved["markdown"]), {f"extension_{index}": index}),
+                    kwargs={"articles_dir": root},
+                )
+                for index in range(12)
+            ]
+            for thread in threads:
+                thread.start()
+            for thread in threads:
+                thread.join()
+            metadata = load_saved_article(str(saved["markdown"]), articles_dir=root)["metadata"]
+            for index in range(12):
+                self.assertEqual(metadata[f"extension_{index}"], index)
+
     def test_prefix_and_symlink_escape_are_denied(self) -> None:
         with tempfile.TemporaryDirectory() as tmpdir:
             base = Path(tmpdir)

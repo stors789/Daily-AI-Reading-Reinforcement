@@ -9,7 +9,7 @@ from copy import deepcopy
 from pathlib import Path
 from typing import Any, Mapping
 
-from .atomic_persistence import atomic_write_json, atomic_write_text
+from .atomic_persistence import atomic_write_json, atomic_write_text, path_lock
 from .rendering import parse_article_response, render_article_html
 from .utils import slugify
 
@@ -254,14 +254,15 @@ def update_article_manifest(
     article_path = _contained_article_path(Path(path), destination)
     text = article_path.read_text(encoding="utf-8")
     meta = parse_article_frontmatter(text)
-    manifest = _load_manifest(article_path, meta)
-    for key, value in updates.items():
-        if _sensitive_metadata_key(str(key)):
-            continue
-        manifest[str(key)] = deepcopy(value)
-    manifest.setdefault("schema_version", 2)
     manifest_path = article_path.with_suffix(".manifest.json")
-    atomic_write_json(manifest_path, manifest, private=True)
+    with path_lock(manifest_path):
+        manifest = _load_manifest(article_path, meta)
+        for key, value in updates.items():
+            if _sensitive_metadata_key(str(key)):
+                continue
+            manifest[str(key)] = deepcopy(value)
+        manifest.setdefault("schema_version", 2)
+        atomic_write_json(manifest_path, manifest, private=True)
     return deepcopy(manifest)
 
 
