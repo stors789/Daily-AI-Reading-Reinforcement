@@ -50,11 +50,11 @@ Status legend: `NOT STARTED`, `IN PROGRESS`, `BLOCKED`, `IMPLEMENTED`, `VERIFIED
 
 ## Phased implementation plan and dependencies
 
-1. **Phase 0 — safety and persistent state** (`IN PROGRESS`)
+1. **Phase 0 — safety and persistent state** (`VERIFIED`)
    - Inspect status/history/dirty work.
    - Save the specification verbatim, create this ledger and initial ADR.
    - Verify byte identity and checkpoint only new release documents.
-2. **Phase 1 — independent audit** (`IN PROGRESS`)
+2. **Phase 1 — independent audit** (`IMPLEMENTED`; consolidation checkpoint pending)
    - Architecture/add-on/standalone audit: `/root/audit_architecture`.
    - Domain/persistence/provider/prompt audit: `/root/audit_domain_provider`.
    - UI/packaging/docs/test audit: `/root/audit_ui_release`.
@@ -103,12 +103,33 @@ Status legend: `NOT STARTED`, `IN PROGRESS`, `BLOCKED`, `IMPLEMENTED`, `VERIFIED
 - `/root/audit_domain_provider`: read-only persistence/article/provider/prompt/config/privacy audit.
 - `/root/audit_ui_release`: read-only UI/native/Tauri/Android/test/packaging/docs audit.
 
+### Phase 1 verified findings
+
+- Canonical shared logic is `packages/dairr_core/src/dairr_core`; add-on `core/` is a compatibility wrapper/vendor surface. New domain logic must not be implemented twice.
+- Add-on and desktop dispatchers duplicate application behavior. A versioned host-neutral operation contract with request/operation IDs, safe public errors, cancellation, and stale-response handling is required before broad UI integration.
+- Current review normalization is unsuitable for transparent scoring: standalone `review_count` is lifetime repetitions, rating searches lose order/multiplicity, dirty add-on grade aggregation also loses order/multiplicity, and both paths collapse sibling cards by note before scoring. Normalization must retain card and note identity and ordered events when actually available.
+- Existing `learning_sources.py` types are useful but do not encode scheduling/FSRS signal availability or unavailability provenance.
+- Existing article history is Markdown+HTML file storage with no schema version. It must remain authoritative. Practice data should be an adjacent versioned JSON repository using stable IDs, relative article references plus snapshot fallback, atomic replacement, unknown-field preservation, and corrupt-optional-data tolerance.
+- Desktop history currently mutates global `ARTICLES_DIR` in a threaded server; configuration and article writes are non-atomic. These require repair during persistence integration.
+- Current LLM path is a direct chat-completions call with a fixed hidden system prompt, brittle response assumptions, raw provider-error propagation, no cancellation, no provider capabilities, and no reasoning model. Prompt rendering uses `str.format` without a variable registry or complete preview.
+- Desktop `getConfig` exposes raw keys. Generic bridge/provider errors can expose raw provider bodies. Real generation failure silently falls back to a mock success. These are release-blocking privacy/correctness issues.
+- Shared web UI is a monolithic SPA. One owner must exclusively integrate navigation and the practice/scoring/prompt/reasoning workspaces while preserving vertical reading, paragraph reveal, export, history, and save-to-card.
+- Add-on background callbacks retain dialog/web/collection references without full close/profile/unload guards. Desktop operations lack cancellation and response ordering. Android is currently an unconfigured fail-closed scaffold, not a functional parity implementation.
+- Tauri process startup/shutdown is relatively robust, but checked-in sidecars are placeholders; signed cross-platform verification requires unavailable platform credentials/environments and must be reported honestly.
+- Root `build/` has tracked/untracked PyInstaller products and is not ignored. Generated output must never be staged accidentally; pre-existing artifacts remain untouched pending a scoped hygiene decision.
+
+### Phase 1 risks by priority
+
+- **P0:** silent mock fallback after real generation failure; raw config/key exposure; unsafe add-on lifecycle for new long operations.
+- **P1:** fabricated/ambiguous scoring semantics; no capability provenance; non-atomic/thread-unsafe persistence; provider error leakage; no cancellation/request ordering; localhost bridge threat model.
+- **P2:** monolithic duplicated host/application logic; Android parity strategy unresolved; no configured lint/type/format gate.
+
 Implementation-agent reports must include: requirements addressed, assumptions, files changed, migrations, tests added, exact test results, unresolved issues, follow-ups, and commit hashes. Reports will be verified against repository state and diffs.
 
 ## Architecture decisions
 
 - ADR-0003 (`docs/architecture/adr-0003-next-major-release-boundaries.md`): initial boundary and compatibility constraints; status Proposed pending Phase 1 audit.
-- Further ADRs required after audit for persistence schema/migration, normalized Anki review data, prompt contracts, and provider reasoning semantics.
+- Further ADRs required for normalized Anki/capability semantics; persistence schema/migration; async operation protocol; prompt/provider reasoning contracts; targets/generation parsing; Android scope; and localhost bridge security.
 
 ## Assumptions
 
@@ -121,6 +142,7 @@ Implementation-agent reports must include: requirements addressed, assumptions, 
 
 - No release tests run yet.
 - Phase 0 byte-identity check: PASS. Source and canonical specification SHA-256 are both `14a8aa4cd094d9f8a194551e73d96dc7fa29b6c7d2d065f86285db5541d2a77d`.
+- Phase 1 agents were explicitly read-only; no tests run by audit agents. Architecture audit reports `git diff --check` PASS at audit time.
 
 ## Migration status
 
@@ -143,7 +165,7 @@ Implementation-agent reports must include: requirements addressed, assumptions, 
 ## Relevant commits
 
 - Starting baseline: `18be525`.
-- Phase 0 documentation checkpoint: pending.
+- `6585f38` — `docs: add major release specification` (canonical spec, initial ledger, ADR-0003).
 
 ## Final verification checklist
 
