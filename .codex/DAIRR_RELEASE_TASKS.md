@@ -27,21 +27,21 @@ Status legend: `NOT STARTED`, `IN PROGRESS`, `BLOCKED`, `IMPLEMENTED`, `VERIFIED
 
 | ID | Requirement group | Planned implementation surface | Owner | Status | Evidence/commit |
 |---|---|---|---|---|---|
-| R01 | Existing-article translation/back-translation practice | Shared practice domain/service, existing history adapter, integrated web UI | TBD after audit | NOT STARTED | — |
-| R02 | Arbitrary pasted-text practice offline from Anki | Shared practice domain/service and local persistence, integrated web UI | TBD after audit | NOT STARTED | — |
-| R03 | Segmentation, manual edits, long-text limits | Practice segmentation service and validation | TBD after audit | NOT STARTED | — |
-| R04 | AI review, revision/resubmission, reference/no-reference | Review prompts, parsing, service, attempts persistence | TBD after audit | NOT STARTED | — |
-| R05 | Configurable reinforcement-priority scoring | Normalized review models, scoring engine/presets/explanations | TBD after audit | NOT STARTED | — |
-| R06 | Manual target controls and four target categories | Shared generation request/domain plus UI | TBD after audit | NOT STARTED | — |
+| R01 | Existing-article translation/back-translation practice | Shared practice domain/service, existing history adapter, integrated web UI | Practice foundation complete; integration owner TBD | IN PROGRESS | `f5cef40` |
+| R02 | Arbitrary pasted-text practice offline from Anki | Shared practice domain/service and local persistence, integrated web UI | Practice foundation complete; integration owner TBD | IN PROGRESS | `f5cef40` |
+| R03 | Segmentation, manual edits, long-text limits | Practice segmentation service and validation | `/root/audit_ui_release` foundation | IMPLEMENTED | `f5cef40` |
+| R04 | AI review, revision/resubmission, reference/no-reference | Review prompts, parsing, service, attempts persistence | Prompt/review and practice foundations complete; pipeline integration TBD | IN PROGRESS | `f5cef40`, `c41c1ac` |
+| R05 | Configurable reinforcement-priority scoring | Normalized review models, scoring engine/presets/explanations | `/root/audit_architecture` foundation | IMPLEMENTED | `b170444` |
+| R06 | Manual target controls and four target categories | Shared target selection domain plus later generation/UI integration | `/root/audit_architecture` foundation | IN PROGRESS | `b170444` |
 | R07 | Standard AnkiConnect compatibility and degradation | Desktop adapter, timeout/cancel/error mapping, capabilities | TBD after audit | NOT STARTED | — |
 | R08 | Supported Anki add-on APIs and safe lifecycle | Thin add-on adapter/background lifecycle | TBD after audit | NOT STARTED | — |
-| R09 | Explicit capability model | Shared typed capability/status/reason model | TBD after audit | NOT STARTED | — |
+| R09 | Explicit capability model | Shared typed capability/status/reason model | `/root/audit_architecture` foundation | IMPLEMENTED | `b170444` |
 | R10 | Coherent target-aware generation and untrusted parsing | Shared generation service, target mapping, recovery parser | TBD after audit | NOT STARTED | — |
-| R11 | Fully customizable visible prompts | Shared prompt registry/templates/render preview/presets/migration | TBD after audit | NOT STARTED | — |
-| R12 | Capability-aware reasoning/thinking settings | Provider capability/request models and diagnostics | TBD after audit | NOT STARTED | — |
+| R11 | Fully customizable visible prompts | Shared prompt registry/templates/render preview/presets/migration | Prompt foundation complete; config/UI integration TBD | IN PROGRESS | `c41c1ac` |
+| R12 | Capability-aware reasoning/thinking settings | Provider capability/request models and diagnostics | Provider foundation complete; transport/config/UI integration TBD | IN PROGRESS | `c41c1ac` |
 | R13 | Dual-mode architecture boundaries | Core/application/adapters/UI layering; ADRs | Orchestrator + reviewers | IN PROGRESS | ADR-0003 initial |
 | R14 | Integrated asynchronous/cancellable UI | Shared web navigation/bridge and platform lifecycle | TBD after audit | NOT STARTED | — |
-| R15 | Backward-compatible persistence/migration | Extend existing article/history store; atomic tolerant migration | TBD after audit | NOT STARTED | — |
+| R15 | Backward-compatible persistence/migration | Extend existing article/history store; atomic tolerant migration | Practice repository foundation complete; host/history integration TBD | IN PROGRESS | `f5cef40` |
 | R16 | Privacy, security, reliability hardening | Redaction, response validation, safe writes/timeouts/cancel | TBD after audit | NOT STARTED | — |
 | R17 | Comprehensive automated/integration testing | Focused tests per unit plus full suite | All implementers + reviewers | NOT STARTED | — |
 | R18 | Documentation, release notes, manual verification | README/docs/changelog/release guide | TBD after audit | NOT STARTED | — |
@@ -59,7 +59,7 @@ Status legend: `NOT STARTED`, `IN PROGRESS`, `BLOCKED`, `IMPLEMENTED`, `VERIFIED
    - Domain/persistence/provider/prompt audit: `/root/audit_domain_provider`.
    - UI/packaging/docs/test audit: `/root/audit_ui_release`.
    - Dependency: Phase 0 documents.
-3. **Phase 2 — shared foundations** (`NOT STARTED`)
+3. **Phase 2 — shared foundations** (`IMPLEMENTED`; integration follow-ups remain in later phases)
    - Normalized Anki data, capability model, practice models, provider reasoning model, persistence extension.
    - Dependency: consolidated audit and ownership allocation.
 4. **Phase 3 — translation practice core** (`NOT STARTED`)
@@ -88,7 +88,9 @@ Status legend: `NOT STARTED`, `IN PROGRESS`, `BLOCKED`, `IMPLEMENTED`, `VERIFIED
 |---|---|---|
 | Canonical spec, ledger, cross-cutting ADRs | `/root` orchestrator | Orchestrator only |
 | Repository audits | three named audit agents | Read-only |
-| Shared schemas/config/persistence/provider abstractions | TBD | One implementation owner at a time |
+| `capabilities.py`, `study_signals.py`, `scoring.py`, `target_selection.py` + focused tests/ADR | `/root/audit_architecture` | Exclusive; new files only; no config/host/UI edits |
+| `practice.py`, `segmentation.py`, `practice_repository.py` + focused tests/ADR | `/root/audit_ui_release` | Exclusive; new files only; article history remains untouched in this unit |
+| `prompt_templates.py`, `provider_capabilities.py`, `provider_requests.py`, `response_parsing.py`, `translation_review.py` + tests/ADR | `/root/audit_domain_provider` | Exclusive; new files only; no `prompt.py`, `llm.py`, or dirty config edits in this unit |
 | Central web UI (`web/app.js`, `index.html`, `style.css`) | TBD after dirty-diff audit | Exclusive owner; no parallel edits |
 | Add-on wrapper (`__init__.py`) | TBD after dirty-diff audit | Exclusive owner; preserve user changes |
 | Desktop bridge/server/adapters | TBD | Exclusive by module group |
@@ -126,10 +128,27 @@ Status legend: `NOT STARTED`, `IN PROGRESS`, `BLOCKED`, `IMPLEMENTED`, `VERIFIED
 
 Implementation-agent reports must include: requirements addressed, assumptions, files changed, migrations, tests added, exact test results, unresolved issues, follow-ups, and commit hashes. Reports will be verified against repository state and diffs.
 
+### Phase 2 implementation units dispatched
+
+- Shared capability/study-signal/scoring/target-selection foundations: `/root/audit_architecture`.
+- Practice domain/segmentation/versioned atomic repository foundations: `/root/audit_ui_release`.
+- Prompt registry/provider capability/request/review-parsing foundations: `/root/audit_domain_provider`.
+- Agents edit disjoint new files and run focused tests in parallel, but do not stage or commit concurrently. The orchestrator will serialize commit handoffs to avoid the shared Git index race.
+
+### Phase 2 completed handoffs
+
+- `/root/audit_ui_release` implemented the practice domain, segmentation, and v2 atomic practice repository. Agent report: 15 new tests; 18 focused/core tests passed. Orchestrator independently reran 18 tests in 0.026s, all passed; compile check passed. Commit: `f5cef40`.
+- `/root/audit_architecture` implemented capability/study-signal models, configurable scoring, explanations, preset serialization, and target selection. Agent report: 30 new tests; 38 focused/core tests passed. Orchestrator independently reran 38 tests in 0.029s, all passed; compile and forbidden-import scan passed. Commit: `b170444`.
+- `/root/audit_domain_provider` implemented complete prompt registry/rendering, provider reasoning capabilities/request construction, tolerant response parsing, and translation-review parsing. Orchestrator independently ran 43 focused/core tests in 0.025s, all passed; compile and forbidden-import/sensitive-pattern scan passed. Commit: `c41c1ac`.
+- Integration review follow-ups: decide whether practice autosave should avoid mutating the passed session; preserve shape-valid but semantically rejected attempts; wire prompt/preset migration into config; ensure preview content is never used as default diagnostics; map legacy rating sets to unavailable ordered evidence rather than fabricated events.
+
 ## Architecture decisions
 
 - ADR-0003 (`docs/architecture/adr-0003-next-major-release-boundaries.md`): initial boundary and compatibility constraints; status Proposed pending Phase 1 audit.
 - Further ADRs required for normalized Anki/capability semantics; persistence schema/migration; async operation protocol; prompt/provider reasoning contracts; targets/generation parsing; Android scope; and localhost bridge security.
+- ADR-0004 records normalized signal, availability, heuristic scoring, and target-selection semantics.
+- `docs/architecture/adr-practice-persistence.md` records the adjacent v2 JSON practice repository and non-destructive migration strategy.
+- ADR-0006 records fully visible prompt contracts and provider-specific reasoning omission/mapping rules.
 
 ## Assumptions
 
@@ -140,13 +159,21 @@ Implementation-agent reports must include: requirements addressed, assumptions, 
 
 ## Tests and exact results
 
-- No release tests run yet.
 - Phase 0 byte-identity check: PASS. Source and canonical specification SHA-256 are both `14a8aa4cd094d9f8a194551e73d96dc7fa29b6c7d2d065f86285db5541d2a77d`.
 - Phase 1 agents were explicitly read-only; no tests run by audit agents. Architecture audit reports `git diff --check` PASS at audit time.
+- Pre-integration baseline on the preserved dirty tree: `python3 -m unittest discover -s tests` ran 455 tests in 0.189s, result **FAILED** (1 failure, 2 errors):
+  - `test_desktop_native.TestDesktopNativeCli.test_provider_and_ankiconnect_url_are_written_to_environment` ERROR: test fake does not accept the current `private_mode=False` keyword.
+  - `test_desktop_native.TestDesktopNativeCli.test_pywebview_present_creates_window_and_starts` ERROR: same fake signature mismatch.
+  - `test_tauri_app_shell.TauriAppShellTests.test_vertical_translation_is_overlay_and_does_not_reflow_article` FAIL: preserved dirty CSS currently uses static flow while the test expects absolute overlay positioning.
+  - These failures predate Phase 2 implementation and must be reconciled by an exclusive integration/repair owner; they are not accepted release limitations.
+- Practice foundation independent verification: 18 tests in 0.026s, OK; compile OK.
+- Scoring/capability/target independent verification: 38 tests in 0.029s, OK; compile/import scans OK.
+- Prompt/provider/review independent verification: 43 tests in 0.025s, OK; compile/import/sensitive-pattern scans OK.
 
 ## Migration status
 
-- Existing schema not yet audited. No migration implemented.
+- Existing article schema audited and preserved unchanged.
+- Practice repository schema v2 implemented with flat-v0 and envelope-v1 migration, atomic `fsync` + replace, stable relative article reference plus snapshot fallback, unknown-field retention, and corrupt optional data tolerance. Host/history wiring remains pending.
 - Required properties: non-destructive, partial/corrupt optional data tolerant, unknown-field preserving, recoverable/atomic where practical.
 
 ## Documentation status
@@ -166,6 +193,10 @@ Implementation-agent reports must include: requirements addressed, assumptions, 
 
 - Starting baseline: `18be525`.
 - `6585f38` — `docs: add major release specification` (canonical spec, initial ledger, ADR-0003).
+- `0370a10` — `docs: record release architecture audit`.
+- `f5cef40` — `feat(practice): add translation session persistence`.
+- `b170444` — `feat(scoring): add configurable reinforcement priority`.
+- `c41c1ac` — `feat(prompts): add customizable provider-aware workflows`.
 
 ## Final verification checklist
 
