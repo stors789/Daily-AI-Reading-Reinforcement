@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import json
+import socket
 import unittest
 import urllib.error
 from pathlib import Path
@@ -13,7 +14,11 @@ _mock_dir = Path(__file__).resolve().parent.parent / "desktop_mock"
 if str(_mock_dir) not in sys.path:
     sys.path.insert(0, str(_mock_dir))
 
-from ankiconnect_provider import AnkiConnectDeckProvider, AnkiConnectError
+from ankiconnect_provider import (
+    AnkiConnectDeckProvider,
+    AnkiConnectError,
+    AnkiConnectFailure,
+)
 
 
 class FakeAnkiConnectOpener:
@@ -188,8 +193,55 @@ class TestAnkiConnectDeckProvider(unittest.TestCase):
             raise urllib.error.HTTPError(req.full_url, 500, "Error", req.headers, None)
 
         provider = AnkiConnectDeckProvider(opener=opener)
-        with self.assertRaises(AnkiConnectError):
+        with self.assertRaises(AnkiConnectError) as error:
             provider.get_today_decks()
+        self.assertEqual(error.exception.failure, AnkiConnectFailure.CONNECTION_FAILED)
+        self.assertNotIn("500", str(error.exception))
+
+    def test_timeout_malformed_partial_and_incompatible_version_are_classified(self) -> None:
+        def timeout_opener(req, timeout):
+            raise socket.timeout("secret transport detail")
+
+        with self.assertRaises(AnkiConnectError) as timeout_error:
+            AnkiConnectDeckProvider(opener=timeout_opener).get_today_decks()
+        self.assertEqual(timeout_error.exception.failure, AnkiConnectFailure.TIMEOUT)
+        self.assertNotIn("secret", str(timeout_error.exception))
+
+        for raw, expected in (
+            (b"not json", AnkiConnectFailure.MALFORMED_RESPONSE),
+            (json.dumps({"error": None}).encode(), AnkiConnectFailure.PARTIAL_RESPONSE),
+        ):
+            def opener(req, timeout, response=raw):
+                mock_resp = MagicMock()
+                mock_resp.read.return_value = response
+                context = MagicMock()
+                context.__enter__.return_value = mock_resp
+                return context
+
+            with self.subTest(expected=expected), self.assertRaises(AnkiConnectError) as error:
+                AnkiConnectDeckProvider(opener=opener).get_today_decks()
+            self.assertEqual(error.exception.failure, expected)
+
+        def old_version_opener(req, timeout):
+            response = MagicMock()
+            response.read.return_value = json.dumps({"result": 5, "error": None}).encode()
+            context = MagicMock()
+            context.__enter__.return_value = response
+            return context
+
+        with self.assertRaises(AnkiConnectError) as version_error:
+            AnkiConnectDeckProvider(opener=old_version_opener).api_version()
+        self.assertEqual(version_error.exception.failure, AnkiConnectFailure.INCOMPATIBLE_VERSION)
+
+    def test_cancellation_is_checked_before_network_access(self) -> None:
+        opener = MagicMock()
+        provider = AnkiConnectDeckProvider(opener=opener, cancelled=lambda: True)
+
+        with self.assertRaises(AnkiConnectError) as error:
+            provider.get_today_decks()
+
+        self.assertEqual(error.exception.failure, AnkiConnectFailure.CANCELLED)
+        opener.assert_not_called()
 
 
 if __name__ == "__main__":

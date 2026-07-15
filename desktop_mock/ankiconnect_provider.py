@@ -8,8 +8,10 @@ server using only ``urllib.request`` from the Python standard library.
 from __future__ import annotations
 
 import json
+import socket
 import urllib.error
 import urllib.request
+from enum import Enum
 from typing import Any, Callable
 
 
@@ -17,8 +19,63 @@ DEFAULT_ANKICONNECT_URL = "http://127.0.0.1:8765"
 ANKICONNECT_VERSION = 6
 
 
+class AnkiConnectFailure(str, Enum):
+    """Non-sensitive transport failures used by capability-aware adapters."""
+
+    CONNECTION_FAILED = "connection_failed"
+    TIMEOUT = "timeout"
+    MALFORMED_RESPONSE = "malformed_response"
+    UNSUPPORTED_ACTION = "unsupported_action"
+    INCOMPATIBLE_VERSION = "incompatible_version"
+    PARTIAL_RESPONSE = "partial_response"
+    CANCELLED = "cancelled"
+
+
 class AnkiConnectError(RuntimeError):
-    """Raised when AnkiConnect is unavailable or returns an error."""
+    """Safe, classified AnkiConnect failure.
+
+    Raw response errors are deliberately not included in the public message:
+    a third-party extension can return arbitrary text, and UI diagnostics must
+    not echo provider internals or user content.
+    """
+
+    _MESSAGES = {
+        AnkiConnectFailure.CONNECTION_FAILED: (
+            "Cannot connect to AnkiConnect. Open Anki, install or enable "
+            "AnkiConnect, and verify the local endpoint."
+        ),
+        AnkiConnectFailure.TIMEOUT: (
+            "AnkiConnect did not respond in time. Check that Anki is responsive "
+            "and try again."
+        ),
+        AnkiConnectFailure.MALFORMED_RESPONSE: (
+            "AnkiConnect returned an invalid response. Update AnkiConnect and try again."
+        ),
+        AnkiConnectFailure.UNSUPPORTED_ACTION: (
+            "This AnkiConnect installation does not support the requested action."
+        ),
+        AnkiConnectFailure.INCOMPATIBLE_VERSION: (
+            "This AnkiConnect API version is incompatible with DAIRR. Update AnkiConnect."
+        ),
+        AnkiConnectFailure.PARTIAL_RESPONSE: (
+            "AnkiConnect returned an incomplete response. Retry after Anki finishes its current task."
+        ),
+        AnkiConnectFailure.CANCELLED: "The AnkiConnect operation was cancelled.",
+    }
+
+    def __init__(
+        self,
+        failure: AnkiConnectFailure | str = AnkiConnectFailure.CONNECTION_FAILED,
+        *,
+        action: str = "",
+    ) -> None:
+        try:
+            normalized = AnkiConnectFailure(failure)
+        except ValueError:
+            normalized = AnkiConnectFailure.CONNECTION_FAILED
+        self.failure = normalized
+        self.action = action
+        super().__init__(self._MESSAGES[normalized])
 
 
 class AnkiConnectDeckProvider:
@@ -42,13 +99,20 @@ class AnkiConnectDeckProvider:
         base_url: str = DEFAULT_ANKICONNECT_URL,
         timeout: float = 10.0,
         opener: Callable[..., Any] | None = None,
+        cancelled: Callable[[], bool] | None = None,
     ) -> None:
         self._base_url = base_url.rstrip("/")
         self._timeout = timeout
         self._opener = opener or urllib.request.urlopen
+        self._cancelled = cancelled or (lambda: False)
         self._deck_cache: dict[str, dict[str, Any]] = {}
 
+    def _check_cancelled(self, action: str = "") -> None:
+        if self._cancelled():
+            raise AnkiConnectError(AnkiConnectFailure.CANCELLED, action=action)
+
     def _invoke(self, action: str, params: dict[str, Any] | None = None) -> Any:
+        self._check_cancelled(action)
         payload = {
             "action": action,
             "version": ANKICONNECT_VERSION,
@@ -69,22 +133,58 @@ class AnkiConnectDeckProvider:
             with self._opener(req, timeout=self._timeout) as resp:
                 raw = resp.read()
         except urllib.error.HTTPError as exc:
-            raise AnkiConnectError(f"AnkiConnect HTTP {exc.code}") from exc
-        except (urllib.error.URLError, TimeoutError, OSError) as exc:
-            raise AnkiConnectError("AnkiConnect URL error") from exc
+            raise AnkiConnectError(AnkiConnectFailure.CONNECTION_FAILED, action=action) from exc
+        except (TimeoutError, socket.timeout) as exc:
+            raise AnkiConnectError(AnkiConnectFailure.TIMEOUT, action=action) from exc
+        except urllib.error.URLError as exc:
+            reason = getattr(exc, "reason", None)
+            failure = (
+                AnkiConnectFailure.TIMEOUT
+                if isinstance(reason, (TimeoutError, socket.timeout))
+                else AnkiConnectFailure.CONNECTION_FAILED
+            )
+            raise AnkiConnectError(failure, action=action) from exc
+        except OSError as exc:
+            raise AnkiConnectError(AnkiConnectFailure.CONNECTION_FAILED, action=action) from exc
+
+        self._check_cancelled(action)
 
         try:
             body = json.loads(raw.decode("utf-8", errors="replace") if raw else "{}")
         except json.JSONDecodeError as exc:
-            raise AnkiConnectError("Invalid JSON from AnkiConnect") from exc
+            raise AnkiConnectError(AnkiConnectFailure.MALFORMED_RESPONSE, action=action) from exc
 
         if not isinstance(body, dict):
-            raise AnkiConnectError("Invalid AnkiConnect response")
+            raise AnkiConnectError(AnkiConnectFailure.MALFORMED_RESPONSE, action=action)
         if body.get("error"):
-            raise AnkiConnectError(str(body.get("error")))
+            # AnkiConnect reports unknown actions in the same error field as
+            # runtime errors. Only classify the well-known compatibility case;
+            # never surface the raw third-party error text.
+            error_text = str(body.get("error") or "").casefold()
+            failure = (
+                AnkiConnectFailure.UNSUPPORTED_ACTION
+                if "unsupported action" in error_text or "api action" in error_text
+                else AnkiConnectFailure.CONNECTION_FAILED
+            )
+            raise AnkiConnectError(failure, action=action)
         if "result" not in body:
-            raise AnkiConnectError("AnkiConnect response missing result")
+            raise AnkiConnectError(AnkiConnectFailure.PARTIAL_RESPONSE, action=action)
         return body.get("result")
+
+    def api_version(self) -> int:
+        """Return the advertised standard API version or fail safely."""
+
+        result = self._invoke("version")
+        version = _as_int(result)
+        if version is None:
+            raise AnkiConnectError(
+                AnkiConnectFailure.MALFORMED_RESPONSE, action="version"
+            )
+        if version < ANKICONNECT_VERSION:
+            raise AnkiConnectError(
+                AnkiConnectFailure.INCOMPATIBLE_VERSION, action="version"
+            )
+        return version
 
     def _find_cards(self, query: str) -> list[int]:
         result = self._invoke("findCards", {"query": query})
@@ -181,6 +281,27 @@ class AnkiConnectDeckProvider:
             "fields": fields,
             "selectedFields": list(fields),
         }
+
+    def get_study_signals(
+        self,
+        *,
+        day_start_ms: int | None = None,
+        day_end_ms: int | None = None,
+    ) -> list[Any]:
+        """Return normalized scoring evidence without changing legacy rows.
+
+        Importing locally keeps this legacy provider usable during early
+        startup, before the bundled ``dairr_core`` path has been enabled.
+        """
+
+        try:
+            from ankiconnect_data_adapter import AnkiConnectDataAdapter
+        except ImportError:  # pragma: no cover - package-style desktop import
+            from .ankiconnect_data_adapter import AnkiConnectDataAdapter
+        return AnkiConnectDataAdapter(self).collect_today_signals(
+            day_start_ms=day_start_ms,
+            day_end_ms=day_end_ms,
+        )
 
     def _refresh_cache(self) -> dict[str, dict[str, Any]]:
         today_ids, grade_ids, introduced_today_ids = self._today_card_sets()
