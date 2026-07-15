@@ -7,6 +7,7 @@ from datetime import datetime
 from pathlib import Path
 from typing import Any
 from uuid import uuid4
+from weakref import WeakMethod
 
 from aqt import mw
 try:
@@ -21,6 +22,43 @@ from aqt.webview import AnkiWebView
 from .anki_config_store import AnkiConfigStore
 from .anki_deck_provider import AnkiDeckProvider
 from .anki_card_saver import AnkiCardSaver
+from .anki_review_history import (
+    fetch_today_review_rows,
+    first_response_for_grades,
+    parse_response_grades,
+)
+from .anki_data_adapter import AnkiAddonDataAdapter
+from .addon_release_service import AddonReleaseService
+from .background_operations import AddonBackgroundOperations
+from .dialog_lifecycle import register as register_dialog_operations
+from .dialog_lifecycle import (
+    register_supported_hooks as register_dialog_lifecycle_hooks,
+)
+from .dialog_lifecycle import unregister as unregister_dialog_operations
+try:
+    from .dairr_core.bridge_contract import (  # type: ignore[import-not-found]
+        BridgeRequest,
+        EVENT_OPERATION_CANCELLED,
+        EVENT_OPERATION_COMPLETED,
+        EVENT_OPERATION_FAILED,
+        EVENT_OPERATION_PROGRESS,
+        SYNC_EVENT_BY_ACTION,
+        failure_envelope,
+        response_envelope,
+    )
+    from .dairr_core.operations import OperationError  # type: ignore[import-not-found]
+except ImportError:
+    from dairr_core.bridge_contract import (
+        BridgeRequest,
+        EVENT_OPERATION_CANCELLED,
+        EVENT_OPERATION_COMPLETED,
+        EVENT_OPERATION_FAILED,
+        EVENT_OPERATION_PROGRESS,
+        SYNC_EVENT_BY_ACTION,
+        failure_envelope,
+        response_envelope,
+    )
+    from dairr_core.operations import OperationError
 from .core.article import (
     delete_all_saved_articles,
     delete_saved_article,
@@ -76,6 +114,35 @@ ARTICLE_FIELDS = [
 ]
 
 
+_RELEASE_SYNC_HANDLERS = {
+    "createPastedPractice": lambda service, payload: service.create_pasted_practice(payload),
+    "createArticlePractice": lambda service, payload: service.create_article_practice(payload),
+    "listPracticeSessions": lambda service, _payload: service.list_practice_sessions(),
+    "loadPracticeSession": lambda service, payload: service.load_practice_session(payload),
+    "savePracticeDraft": lambda service, payload: service.save_practice_draft(payload),
+    "updatePracticeSegments": lambda service, payload: service.update_practice_segments(payload),
+    "deletePracticeSession": lambda service, payload: service.delete_practice_session(payload),
+    "getScoringConfig": lambda service, _payload: service.get_scoring_config(),
+    "saveScoringConfig": lambda service, payload: service.save_scoring_config(payload),
+    "resetScoringConfig": lambda service, _payload: service.reset_scoring_config(),
+    "importScoringConfig": lambda service, payload: service.import_scoring_config(payload),
+    "exportScoringConfig": lambda service, payload: service.export_scoring_config(payload),
+    "listPromptTemplates": lambda service, _payload: service.list_prompt_templates(),
+    "getPromptTemplate": lambda service, payload: service.get_prompt_template(payload),
+    "savePromptTemplate": lambda service, payload: service.save_prompt_template(payload),
+    "resetPromptTemplate": lambda service, payload: service.reset_prompt_template(payload),
+    "importPromptTemplates": lambda service, payload: service.import_prompt_templates(payload),
+    "exportPromptTemplates": lambda service, _payload: service.export_prompt_templates(),
+    "previewPrompt": lambda service, payload: service.preview_prompt(payload),
+    "getReasoningSettings": lambda service, _payload: service.get_reasoning_settings(),
+    "saveReasoningSettings": lambda service, payload: service.save_reasoning_settings(payload),
+    "previewReasoningSettings": lambda service, payload: service.preview_reasoning_settings(payload),
+}
+
+def _release_event(action: str) -> str:
+    return SYNC_EVENT_BY_ACTION[action]
+
+
 @dataclass
 class CandidateCard:
     cid: int
@@ -86,6 +153,7 @@ class CandidateCard:
     is_new: bool
     is_failed: bool
     review_count: int
+    response_grades: list[int]
 
     def to_payload(self) -> dict[str, Any]:
         return {
@@ -95,6 +163,8 @@ class CandidateCard:
             "fields": self.fields,
             "is_new": self.is_new,
             "is_failed": self.is_failed,
+            "first_response": first_response_for_grades(self.response_grades),
+            "response_grades": self.response_grades,
             "review_count": self.review_count,
         }
 
@@ -114,6 +184,18 @@ class ReadingReinforcementDialog(QDialog):
         self.setLayout(layout)
 
         self.deck_payloads: dict[str, dict[str, Any]] = {}
+        self._bridge_request_id = uuid4().hex
+        weak_emit = WeakMethod(self._emit)
+        self._operations = AddonBackgroundOperations(
+            mw.taskman.run_in_background,
+            weak_emit,
+        )
+        register_dialog_operations(self._operations)
+        self._release = AddonReleaseService(
+            load_config,
+            CONFIG_STORE.save,
+            ADDON_DIR / "user_files",
+        )
         self._load_page()
 
     def _load_page(self) -> None:
@@ -133,16 +215,20 @@ window.addEventListener("error", function (event) {
     def _on_bridge_command(self, message: str) -> None:
         try:
             command = json.loads(message)
-            action = command.get("action")
-            payload = command.get("payload") or {}
+            if not isinstance(command, dict):
+                raise OperationError("invalid_request", "The bridge request must be an object.")
+            request = BridgeRequest.from_mapping(command)
+            action = request.action
+            payload = request.payload
+            self._bridge_request_id = request.request_id
             if action == "load":
                 self._send_state()
             elif action == "selectDeck":
                 self._send_deck_cards(str(payload.get("deckId", "")))
             elif action == "fetchModels":
-                self._fetch_models(dict(payload.get("settings") or {}))
+                self._fetch_models(dict(payload.get("settings") or {}), request.request_id)
             elif action == "testApiSettings":
-                self._test_api_settings(dict(payload.get("settings") or {}))
+                self._test_api_settings(dict(payload.get("settings") or {}), request.request_id)
             elif action == "saveFieldConfig":
                 self._save_field_config(
                     str(payload.get("deckId", "")),
@@ -156,6 +242,8 @@ window.addEventListener("error", function (event) {
                 self._select_prompt_preset(str(payload.get("presetId", "")))
             elif action == "saveUiLanguage":
                 self._save_ui_language(str(payload.get("uiLanguage", "")))
+            elif action == "saveUiTheme":
+                self._save_ui_theme(str(payload.get("uiTheme", "")))
             elif action == "saveApiSettings":
                 self._save_api_settings(dict(payload.get("settings") or {}))
             elif action == "selectApiProfile":
@@ -173,6 +261,7 @@ window.addEventListener("error", function (event) {
                     str(payload.get("article", "")),
                     str(payload.get("markdownPath", "")),
                     str(payload.get("htmlPath", "")),
+                    request.request_id,
                 )
             elif action == "generate":
                 self._generate_article(
@@ -180,24 +269,60 @@ window.addEventListener("error", function (event) {
                     str(payload.get("presetId", "")),
                     payload.get("cardIds"),
                     dict(payload.get("preset") or {}),
+                    request.request_id,
                 )
             elif action == "listArticles":
-                self._list_articles()
+                self._list_articles(request.request_id)
             elif action == "loadArticle":
-                self._load_article(str(payload.get("path", "")))
+                self._load_article(str(payload.get("path", "")), request.request_id)
             elif action == "deleteArticle":
-                self._emit("articleDeleted", delete_saved_article(str(payload.get("path", ""))))
+                self._delete_articles(
+                    request.request_id,
+                    "deleteArticle",
+                    "articleDeleted",
+                    lambda: delete_saved_article(str(payload.get("path", ""))),
+                )
             elif action == "deleteAllArticles":
-                self._emit("articlesDeleted", delete_all_saved_articles())
+                self._delete_articles(
+                    request.request_id,
+                    "deleteAllArticles",
+                    "articlesDeleted",
+                    delete_all_saved_articles,
+                )
             elif action == "deleteArticlesByDay":
-                self._emit(
+                generated_day = str(payload.get("generatedDay", ""))
+                self._delete_articles(
+                    request.request_id,
+                    "deleteArticlesByDay",
                     "articlesDeletedByDay",
-                    delete_saved_articles_by_day(str(payload.get("generatedDay", ""))),
+                    lambda: delete_saved_articles_by_day(generated_day),
+                )
+            elif action == "getCapabilities":
+                self._emit("capabilitiesLoaded", self._capabilities(), request_id=request.request_id)
+            elif action == "loadStudySignals":
+                self._load_study_signals(request)
+            elif action == "previewScoring":
+                self._preview_scoring(request)
+            elif action == "submitPracticeReview":
+                self._submit_practice_review(request)
+            elif action == "generateTargetAware":
+                self._generate_target_aware(request)
+            elif action == "operationStatus":
+                self._operation_status(request)
+            elif action == "cancelOperation":
+                self._cancel_operation(request)
+            elif action in _RELEASE_SYNC_HANDLERS:
+                result = _RELEASE_SYNC_HANDLERS[action](self._release, payload)
+                self._emit(
+                    _release_event(action),
+                    result,
+                    request_id=request.request_id,
                 )
             else:
-                self._emit("error", {"message": f"Unknown command: {action}"})
-        except Exception as exc:
-            self._emit("error", {"message": str(exc)})
+                raise OperationError("unknown_action", "This DAIRR action is not supported.")
+        except BaseException as exc:
+            request_id = getattr(locals().get("request"), "request_id", uuid4().hex)
+            self._emit_envelope(failure_envelope(request_id, exc))
 
     def _send_state(self) -> None:
         if mw.col is None:
@@ -231,6 +356,7 @@ window.addEventListener("error", function (event) {
                 "selectedPromptPresetId": config.get("selected_prompt_preset_id")
                 or "default",
                 "uiLanguage": config.get("ui_language") or "zh",
+                "uiTheme": config.get("ui_theme") or "light",
                 "collapsedDeckGroups": list(config.get("collapsed_deck_groups") or []),
                 "lastSelectedDeckId": clean_text(config.get("last_selected_deck_id")),
                 "providerProfiles": provider_profiles_payload(),
@@ -262,7 +388,7 @@ window.addEventListener("error", function (event) {
             },
         )
 
-    def _fetch_models(self, settings: dict[str, Any]) -> None:
+    def _fetch_models(self, settings: dict[str, Any], request_id: str) -> None:
         config = load_config()
         api_key = str(settings.get("apiKey") or config.get("api_key") or "").strip()
         base_url = clean_base_url(settings.get("baseUrl") or config.get("base_url"))
@@ -273,23 +399,22 @@ window.addEventListener("error", function (event) {
             self._emit("error", {"message": "Enter an API base URL before fetching models."})
             return
 
-        def task() -> dict[str, Any]:
+        def task(_context: Any) -> dict[str, Any]:
             models = fetch_openai_compatible_models(base_url, api_key)
             if not models:
                 raise RuntimeError("No models were returned by this provider.")
             return {"models": models}
 
-        def on_done(future: Any) -> None:
-            try:
-                result = future.result()
-            except Exception as exc:
-                self._emit("error", {"message": str(exc)})
-                return
-            self._emit("modelsFetched", result)
+        self._operations.submit(
+            request_id,
+            "fetchModels",
+            task,
+            supersede_key="fetchModels",
+            success_event="modelsFetched",
+            failure_event="error",
+        )
 
-        mw.taskman.run_in_background(task, on_done)
-
-    def _test_api_settings(self, settings: dict[str, Any]) -> None:
+    def _test_api_settings(self, settings: dict[str, Any], request_id: str) -> None:
         config = load_config()
         api_key = str(settings.get("apiKey") or config.get("api_key") or "").strip()
         base_url = clean_base_url(settings.get("baseUrl") or config.get("base_url"))
@@ -298,18 +423,17 @@ window.addEventListener("error", function (event) {
             self._emit("error", {"message": "API key, base URL, and model are required for testing."})
             return
 
-        def task() -> dict[str, Any]:
+        def task(_context: Any) -> dict[str, Any]:
             return test_openai_compatible_config(base_url, api_key, model)
 
-        def on_done(future: Any) -> None:
-            try:
-                result = future.result()
-            except Exception as exc:
-                self._emit("error", {"message": str(exc)})
-                return
-            self._emit("apiSettingsTested", result)
-
-        mw.taskman.run_in_background(task, on_done)
+        self._operations.submit(
+            request_id,
+            "testApiSettings",
+            task,
+            supersede_key="testApiSettings",
+            success_event="apiSettingsTested",
+            failure_event="error",
+        )
 
     def _save_field_config(self, deck_id: str, fields: list[str]) -> None:
         payload = self.deck_payloads.get(deck_id)
@@ -398,6 +522,20 @@ window.addEventListener("error", function (event) {
         config["ui_language"] = ui_language
         CONFIG_STORE.save(config)
 
+    def _save_ui_theme(self, ui_theme: str) -> None:
+        valid_themes = {
+            "light", "eink", "matcha", "sakura", "rosegold", "lavender",
+            "glacier", "retromac", "sepia", "macchiato", "gruvbox", "dark",
+            "oled", "lunarslate", "nord", "midnightjazz", "oceanic",
+            "amethyst", "glass", "dracula", "cyberviolet", "neontokyo",
+            "outrun", "cyberpunk", "abyss",
+        }
+        if ui_theme not in valid_themes:
+            ui_theme = "light"
+        config = load_config()
+        config["ui_theme"] = ui_theme
+        CONFIG_STORE.save(config)
+
     def _save_api_settings(self, settings: dict[str, Any]) -> None:
         provider_id = clean_provider_id(settings.get("providerId"))
         base_url = clean_base_url(settings.get("baseUrl"))
@@ -477,6 +615,7 @@ window.addEventListener("error", function (event) {
         article: str,
         markdown_path: str,
         html_path: str,
+        request_id: str,
     ) -> None:
         payload = self.deck_payloads.get(deck_id)
         if not payload:
@@ -489,23 +628,30 @@ window.addEventListener("error", function (event) {
             if selected_ids:
                 cards = [card for card in cards if card.cid in selected_ids]
 
-        def task() -> dict[str, Any]:
-            return CARD_SAVER.save_article_card(
-                payload["name"],
-                cards,
+        source_deck_name = str(payload["name"])
+        selected_cards = tuple(cards)
+        markdown = Path(markdown_path)
+        html = Path(html_path)
+
+        def task(context: Any) -> dict[str, Any]:
+            context.cancellation.raise_if_cancelled()
+            article_card = CARD_SAVER.save_article_card(
+                source_deck_name,
+                list(selected_cards),
                 article,
-                Path(markdown_path),
-                Path(html_path),
+                markdown,
+                html,
             )
+            context.cancellation.raise_if_cancelled()
+            return {"articleCard": article_card}
 
-        def on_done(future: Any) -> None:
-            try:
-                article_card = future.result()
-                self._emit("articleCardSaved", {"articleCard": article_card})
-            except Exception as exc:
-                self._emit("articleCardSaved", {"articleCardError": str(exc)})
-
-        mw.taskman.run_in_background(task, on_done)
+        self._operations.submit(
+            request_id,
+            "saveArticleCard",
+            task,
+            success_event="articleCardSaved",
+            failure_event="error",
+        )
 
     def _generate_article(
         self,
@@ -513,6 +659,7 @@ window.addEventListener("error", function (event) {
         preset_id: str,
         selected_card_ids: Any = None,
         preset_override: dict[str, Any] | None = None,
+        request_id: str = "",
     ) -> None:
         payload = self.deck_payloads.get(deck_id)
         if not payload:
@@ -557,60 +704,216 @@ window.addEventListener("error", function (event) {
 
         deck_name = payload["name"]
 
-        def task() -> dict[str, Any]:
+        selected_cards = tuple(cards)
+
+        def task(context: Any) -> dict[str, Any]:
+            context.cancellation.raise_if_cancelled()
             result = run_article_generation(
                 ANKI_CONFIG_ADAPTER,
                 ANKI_DECK_ADAPTER,  # type: ignore[arg-type]
-                deck_name, cards, selected_fields, preset,
+                deck_name, list(selected_cards), selected_fields, preset,
             )
+            context.cancellation.raise_if_cancelled()
             result["deckId"] = deck_id
             return result
 
-        def on_done(future: Any) -> None:
-            try:
-                result = future.result()
-            except Exception as exc:
-                self._emit("error", {"message": str(exc)})
-                return
+        self._operations.submit(
+            request_id or self._bridge_request_id,
+            "generate",
+            task,
+            supersede_key="generate",
+            success_event="article",
+            failure_event="error",
+        )
 
-            self._emit(
-                "article",
-                result,
-            )
+    def _emit(
+        self,
+        event: str,
+        payload: dict[str, Any],
+        *,
+        request_id: str | None = None,
+        operation_id: str | None = None,
+    ) -> None:
+        envelope = response_envelope(
+            request_id or self._bridge_request_id,
+            event,
+            payload,
+            operation_id=operation_id,
+        )
+        self._emit_envelope(envelope)
 
-        mw.taskman.run_in_background(task, on_done)
-
-    def _emit(self, event: str, payload: dict[str, Any]) -> None:
-        data = json.dumps({"event": event, "payload": payload}, ensure_ascii=False)
+    def _emit_envelope(self, envelope: dict[str, Any]) -> None:
+        data = json.dumps(envelope, ensure_ascii=False)
         self.web.eval(f"window.DAIRR.receive({data});")
 
-    def _list_articles(self) -> None:
-        def task() -> dict[str, Any]:
+    def _list_articles(self, request_id: str) -> None:
+        def task(_context: Any) -> dict[str, Any]:
             return {"articles": list_saved_articles()}
 
-        def on_done(future: Any) -> None:
-            try:
-                result = future.result()
-            except Exception as exc:
-                self._emit("error", {"message": str(exc)})
-                return
-            self._emit("articleList", result)
+        self._operations.submit(
+            request_id,
+            "listArticles",
+            task,
+            supersede_key="listArticles",
+            success_event="articleList",
+            failure_event="error",
+        )
 
-        mw.taskman.run_in_background(task, on_done)
-
-    def _load_article(self, path: str) -> None:
-        def task() -> dict[str, Any]:
+    def _load_article(self, path: str, request_id: str) -> None:
+        def task(_context: Any) -> dict[str, Any]:
             return load_saved_article(path)
 
-        def on_done(future: Any) -> None:
-            try:
-                result = future.result()
-            except Exception as exc:
-                self._emit("error", {"message": str(exc)})
-                return
-            self._emit("articleLoaded", result)
+        self._operations.submit(
+            request_id,
+            "loadArticle",
+            task,
+            supersede_key="loadArticle",
+            success_event="articleLoaded",
+            failure_event="error",
+        )
 
-        mw.taskman.run_in_background(task, on_done)
+    def _delete_articles(
+        self,
+        request_id: str,
+        action: str,
+        success_event: str,
+        delete: Any,
+    ) -> None:
+        def task(context: Any) -> dict[str, Any]:
+            context.cancellation.raise_if_cancelled()
+            result = delete()
+            context.cancellation.raise_if_cancelled()
+            return result
+
+        self._operations.submit(
+            request_id,
+            action,
+            task,
+            success_event=success_event,
+            failure_event="error",
+        )
+
+    def _capabilities(self) -> dict[str, Any]:
+        adapter = AnkiAddonDataAdapter(lambda: mw.col)
+        return self._release.capabilities(adapter.capabilities())
+
+    def _day_bounds_ms(self) -> tuple[int, int]:
+        collection = mw.col
+        if collection is None:
+            raise OperationError(
+                "profile_closed",
+                "Open an Anki profile before loading study data.",
+                retryable=True,
+            )
+        start, end = anki_study_window_payload(collection)
+        return start * 1000, end * 1000
+
+    def _load_study_signals(self, request: BridgeRequest) -> None:
+        start_ms, end_ms = self._day_bounds_ms()
+        release = self._release
+
+        def task(context: Any) -> dict[str, Any]:
+            adapter = AnkiAddonDataAdapter(
+                lambda: mw.col,
+                cancelled=lambda: context.cancellation.cancelled,
+            )
+            signals = adapter.collect_today_signals(start_ms, end_ms)
+            return {
+                "signals": release.study_signals_payload(signals),
+                "capabilities": release.capabilities(adapter.capabilities())["capabilities"],
+                "dayStartMs": start_ms,
+                "dayEndMs": end_ms,
+            }
+
+        # The task captures no collection or Qt wrapper. The release facade is
+        # host-only immutable service wiring and remains safe after UI detach.
+        self._operations.submit(
+            request.request_id,
+            request.action,
+            task,
+            supersede_key="study-signals",
+        )
+
+    def _preview_scoring(self, request: BridgeRequest) -> None:
+        start_ms, end_ms = self._day_bounds_ms()
+        payload = dict(request.payload)
+        release = self._release
+
+        def task(context: Any) -> dict[str, Any]:
+            adapter = AnkiAddonDataAdapter(
+                lambda: mw.col,
+                cancelled=lambda: context.cancellation.cancelled,
+            )
+            signals = adapter.collect_today_signals(start_ms, end_ms)
+            return release.preview_scoring(payload, signals)
+
+        self._operations.submit(
+            request.request_id,
+            request.action,
+            task,
+            supersede_key="scoring-preview",
+        )
+
+    def _submit_practice_review(self, request: BridgeRequest) -> None:
+        payload = dict(request.payload)
+        release = self._release
+        self._operations.submit(
+            request.request_id,
+            request.action,
+            lambda context: release.submit_practice_review(payload, context),
+            supersede_key=f"practice-review:{payload.get('sessionId', '')}",
+        )
+
+    def _generate_target_aware(self, request: BridgeRequest) -> None:
+        payload = dict(request.payload)
+        release = self._release
+        self._operations.submit(
+            request.request_id,
+            request.action,
+            lambda context: release.generate_target_aware(payload, context),
+            supersede_key="target-aware-generation",
+        )
+
+    def _operation_status(self, request: BridgeRequest) -> None:
+        operation_id = str(request.payload.get("operationId") or "")
+        snapshot = self._operations.status(operation_id)
+        if snapshot is None:
+            raise OperationError("unknown_operation", "The requested operation is no longer available.")
+        event = {
+            "queued": EVENT_OPERATION_PROGRESS,
+            "running": EVENT_OPERATION_PROGRESS,
+            "completed": EVENT_OPERATION_COMPLETED,
+            "failed": EVENT_OPERATION_FAILED,
+            "cancelled": EVENT_OPERATION_CANCELLED,
+            "discarded": EVENT_OPERATION_CANCELLED,
+        }[snapshot.status]
+        self._emit(
+            event,
+            snapshot.to_payload(),
+            request_id=snapshot.request_id,
+            operation_id=snapshot.operation_id,
+        )
+
+    def _cancel_operation(self, request: BridgeRequest) -> None:
+        operation_id = str(request.payload.get("operationId") or "")
+        snapshot = self._operations.cancel(operation_id)
+        if snapshot is None:
+            raise OperationError("unknown_operation", "The requested operation is no longer available.")
+
+    def _dispose_operations(self) -> None:
+        operations = getattr(self, "_operations", None)
+        if operations is None:
+            return
+        operations.invalidate()
+        unregister_dialog_operations(operations)
+
+    def done(self, result: int) -> None:
+        self._dispose_operations()
+        super().done(result)
+
+    def closeEvent(self, event: Any) -> None:
+        self._dispose_operations()
+        super().closeEvent(event)
 
 def get_day_cutoff(col: Any) -> int:
     sched = col.sched
@@ -638,37 +941,10 @@ def collect_today_decks() -> dict[str, dict[str, Any]]:
     start_ms = (cutoff - 86400) * 1000
     end_ms = cutoff * 1000
 
-    rows = col.db.all(
-        """
-        select
-            case when c.odid != 0 then c.odid else c.did end as deck_id,
-            r.cid,
-            max(case when r.ease = 1 then 1 else 0 end) as failed_today,
-            max(
-                case
-                    when r.type = 0
-                    and not exists (
-                        select 1 from revlog old
-                        where old.cid = r.cid and old.id < ?
-                    )
-                    then 1
-                    else 0
-                end
-            ) as new_today,
-            count(*) as review_count
-        from revlog r
-        join cards c on c.id = r.cid
-        where r.id >= ? and r.id < ?
-        group by deck_id, r.cid
-        order by deck_id, failed_today desc, new_today desc, r.cid
-        """,
-        start_ms,
-        start_ms,
-        end_ms,
-    )
+    rows = fetch_today_review_rows(col.db, start_ms, end_ms)
 
     decks: dict[str, dict[str, Any]] = {}
-    for deck_id, cid, failed_today, new_today, review_count in rows:
+    for deck_id, cid, failed_today, new_today, review_count, raw_grades in rows:
         card = col.get_card(cid)
         note = card.note()
         fields = note_fields(note)
@@ -682,6 +958,7 @@ def collect_today_decks() -> dict[str, dict[str, Any]]:
             is_new=bool(new_today),
             is_failed=bool(failed_today),
             review_count=int(review_count),
+            response_grades=parse_response_grades(raw_grades),
         )
 
         deck_key = str(deck_id)
@@ -704,11 +981,12 @@ def collect_today_decks() -> dict[str, dict[str, Any]]:
             existing.is_new = existing.is_new or candidate.is_new
             existing.is_failed = existing.is_failed or candidate.is_failed
             existing.review_count += candidate.review_count
+            existing.response_grades = sorted({
+                *existing.response_grades,
+                *candidate.response_grades,
+            })
 
     for deck in decks.values():
-        deck["cards"] = [
-            card for card in deck["cards"] if card.is_new or card.is_failed
-        ]
         refresh_deck_counts(deck)
 
     decks = {deck_id: deck for deck_id, deck in decks.items() if deck["cards"]}
@@ -753,6 +1031,10 @@ def aggregate_parent_decks(decks: dict[str, dict[str, Any]]) -> dict[str, dict[s
                     existing.is_new = existing.is_new or card.is_new
                     existing.is_failed = existing.is_failed or card.is_failed
                     existing.review_count += card.review_count
+                    existing.response_grades = sorted({
+                        *existing.response_grades,
+                        *card.response_grades,
+                    })
 
     for aggregate in aggregates.values():
         refresh_deck_counts(aggregate)
@@ -1169,6 +1451,7 @@ def setup_global_webview_handler() -> None:
         gui_hooks.webview_did_receive_js_message.append(handle_webview_message)
     except Exception:
         pass
+    register_dialog_lifecycle_hooks(gui_hooks)
 
 
 try:
