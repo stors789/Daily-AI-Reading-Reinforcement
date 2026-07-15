@@ -26,6 +26,10 @@ class FakeResponse:
         return False
 
     def read(self):
+        if isinstance(self.payload, bytes):
+            return self.payload
+        if isinstance(self.payload, str):
+            return self.payload.encode("utf-8")
         return json.dumps(self.payload).encode("utf-8")
 
 
@@ -33,6 +37,7 @@ class FakeOpener:
     def __init__(self, payload=None, error=None):
         self.payload = payload or {"event": "debugPrompt", "payload": {}}
         self.error = error
+        self.bridge_token = "test-bridge-token-with-sufficient-length"
         self.requests = []
         self.timeouts = []
 
@@ -41,6 +46,10 @@ class FakeOpener:
         self.timeouts.append(timeout)
         if self.error:
             raise self.error
+        if request.get_method() == "GET":
+            return FakeResponse(
+                f'<script>window.__DAIRR_BRIDGE_TOKEN__ = {json.dumps(self.bridge_token)};</script>'
+            )
         return FakeResponse(self.payload)
 
 
@@ -62,14 +71,19 @@ class DebugPromptToolTest(unittest.TestCase):
             )
 
         self.assertEqual(rc, 0)
-        self.assertEqual(len(opener.requests), 1)
-        request = opener.requests[0]
+        self.assertEqual(len(opener.requests), 2)
+        self.assertEqual(opener.requests[0].full_url, "http://127.0.0.1:8755/index.html")
+        self.assertEqual(opener.requests[0].get_method(), "GET")
+        request = opener.requests[1]
         self.assertEqual(request.full_url, "http://127.0.0.1:8755/api/bridge")
         self.assertEqual(request.get_method(), "POST")
         self.assertEqual(request.get_header("Content-type"), "application/json")
+        self.assertEqual(request.get_header("X-dairr-bridge-token"), opener.bridge_token)
         self.assertEqual(
             json.loads(request.data.decode("utf-8")),
             {
+                "version": 2,
+                "requestId": json.loads(request.data.decode("utf-8"))["requestId"],
                 "action": "debugPrompt",
                 "payload": {"deckId": "deck-japanese", "presetId": "japanese"},
             },
@@ -92,7 +106,7 @@ class DebugPromptToolTest(unittest.TestCase):
             )
 
         self.assertEqual(rc, 0)
-        body = json.loads(opener.requests[0].data.decode("utf-8"))
+        body = json.loads(opener.requests[1].data.decode("utf-8"))
         self.assertEqual(body["payload"]["cardIds"], ["1001", "1002"])
 
     def test_default_summary_does_not_include_api_key(self):
@@ -167,6 +181,30 @@ class DebugPromptToolTest(unittest.TestCase):
 
         self.assertNotEqual(rc, 0)
         self.assertIn("HTTP error from standalone server: 500", stderr.getvalue())
+
+    def test_rejects_non_loopback_url_before_network(self):
+        opener = FakeOpener()
+        stderr = io.StringIO()
+        with contextlib.redirect_stderr(stderr):
+            rc = debug_prompt.main([
+                "--url", "https://example.com", "--deck-id", "deck-japanese",
+            ], opener=opener)
+        self.assertNotEqual(rc, 0)
+        self.assertEqual(opener.requests, [])
+        self.assertIn("loopback", stderr.getvalue())
+
+    def test_missing_token_is_redacted_validation_error(self):
+        class MissingTokenOpener(FakeOpener):
+            def open(self, request, timeout=0):
+                self.requests.append(request)
+                return FakeResponse("<html>No bootstrap token</html>")
+
+        opener = MissingTokenOpener()
+        stderr = io.StringIO()
+        with contextlib.redirect_stderr(stderr):
+            rc = debug_prompt.main(["--deck-id", "deck-japanese"], opener=opener)
+        self.assertNotEqual(rc, 0)
+        self.assertIn("did not provide a bridge token", stderr.getvalue())
 
 
 if __name__ == "__main__":

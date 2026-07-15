@@ -68,7 +68,7 @@ class TestDesktopNativeCli(unittest.TestCase):
 
         webview = SimpleNamespace(
             create_window=MagicMock(),
-            start=MagicMock(side_effect=lambda: server_started.wait(1)),
+            start=MagicMock(side_effect=lambda **_kwargs: server_started.wait(1)),
         )
 
         exit_code = desktop_native.run_native(
@@ -83,7 +83,7 @@ class TestDesktopNativeCli(unittest.TestCase):
             "Daily AI Reading Reinforcement",
             "http://127.0.0.1:8760",
         )
-        webview.start.assert_called_once_with()
+        webview.start.assert_called_once_with(private_mode=False)
 
     def test_pywebview_missing_returns_clear_error(self) -> None:
         stderr = StringIO()
@@ -152,7 +152,7 @@ class TestDesktopNativeCli(unittest.TestCase):
 
         webview = SimpleNamespace(
             create_window=MagicMock(),
-            start=MagicMock(side_effect=lambda: server_started.wait(1)),
+            start=MagicMock(side_effect=lambda **_kwargs: server_started.wait(1)),
         )
 
         with patch.dict(os.environ, {}, clear=True):
@@ -172,6 +172,24 @@ class TestDesktopNativeCli(unittest.TestCase):
         self.assertEqual(seen_env["ankiconnect_url"], "http://127.0.0.1:18765")
         self.assertEqual(seen_env["host"], "127.0.0.1")
         self.assertEqual(seen_env["port"], "8755")
+
+    def test_older_pywebview_signature_falls_back_without_disabling_startup(self) -> None:
+        calls: list[dict[str, object]] = []
+
+        def older_start(**kwargs):
+            calls.append(dict(kwargs))
+            if kwargs:
+                raise TypeError("unexpected keyword argument 'private_mode'")
+
+        webview = SimpleNamespace(create_window=MagicMock(), start=older_start)
+        exit_code = desktop_native.run_native(
+            ["--provider", "mock"],
+            server_runner=lambda _host, _port: None,
+            pywebview_loader=lambda: webview,
+        )
+
+        self.assertEqual(exit_code, 0)
+        self.assertEqual(calls, [{"private_mode": False}, {}])
 
     def test_importing_desktop_native_does_not_start_server_or_gui(self) -> None:
         fake_webview = SimpleNamespace(

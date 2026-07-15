@@ -51,6 +51,7 @@ class TestPackageDesktopCommand(unittest.TestCase):
         self.assertIn("addon/daily_ai_reading_reinforcement/web", output)
         self.assertIn("desktop_mock/main.py", output)
         self.assertIn("desktop_mock/diagnostics.py", output)
+        self.assertIn("desktop_mock/ankiconnect_data_adapter.py", output)
         self.assertNotIn("desktop_mock/output", output)
         self.assertIn("desktop_app.py", output)
 

@@ -23,6 +23,7 @@ ENTRY_POINTS = {
 }
 DESKTOP_MOCK_FILES = (
     "ankiconnect_card_saver.py",
+    "ankiconnect_data_adapter.py",
     "ankiconnect_provider.py",
     "desktop_adapters.py",
     "dairr_core_runtime.py",

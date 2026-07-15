@@ -92,6 +92,22 @@ def _fallback_argv(args: argparse.Namespace) -> list[str]:
     return argv
 
 
+def _start_webview(webview: Any) -> None:
+    """Start with persistent storage, while supporting older pywebview builds.
+
+    DAIRR drafts and workspace state depend on the embedded browser profile, so
+    ``private_mode=False`` is intentional.  Older pywebview releases did not
+    expose that keyword; only that signature mismatch is retried without it.
+    """
+    try:
+        webview.start(private_mode=False)
+    except TypeError as exc:
+        message = str(exc)
+        if "private_mode" not in message and "unexpected keyword" not in message:
+            raise
+        webview.start()
+
+
 def run_native(
     argv: Sequence[str] | None = None,
     *,
@@ -125,7 +141,7 @@ def run_native(
     url = f"http://{args.host}:{args.port}"
     _server_thread(server_runner, args.host, args.port)
     webview.create_window("Daily AI Reading Reinforcement", url)
-    webview.start(private_mode=False)
+    _start_webview(webview)
     return 0
 
 

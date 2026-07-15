@@ -13,8 +13,10 @@ from __future__ import annotations
 
 import json
 import os
+import secrets
 import sys
 import threading
+import urllib.parse
 from datetime import datetime, timedelta
 from functools import lru_cache
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
@@ -37,6 +39,72 @@ from dairr_core_runtime import enable_dairr_core_imports
 enable_dairr_core_imports()
 
 from dairr_core.learning_sources import LearningSourceRegistry, SourceScopedId
+from dairr_core.application_host import OperationRegistry
+from dairr_core.article_generation import (
+    ArticleGenerationRequest,
+    GenerationTarget,
+    generate_target_aware_article,
+)
+from dairr_core.bridge_contract import (
+    ASYNC_ACTIONS,
+    BRIDGE_VERSION,
+    RELEASE_ACTIONS,
+    SYNC_EVENT_BY_ACTION,
+    BridgeRequest,
+    failure_envelope,
+    response_envelope,
+)
+from dairr_core.capabilities import (
+    Capability,
+    CapabilityId,
+    CapabilityReason,
+    CapabilitySet,
+    CapabilityStatus,
+    Provenance,
+)
+from dairr_core.config import (
+    export_prompt_registry_overrides,
+    normalize_config,
+    normalize_prompt_config,
+    prompt_registry_from_config,
+    reasoning_intent_from_config,
+    reasoning_intent_to_dict,
+)
+from dairr_core.llm import OpenAICompatibleTransport
+from dairr_core.operations import ModelRequestSettings, OperationContext, OperationError
+from dairr_core.practice import (
+    ArticleReference,
+    PracticeSegment,
+    PracticeSession,
+    TranslationDirection,
+)
+from dairr_core.practice_repository import PracticeRepository, session_document
+from dairr_core.practice_service import PracticeService
+from dairr_core.prompt_templates import (
+    PromptTask,
+    PromptTemplate,
+    PromptTemplateError,
+    ResponseMode,
+    default_prompt_registry,
+    render_prompt,
+)
+from dairr_core.provider_capabilities import (
+    ProviderConfigurationError,
+    ReasoningControl,
+    ReasoningIntent,
+    ReasoningMode,
+    known_provider_capabilities,
+)
+from dairr_core.scoring import (
+    ScoringPreset,
+    SettingsMode,
+    export_preset,
+    import_preset,
+    recommended_preset,
+    score_cards,
+    signal_metadata,
+)
+from dairr_core.target_selection import ManualOverride, TargetCategory, select_targets
 from learning_sources import LegacyDeckProviderSource, source_descriptor
 
 # Desktop adapters and real generation pipeline
@@ -60,6 +128,21 @@ APP_NAME = "DAIRR"
 APP_DISPLAY_NAME = "Daily AI Reading Reinforcement"
 APP_VERSION = "0.1.0"
 APP_MODE = "desktop"
+BRIDGE_TOKEN_HEADER = "X-DAIRR-Bridge-Token"
+MAX_BRIDGE_BODY_BYTES = 2_000_000
+PRACTICE_LIMITS_PAYLOAD = {
+    "maxCharacters": 100_000,
+    "maxSourceCharacters": 100_000,
+    "maxSegments": 500,
+    "maxSegmentCharacters": 20_000,
+}
+
+_BRIDGE_TOKEN = secrets.token_urlsafe(32)
+_OPERATIONS = OperationRegistry(max_workers=4, max_records=128, terminal_ttl_seconds=900)
+_PRACTICE_LOCK = threading.RLock()
+_PRACTICE_DRAFTS: dict[str, PracticeSession] = {}
+_PRACTICE_REVISIONS: dict[str, int] = {}
+_LAST_ANKI_CAPABILITIES: CapabilitySet | None = None
 
 
 def _load_provider_config() -> dict[str, Any]:
@@ -166,8 +249,11 @@ def build_health_payload(environ: Mapping[str, str] | None = None) -> dict[str, 
         "bridge": {
             "available": True,
             "type": "http",
+            "protocolVersion": BRIDGE_VERSION,
             "endpoint": "/api/bridge",
             "windowObject": "__DAIRR_BRIDGE__",
+            "tokenRequired": True,
+            "maxRequestBytes": MAX_BRIDGE_BODY_BYTES,
         },
     }
 
@@ -352,8 +438,7 @@ def _state_payload(
         else ""
     )
     try:
-        from mock_data import _api_settings_payload
-        payload["apiSettings"] = _api_settings_payload(config)
+        payload["apiSettings"] = _safe_api_settings_payload(config)
     except Exception:
         pass
     return payload
@@ -592,11 +677,6 @@ def handle_debug_prompt(deck_id: str, payload: dict[str, Any]) -> dict[str, Any]
 def handle_generate_real(deck_id: str, payload: dict[str, Any]) -> dict[str, Any]:
     """Run the real article generation pipeline using Desktop adapters.
 
-    Falls back to the mock payload if:
-    - Desktop adapters cannot be imported
-    - The API key is missing
-    - The LLM call or article save fails
-
     Returns an {event, payload} envelope matching the addon contract.
     """
     source, _ = _resolve_deck_source(deck_id)
@@ -604,7 +684,7 @@ def handle_generate_real(deck_id: str, payload: dict[str, Any]) -> dict[str, Any
         return _mock_generate(deck_id)
 
     if not _DESKTOP_ADAPTERS_AVAILABLE:
-        return _mock_generate(deck_id)
+        return {"event": "error", "payload": {"message": "Article generation is unavailable in this build."}}
 
     config_adapter = DesktopConfigAdapter()
     deck_adapter = DesktopDeckAdapter()
@@ -613,7 +693,7 @@ def handle_generate_real(deck_id: str, payload: dict[str, Any]) -> dict[str, Any
     try:
         context = resolve_generation_context(deck_id, payload)
     except Exception:
-        return _mock_generate(deck_id)
+        return {"event": "error", "payload": {"message": "Failed to load generation input from the selected source."}}
 
     deck_name = context["deckName"]
     cards = context["cards"]
@@ -628,8 +708,8 @@ def handle_generate_real(deck_id: str, payload: dict[str, Any]) -> dict[str, Any
         from desktop_adapters import _core_article_generator
         run_article_generation = _core_article_generator.run_article_generation
     except Exception as exc:
-        sys.stderr.write(f"[mock] Failed to load article_generator: {exc}. Falling back to mock.\n")
-        return _mock_generate(deck_id)
+        sys.stderr.write(f"[desktop] Article generator unavailable: {type(exc).__name__}\n")
+        return {"event": "error", "payload": {"message": "Article generation is unavailable in this build."}}
 
     try:
         result = run_article_generation(
@@ -637,8 +717,11 @@ def handle_generate_real(deck_id: str, payload: dict[str, Any]) -> dict[str, Any
         )
         return {"event": "article", "payload": result}
     except Exception as exc:
-        sys.stderr.write(f"[mock] Real generation failed: {exc}. Falling back to mock.\n")
-        return _mock_generate(deck_id)
+        sys.stderr.write(f"[desktop] Real generation failed: {type(exc).__name__}\n")
+        public_message = getattr(exc, "public_message", None)
+        if not isinstance(public_message, str) or not public_message.strip():
+            public_message = "Article generation failed. Check the provider settings and try again."
+        return {"event": "error", "payload": {"message": public_message}}
 
 
 def _mock_generate(deck_id: str) -> dict[str, Any]:
@@ -666,6 +749,881 @@ def _load_desktop_article(path: str) -> dict[str, Any]:
     if not _DESKTOP_ADAPTERS_AVAILABLE:
         return build_loaded_article_payload(path)
     return DesktopDeckAdapter().load_saved_article(path)
+
+
+def _article_practice_material(raw_article: str, direction: TranslationDirection) -> tuple[str, list[str | None], str]:
+    from dairr_core.rendering import parse_article_response
+
+    parsed = parse_article_response(raw_article)
+    lines = str(parsed.get("main_article") or "").splitlines()
+    pairs: list[tuple[str, str | None]] = []
+    paragraph: list[str] = []
+    for line in lines:
+        stripped = line.strip()
+        if stripped.lower().startswith("[t]"):
+            translation = stripped[3:].strip()
+            if paragraph:
+                pairs.append(("\n".join(paragraph).strip(), translation or None))
+                paragraph = []
+            elif pairs:
+                previous, _old = pairs[-1]
+                pairs[-1] = (previous, translation or None)
+        elif not stripped:
+            if paragraph:
+                pairs.append(("\n".join(paragraph).strip(), None))
+                paragraph = []
+        else:
+            paragraph.append(line)
+    if paragraph:
+        pairs.append(("\n".join(paragraph).strip(), None))
+    pairs = [(source, reference) for source, reference in pairs if source]
+    if not pairs:
+        main = str(parsed.get("main_article") or raw_article).strip()
+        return main, [None] if main else [], str(parsed.get("title") or "")
+    if direction is TranslationDirection.BACK_TRANSLATION and any(reference for _source, reference in pairs):
+        source_values = [reference if reference else source for source, reference in pairs]
+        references = [source if reference else None for source, reference in pairs]
+    else:
+        source_values = [source for source, _reference in pairs]
+        references = [reference for _source, reference in pairs]
+    return "\n\n".join(source_values), references, str(parsed.get("title") or "")
+
+
+def _practice_repository() -> PracticeRepository:
+    if not _DESKTOP_ADAPTERS_AVAILABLE:
+        root = Path(os.environ.get("DESKTOP_OUTPUT_DIR") or (REPO_ROOT / "desktop_mock" / "output"))
+    else:
+        root = DesktopDeckAdapter()._output_dir
+    return PracticeRepository(root / "practice_sessions")
+
+
+def _practice_service() -> PracticeService:
+    return PracticeService(_practice_repository())
+
+
+def _session_payload(session: PracticeSession) -> dict[str, Any]:
+    revision = _PRACTICE_REVISIONS.get(session.id, 0)
+    return {
+        "id": session.id,
+        "kind": session.kind.value,
+        "direction": session.direction.value,
+        "sourceLanguage": session.source_language,
+        "targetLanguage": session.target_language,
+        "sourceText": session.source_text,
+        "segments": [
+            {
+                "id": segment.id,
+                "position": segment.position,
+                "sourceText": segment.source_text,
+                "referenceText": segment.reference_text,
+            }
+            for segment in session.segments
+        ],
+        "createdAt": session.created_at,
+        "updatedAt": session.updated_at,
+        "status": session.status.value,
+        "proficiencyLevel": session.proficiency_level,
+        "customReviewInstructions": session.custom_review_instructions,
+        "articleReference": (
+            {
+                "relativePath": session.article_reference.relative_path,
+                "title": session.article_reference.title,
+                "sourceSnapshot": session.article_reference.source_snapshot,
+                "referenceSnapshot": session.article_reference.reference_snapshot,
+            }
+            if session.article_reference else None
+        ),
+        "attempts": [
+            {
+                "id": attempt.id,
+                "scope": attempt.scope.value,
+                "translation": attempt.translation,
+                "createdAt": attempt.created_at,
+                "segmentIds": list(attempt.segment_ids),
+                "revisionOf": attempt.revision_of,
+                "review": (
+                    {
+                        "id": attempt.review.id,
+                        "createdAt": attempt.review.created_at,
+                        "categories": dict(attempt.review.categories),
+                        "summary": attempt.review.summary,
+                        "suggestedTranslation": attempt.review.suggested_translation,
+                        "score": attempt.review.score,
+                        "promptSnapshot": attempt.review.prompt_snapshot,
+                        "modelSettings": attempt.review.model_settings,
+                    }
+                    if attempt.review else None
+                ),
+            }
+            for attempt in session.attempts
+        ],
+        "segmentDrafts": dict(session.segment_drafts),
+        "completeTextDraft": session.complete_text_draft,
+        "lastAutosavedAt": session.last_autosaved_at,
+        "revision": revision,
+    }
+
+
+def _remember_session(session: PracticeSession, *, increment_revision: bool = False) -> PracticeSession:
+    with _PRACTICE_LOCK:
+        _PRACTICE_DRAFTS[session.id] = session
+        current = _PRACTICE_REVISIONS.get(session.id, 0)
+        _PRACTICE_REVISIONS[session.id] = current + (1 if increment_revision else 0)
+        while len(_PRACTICE_DRAFTS) > 64:
+            oldest = next(iter(_PRACTICE_DRAFTS))
+            _PRACTICE_DRAFTS.pop(oldest, None)
+            _PRACTICE_REVISIONS.pop(oldest, None)
+    return session
+
+
+def _load_practice_session(session_id: str) -> PracticeSession:
+    with _PRACTICE_LOCK:
+        session = _PRACTICE_DRAFTS.get(session_id)
+    if session is None:
+        session = _practice_service().load_session(session_id)
+        _remember_session(session)
+    return session
+
+
+def _check_practice_revision(session_id: str, payload: Mapping[str, Any]) -> None:
+    if payload.get("revision") is None:
+        return
+    try:
+        received = int(payload["revision"])
+    except (TypeError, ValueError) as exc:
+        raise OperationError("invalid_revision", "The practice revision is invalid.") from exc
+    current = _PRACTICE_REVISIONS.get(session_id, 0)
+    if received != current:
+        raise OperationError(
+            "stale_practice_revision",
+            "This practice session changed in another request. Reload it before saving.",
+            retryable=True,
+            safe_details={"currentRevision": current},
+        )
+
+
+def _safe_config_payload(config: Mapping[str, Any]) -> dict[str, Any]:
+    """Return configuration metadata without local credentials or private extras."""
+    normalized = normalize_config(config)
+    try:
+        public_base_url = _safe_public_base_url(normalized.get("base_url"), allow_empty=True)
+    except OperationError:
+        public_base_url = ""
+    return {
+        "configSchemaVersion": normalized.get("config_schema_version"),
+        "apiSettings": {
+            "providerId": normalized.get("selected_provider_profile") or "custom",
+            "baseUrl": public_base_url,
+            "model": normalized.get("model") or "",
+            "temperature": normalized.get("temperature"),
+            "maxTokens": normalized.get("max_tokens"),
+            "hasApiKey": bool(normalized.get("api_key")),
+            "selectedProfileId": normalized.get("selected_llm_api_profile_id") or "",
+        },
+        "desktopSettings": _desktop_settings_payload(normalized),
+        "reasoning": reasoning_intent_to_dict(reasoning_intent_from_config(normalized.get("reasoning"))),
+        "selectedScoringPresetId": normalized.get("selected_scoring_preset_id"),
+        "selectedPromptPresetId": normalized.get("selected_prompt_preset_id"),
+        "uiLanguage": normalized.get("ui_language") or "zh",
+        "uiTheme": normalized.get("ui_theme") or "light",
+    }
+
+
+def _safe_public_base_url(value: Any, *, allow_empty: bool = False) -> str:
+    text = str(value or "").strip().rstrip("/")
+    if not text and allow_empty:
+        return ""
+    try:
+        parsed = urllib.parse.urlsplit(text)
+        port = parsed.port
+    except (ValueError, TypeError) as exc:
+        raise OperationError("invalid_base_url", "Enter a valid HTTP or HTTPS provider base URL.") from exc
+    if (
+        parsed.scheme not in {"http", "https"}
+        or not parsed.hostname
+        or parsed.username is not None
+        or parsed.password is not None
+        or parsed.query
+        or parsed.fragment
+    ):
+        raise OperationError(
+            "invalid_base_url",
+            "Provider base URLs must use HTTP or HTTPS and cannot contain credentials, query parameters, or fragments.",
+        )
+    hostname = f"[{parsed.hostname}]" if ":" in parsed.hostname else parsed.hostname
+    authority = f"{hostname}:{port}" if port is not None else hostname
+    return urllib.parse.urlunsplit((parsed.scheme, authority, parsed.path.rstrip("/"), "", ""))
+
+
+def _safe_api_settings_payload(config: Mapping[str, Any]) -> dict[str, Any]:
+    from mock_data import _api_settings_payload
+
+    result = _api_settings_payload(dict(config))
+    try:
+        result["baseUrl"] = _safe_public_base_url(result.get("baseUrl"), allow_empty=True)
+    except OperationError:
+        result["baseUrl"] = ""
+    profiles = []
+    for raw in result.get("profiles") or []:
+        if not isinstance(raw, Mapping):
+            continue
+        profile = dict(raw)
+        try:
+            profile["baseUrl"] = _safe_public_base_url(profile.get("baseUrl"), allow_empty=True)
+        except OperationError:
+            profile["baseUrl"] = ""
+        profiles.append(profile)
+    result["profiles"] = profiles
+    return result
+
+
+def _provider_context(config: Mapping[str, Any]) -> tuple[str, Any, ModelRequestSettings, OpenAICompatibleTransport]:
+    provider_id = str(config.get("selected_provider_profile") or "custom")
+    capabilities = known_provider_capabilities(provider_id)
+    settings = ModelRequestSettings(
+        model=str(config.get("model") or ""),
+        max_output_tokens=int(config.get("max_tokens") or 30000),
+        temperature=(float(config["temperature"]) if config.get("temperature") is not None else None),
+        top_p=(float(config["top_p"]) if config.get("top_p") is not None else None),
+        reasoning=reasoning_intent_from_config(config.get("reasoning")),
+        use_native_structured_output=True,
+        extra_body=(config.get("extra_body") if isinstance(config.get("extra_body"), Mapping) else {}),
+    )
+    return provider_id, capabilities, settings, OpenAICompatibleTransport(dict(config), timeout=90)
+
+
+def _strict_reasoning_intent(raw: Any) -> ReasoningIntent:
+    if not isinstance(raw, Mapping):
+        raise OperationError("invalid_reasoning", "Reasoning settings must be an object.")
+    try:
+        mode = ReasoningMode(str(raw.get("mode") or "provider_default"))
+        control = ReasoningControl(str(raw["control"])) if raw.get("control") else None
+        effort = str(raw["effort"]) if raw.get("effort") is not None else None
+        budget_raw = raw.get("budgetTokens", raw.get("budget_tokens"))
+        budget = int(budget_raw) if budget_raw is not None else None
+        return ReasoningIntent(mode, control, effort, budget)
+    except (ValueError, TypeError, ProviderConfigurationError) as exc:
+        code = getattr(exc, "code", "invalid_reasoning")
+        message = str(exc) if isinstance(exc, ProviderConfigurationError) else "Reasoning settings are invalid."
+        raise OperationError(code, message) from exc
+
+
+def _reasoning_bridge_payload(intent: ReasoningIntent) -> dict[str, Any]:
+    result: dict[str, Any] = {"mode": intent.mode.value}
+    if intent.mode is ReasoningMode.EXPLICIT:
+        result["control"] = intent.control.value if intent.control else None
+        if intent.control is ReasoningControl.EFFORT:
+            result["effort"] = intent.effort
+        else:
+            result["budgetTokens"] = intent.budget_tokens
+    return result
+
+
+def _strict_prompt_registry_import(imported: Mapping[str, Any]) -> Any:
+    registry = default_prompt_registry()
+    task_overrides = imported.get("task_overrides", {})
+    provider_overrides = imported.get("provider_overrides", {})
+    profile_overrides = imported.get("profile_overrides", {})
+    if not all(isinstance(value, Mapping) for value in (task_overrides, provider_overrides, profile_overrides)):
+        raise OperationError("invalid_prompt_import", "Prompt override groups must be JSON objects.")
+    try:
+        for task_name, raw in task_overrides.items():
+            task = PromptTask(str(task_name))
+            if not isinstance(raw, Mapping):
+                raise ValueError
+            registry.register_default(_prompt_template_from_payload(task, raw))
+        for provider_id, tasks in provider_overrides.items():
+            if not str(provider_id).strip() or not isinstance(tasks, Mapping):
+                raise ValueError
+            for task_name, raw in tasks.items():
+                task = PromptTask(str(task_name))
+                if not isinstance(raw, Mapping):
+                    raise ValueError
+                registry.register_override(
+                    _prompt_template_from_payload(task, raw), provider_id=str(provider_id)
+                )
+        for profile_id, tasks in profile_overrides.items():
+            if not str(profile_id).strip() or not isinstance(tasks, Mapping):
+                raise ValueError
+            for task_name, raw in tasks.items():
+                task = PromptTask(str(task_name))
+                if not isinstance(raw, Mapping):
+                    raise ValueError
+                registry.register_override(
+                    _prompt_template_from_payload(task, raw), profile_id=str(profile_id)
+                )
+    except (ValueError, TypeError, PromptTemplateError) as exc:
+        raise OperationError("invalid_prompt_import", "A prompt override is invalid.") from exc
+    return registry
+
+
+def _capability_message(capability: Capability) -> str:
+    if capability.available:
+        return "Available."
+    return {
+        CapabilityReason.CONNECTION_FAILED: "Start Anki and enable standard AnkiConnect, then try again.",
+        CapabilityReason.TIMEOUT: "AnkiConnect timed out. Check Anki and retry.",
+        CapabilityReason.FSRS_NOT_AVAILABLE: "This signal is not exposed by standard AnkiConnect.",
+        CapabilityReason.HOST_MODE_LIMITATION: "Unavailable in standalone mode.",
+        CapabilityReason.PROVIDER_LIMITATION: "The selected provider does not support this setting.",
+        CapabilityReason.OPTIONAL_EXTENSION_NOT_INSTALLED: "An optional extension is required.",
+    }.get(capability.reason, "Temporarily unavailable.")
+
+
+def _capability_snapshot() -> dict[str, Any]:
+    config = _load_generation_config()
+    provider = known_provider_capabilities(str(config.get("selected_provider_profile") or "custom"))
+    values: dict[CapabilityId, Capability] = {
+        CapabilityId.INTERNAL_ANKI_APIS: Capability(
+            CapabilityId.INTERNAL_ANKI_APIS, CapabilityStatus.UNAVAILABLE_IN_MODE,
+            CapabilityReason.HOST_MODE_LIMITATION, Provenance.ANKICONNECT_STANDARD,
+            "Standalone mode never imports Anki internals.",
+        ),
+        CapabilityId.ARTICLE_HISTORY: Capability(
+            CapabilityId.ARTICLE_HISTORY, CapabilityStatus.AVAILABLE,
+            provenance=Provenance.LOCAL_HISTORY, detail="Local Markdown article history.",
+        ),
+        CapabilityId.PASTED_TEXT_PRACTICE: Capability(
+            CapabilityId.PASTED_TEXT_PRACTICE, CapabilityStatus.AVAILABLE,
+            provenance=Provenance.SHARED_CORE, detail="Works independently of Anki.",
+        ),
+        CapabilityId.CUSTOM_PROMPTS: Capability(
+            CapabilityId.CUSTOM_PROMPTS, CapabilityStatus.AVAILABLE,
+            provenance=Provenance.USER_CONFIGURED, detail="All model task templates are visible and editable.",
+        ),
+        CapabilityId.PROVIDER_REASONING: Capability(
+            CapabilityId.PROVIDER_REASONING,
+            CapabilityStatus.AVAILABLE if provider.supports_reasoning else CapabilityStatus.PROVIDER_UNSUPPORTED,
+            CapabilityReason.NONE if provider.supports_reasoning else CapabilityReason.PROVIDER_LIMITATION,
+            Provenance.PROVIDER_DECLARED,
+            "Explicit controls are limited to declared provider capabilities.",
+        ),
+        CapabilityId.CANCELLATION: Capability(
+            CapabilityId.CANCELLATION, CapabilityStatus.AVAILABLE,
+            provenance=Provenance.SHARED_CORE, detail="Long operations support cooperative cancellation.",
+        ),
+    }
+    if _LAST_ANKI_CAPABILITIES is not None:
+        for capability_id in (CapabilityId.ANKI_CONNECTION, CapabilityId.REVIEW_HISTORY,
+                              CapabilityId.FSRS_VALUES, CapabilityId.TARGET_CARD_SCORING):
+            try:
+                values[capability_id] = _LAST_ANKI_CAPABILITIES.get(capability_id)
+            except KeyError:
+                pass
+    for capability_id in (CapabilityId.ANKI_CONNECTION, CapabilityId.REVIEW_HISTORY,
+                          CapabilityId.FSRS_VALUES, CapabilityId.TARGET_CARD_SCORING):
+        values.setdefault(
+            capability_id,
+            Capability(
+                capability_id, CapabilityStatus.TEMPORARILY_UNAVAILABLE,
+                CapabilityReason.UNKNOWN, Provenance.ANKICONNECT_STANDARD,
+                "Run the Anki signal check to refresh this state.",
+            ),
+        )
+    serialized = CapabilitySet(values.values()).to_dict()
+    for row in serialized.values():
+        capability = values[CapabilityId(row["id"])]
+        row["message"] = _capability_message(capability)
+    return {"capabilities": serialized, "practiceLimits": dict(PRACTICE_LIMITS_PAYLOAD)}
+
+
+def _prompt_template_payload(template: PromptTemplate) -> dict[str, Any]:
+    return {
+        "task": template.task.value,
+        "name": template.name,
+        "version": template.version,
+        "systemTemplate": template.system_template,
+        "userTemplate": template.user_template,
+        "responseMode": template.response_mode.value,
+        "responseContract": template.response_contract,
+        "variables": [
+            {
+                "name": variable.name,
+                "description": variable.description,
+                "required": variable.required,
+                "example": variable.example,
+            }
+            for variable in template.documented_variables
+        ],
+    }
+
+
+def _prompt_template_from_payload(task: PromptTask, payload: Mapping[str, Any]) -> PromptTemplate:
+    base = default_prompt_registry().defaults[task]
+    return PromptTemplate(
+        task=task,
+        name=str(payload.get("name") or base.name),
+        version=int(payload.get("version") or base.version),
+        system_template=str(payload.get("systemTemplate") if "systemTemplate" in payload else payload.get("system_template") or ""),
+        user_template=str(payload.get("userTemplate") if "userTemplate" in payload else payload.get("user_template") or ""),
+        response_mode=ResponseMode(str(payload.get("responseMode") or payload.get("response_mode") or base.response_mode.value)),
+        response_contract=str(payload.get("responseContract") if "responseContract" in payload else payload.get("response_contract") or ""),
+        variables=base.variables,
+    )
+
+
+def _prompt_scope(payload: Mapping[str, Any]) -> tuple[str, str, str]:
+    scope = str(payload.get("scope") or "task")
+    provider_id = str(payload.get("providerId") or "").strip()
+    profile_id = str(payload.get("profileId") or "").strip()
+    if scope == "provider" and not provider_id:
+        raise OperationError("missing_provider", "Choose a provider for this prompt override.")
+    if scope == "profile" and not profile_id:
+        raise OperationError("missing_profile", "Choose a profile for this prompt override.")
+    if scope not in {"task", "provider", "profile"}:
+        raise OperationError("invalid_prompt_scope", "The prompt override scope is invalid.")
+    return scope, provider_id, profile_id
+
+
+def _save_prompt_registry(config: dict[str, Any], registry: Any) -> None:
+    config["ai_prompt_config"] = export_prompt_registry_overrides(
+        registry,
+        existing=config.get("ai_prompt_config"),
+    )
+    _save_desktop_config(config)
+
+
+def _remove_prompt_override(config: dict[str, Any], task: PromptTask, payload: Mapping[str, Any]) -> None:
+    scope, provider_id, profile_id = _prompt_scope(payload)
+    stored = normalize_prompt_config(config.get("ai_prompt_config"))
+    if scope == "task":
+        stored["task_overrides"].pop(task.value, None)
+    elif scope == "provider":
+        tasks = stored["provider_overrides"].get(provider_id)
+        if isinstance(tasks, dict):
+            tasks.pop(task.value, None)
+            if not tasks:
+                stored["provider_overrides"].pop(provider_id, None)
+    else:
+        tasks = stored["profile_overrides"].get(profile_id)
+        if isinstance(tasks, dict):
+            tasks.pop(task.value, None)
+            if not tasks:
+                stored["profile_overrides"].pop(profile_id, None)
+    config["ai_prompt_config"] = stored
+    _save_desktop_config(config)
+
+
+def _load_study_signals(payload: Mapping[str, Any]) -> tuple[list[Any], CapabilitySet, list[dict[str, str]]]:
+    global _LAST_ANKI_CAPABILITIES
+    if str(os.environ.get("DAIRR_DESKTOP_PROVIDER") or "mock") != "ankiconnect":
+        raise OperationError(
+            "ankiconnect_not_selected",
+            "Select the AnkiConnect source to load Anki study signals. Pasted-text practice remains available.",
+        )
+    from ankiconnect_data_adapter import AnkiConnectDataAdapter
+
+    provider = get_deck_provider()
+    adapter = AnkiConnectDataAdapter(provider)
+    authoritative_bounds = bool(payload.get("dayBoundsAuthoritative"))
+    day_start = payload.get("dayStartMs") if authoritative_bounds else None
+    day_end = payload.get("dayEndMs") if authoritative_bounds else None
+    if authoritative_bounds and (day_start is None or day_end is None):
+        raise OperationError(
+            "missing_anki_day_bounds",
+            "Authoritative Anki-day bounds require both start and end timestamps.",
+        )
+    try:
+        signals = adapter.collect_today_signals(
+            day_start_ms=(int(day_start) if day_start is not None else None),
+            day_end_ms=(int(day_end) if day_end is not None else None),
+        )
+    except AnkiConnectError as exc:
+        _LAST_ANKI_CAPABILITIES = adapter.capabilities(authoritative_day_bounds=authoritative_bounds)
+        raise OperationError(
+            "ankiconnect_unavailable",
+            str(exc),
+            retryable=exc.failure is not getattr(type(exc.failure), "INCOMPATIBLE_VERSION", None),
+            safe_details={"failure": exc.failure.value},
+        ) from exc
+    _LAST_ANKI_CAPABILITIES = adapter.capabilities(authoritative_day_bounds=authoritative_bounds)
+    issues = [
+        {"reason": issue.reason.value, "action": issue.action, "detail": issue.detail}
+        for issue in adapter.issues
+    ]
+    return signals, _LAST_ANKI_CAPABILITIES, issues
+
+
+def _run_release_operation(action: str, payload: dict[str, Any], context: OperationContext) -> dict[str, Any]:
+    if action == "loadStudySignals":
+        signals, capabilities, issues = _load_study_signals(payload)
+        return {
+            "candidateCount": len(signals),
+            "candidates": [
+                {
+                    "cardId": item.identity.stable_id,
+                    "sourceId": item.identity.source_id,
+                    "localCardId": item.identity.card_id,
+                    "noteId": item.identity.note_id,
+                    "term": item.term,
+                    "metadata": {
+                        key: value for key, value in item.metadata.items()
+                        if key not in {"fields"}
+                    },
+                }
+                for item in signals
+            ],
+            "capabilities": capabilities.to_dict(),
+            "issues": issues,
+        }
+    if action == "previewScoring":
+        signals, capabilities, issues = _load_study_signals(payload)
+        preset_payload = payload.get("preset")
+        if isinstance(preset_payload, Mapping):
+            preset = ScoringPreset.from_dict(preset_payload)
+        else:
+            config = _load_generation_config()
+            selected_id = str(payload.get("presetId") or config.get("selected_scoring_preset_id") or "")
+            stored = next((item for item in config.get("scoring_presets", []) if item.get("id") == selected_id), None)
+            preset = ScoringPreset.from_dict(stored) if isinstance(stored, Mapping) else recommended_preset()
+        scores = score_cards(signals, preset)
+        overrides = tuple(
+            ManualOverride.from_dict(item) for item in (payload.get("manualOverrides") or [])
+            if isinstance(item, Mapping)
+        )
+        selection = select_targets(scores, preset.selection, overrides, tuple(payload.get("explicitOrder") or ()))
+        return {
+            "preset": preset.to_dict(),
+            "selection": selection.to_dict(),
+            "capabilities": capabilities.to_dict(),
+            "issues": issues,
+        }
+    if action == "submitPracticeReview":
+        session_id = str(payload.get("sessionId") or "")
+        session = _load_practice_session(session_id)
+        _check_practice_revision(session_id, payload)
+        config = _load_generation_config()
+        provider_id, capabilities, settings, transport = _provider_context(config)
+        completed = _practice_service().review(
+            session,
+            str(payload.get("translation") or ""),
+            registry=prompt_registry_from_config(config),
+            provider_capabilities=capabilities,
+            request_settings=settings,
+            transport=transport,
+            context=context,
+            segment_id=(str(payload.get("segmentId")) if payload.get("segmentId") else None),
+            revision_of=(str(payload.get("revisionOf")) if payload.get("revisionOf") else None),
+            provider_id=provider_id,
+            profile_id=str(config.get("selected_llm_api_profile_id") or ""),
+            persist=bool(payload.get("persist", True)),
+        )
+        _remember_session(completed.session, increment_revision=True)
+        result = completed.result
+        return {
+            "session": _session_payload(completed.session),
+            "attemptId": completed.attempt_id,
+            "review": {
+                "categories": {key: list(values) for key, values in result.categories.items()},
+                "suggestedRevision": result.suggested_revision,
+                "overall": result.overall,
+                "plainText": result.plain_text,
+                "referenceUsed": result.reference_used,
+                "warnings": list(result.warnings),
+                "possiblyTruncated": result.possibly_truncated,
+            },
+        }
+    if action == "generateTargetAware":
+        config = _load_generation_config()
+        provider_id, capabilities, settings, transport = _provider_context(config)
+        targets = tuple(
+            GenerationTarget(
+                str(item.get("id") or ""),
+                str(item.get("text") or item.get("target") or ""),
+                TargetCategory(str(item.get("category") or "optional")),
+                tuple(str(value) for value in (item.get("equivalentForms") or ()) if str(value).strip()),
+            )
+            for item in (payload.get("targets") or ()) if isinstance(item, Mapping)
+        )
+        request = ArticleGenerationRequest(
+            target_language=str(payload.get("targetLanguage") or ""),
+            targets=targets,
+            source_text=str(payload.get("sourceText") or ""),
+            source_language=str(payload.get("sourceLanguage") or ""),
+            proficiency_level=str(payload.get("proficiencyLevel") or ""),
+            genre=str(payload.get("genre") or ""),
+            desired_length=str(payload.get("desiredLength") or ""),
+            style=str(payload.get("style") or ""),
+            custom_instructions=str(payload.get("customInstructions") or ""),
+        )
+        result = generate_target_aware_article(
+            request,
+            registry=prompt_registry_from_config(config),
+            provider_capabilities=capabilities,
+            request_settings=settings,
+            transport=transport,
+            context=context,
+            provider_id=provider_id,
+            profile_id=str(config.get("selected_llm_api_profile_id") or ""),
+        )
+        response = result.to_dict()
+        if payload.get("saveArticle"):
+            legacy_article = "[ARTICLE_TITLE]\n" + result.title + "\n[MAIN_ARTICLE]\n" + result.article
+            saved = DesktopDeckAdapter().save_article(
+                str(payload.get("deckName") or "DAIRR"),
+                [],
+                legacy_article,
+                generation_metadata={
+                    "targets": [item.prompt_dict() for item in targets],
+                    "targetOutcomes": [item.to_dict() for item in result.target_outcomes],
+                },
+            )
+            response["savedArticle"] = {key: str(value) for key, value in saved.items()}
+        return response
+    raise OperationError("unknown_action", "The requested bridge action is unavailable.")
+
+
+def _handle_release_action(action: str, payload: dict[str, Any]) -> tuple[str, dict[str, Any]]:
+    config = _load_generation_config()
+    if action == "getCapabilities":
+        return "capabilitiesLoaded", _capability_snapshot()
+    if action == "createPastedPractice":
+        session = _practice_service().create_pasted(
+            str(payload.get("sourceText") or ""),
+            str(payload.get("sourceLanguage") or "auto"),
+            str(payload.get("targetLanguage") or ""),
+            direction=TranslationDirection(str(payload.get("direction") or "source_to_target")),
+            proficiency_level=(str(payload.get("proficiencyLevel")) if payload.get("proficiencyLevel") else None),
+            custom_review_instructions=str(payload.get("customReviewInstructions") or ""),
+            save=bool(payload.get("save", False)),
+        )
+        _remember_session(session)
+        return "practiceSessionCreated", {"session": _session_payload(session), "saved": bool(payload.get("save", False))}
+    if action == "createArticlePractice":
+        article_path = str(payload.get("articlePath") or "")
+        loaded = _load_desktop_article(article_path)
+        direction = TranslationDirection(str(payload.get("direction") or "back_translation"))
+        derived_source, derived_references, derived_title = _article_practice_material(
+            str(loaded.get("article") or ""), direction
+        )
+        source_text = str(payload.get("sourceText") or derived_source)
+        reference_values = payload.get("referenceParagraphs")
+        references = (
+            [str(value) if value is not None else None for value in reference_values]
+            if isinstance(reference_values, list) else derived_references
+        )
+        article_root = DesktopDeckAdapter()._articles_dir.resolve()
+        try:
+            relative_path = Path(article_path).resolve().relative_to(article_root).as_posix()
+        except (OSError, ValueError) as exc:
+            raise OperationError("invalid_article_reference", "Choose an article from DAIRR history.") from exc
+        session = _practice_service().create_from_article(
+            source_text,
+            str(payload.get("sourceLanguage") or ""),
+            str(payload.get("targetLanguage") or ""),
+            ArticleReference(
+                relative_path,
+                str(payload.get("title") or loaded.get("title") or derived_title),
+                source_text,
+                ("\n\n".join(value or "" for value in references) if references else None),
+            ),
+            reference_paragraphs=references,
+            direction=direction,
+            proficiency_level=(str(payload.get("proficiencyLevel")) if payload.get("proficiencyLevel") else None),
+            custom_review_instructions=str(payload.get("customReviewInstructions") or ""),
+            save=bool(payload.get("save", True)),
+        )
+        _remember_session(session)
+        return "practiceSessionCreated", {"session": _session_payload(session), "saved": bool(payload.get("save", True))}
+    if action == "listPracticeSessions":
+        sessions = []
+        for session_id in _practice_repository().list_ids():
+            try:
+                session = _practice_repository().load(session_id)
+            except Exception:
+                continue
+            sessions.append({
+                "id": session.id, "kind": session.kind.value, "direction": session.direction.value,
+                "sourceLanguage": session.source_language, "targetLanguage": session.target_language,
+                "status": session.status.value, "updatedAt": session.updated_at,
+                "attemptCount": len(session.attempts),
+                "articleTitle": session.article_reference.title if session.article_reference else "",
+            })
+        sessions.sort(key=lambda item: item["updatedAt"], reverse=True)
+        return "practiceSessionsLoaded", {"sessions": sessions}
+    if action == "loadPracticeSession":
+        session = _load_practice_session(str(payload.get("sessionId") or ""))
+        return "practiceSessionLoaded", {"session": _session_payload(session)}
+    if action == "savePracticeDraft":
+        session_id = str(payload.get("sessionId") or "")
+        session = _load_practice_session(session_id)
+        _check_practice_revision(session_id, payload)
+        updated = _practice_service().save_draft(
+            session,
+            str(payload.get("translation") or ""),
+            segment_id=(str(payload.get("segmentId")) if payload.get("segmentId") else None),
+            persist=bool(payload.get("persist", True)),
+        )
+        _remember_session(updated, increment_revision=True)
+        return "practiceDraftSaved", {"session": _session_payload(updated), "persisted": bool(payload.get("persist", True))}
+    if action == "updatePracticeSegments":
+        session_id = str(payload.get("sessionId") or "")
+        session = _load_practice_session(session_id)
+        _check_practice_revision(session_id, payload)
+        if session.attempts:
+            raise OperationError("segmentation_locked", "Source segmentation cannot change after review attempts exist.")
+        raw_segments = payload.get("segments")
+        if not isinstance(raw_segments, list) or not raw_segments:
+            raise OperationError("invalid_segments", "Provide at least one ordered practice segment.")
+        segments = tuple(
+            PracticeSegment(
+                str(item.get("id") or ""), index,
+                str(item.get("sourceText") or ""),
+                (str(item.get("referenceText")) if item.get("referenceText") is not None else None),
+            )
+            for index, item in enumerate(raw_segments) if isinstance(item, Mapping)
+        )
+        if len(segments) != len(raw_segments):
+            raise OperationError("invalid_segments", "Each practice segment must be an object.")
+        updated = session.with_segments(segments)
+        if payload.get("persist", True):
+            _practice_service().save_session(updated)
+        _remember_session(updated, increment_revision=True)
+        return "practiceSegmentsUpdated", {"session": _session_payload(updated)}
+    if action == "deletePracticeSession":
+        session_id = str(payload.get("sessionId") or "")
+        deleted = _practice_repository().delete(session_id)
+        with _PRACTICE_LOCK:
+            _PRACTICE_DRAFTS.pop(session_id, None)
+            _PRACTICE_REVISIONS.pop(session_id, None)
+        return "practiceSessionDeleted", {"sessionId": session_id, "deleted": deleted}
+    if action in {"getScoringConfig", "resetScoringConfig", "saveScoringConfig", "importScoringConfig", "exportScoringConfig"}:
+        presets = list(config.get("scoring_presets") or [recommended_preset().to_dict()])
+        selected_id = str(config.get("selected_scoring_preset_id") or presets[0]["id"])
+        if action == "resetScoringConfig":
+            preset = recommended_preset()
+            presets = [item for item in presets if item.get("id") != preset.id] + [preset.to_dict()]
+            selected_id = preset.id
+        elif action == "saveScoringConfig":
+            raw = payload.get("preset")
+            if not isinstance(raw, Mapping):
+                raise OperationError("invalid_scoring_preset", "The scoring preset must be an object.")
+            preset = ScoringPreset.from_dict(raw)
+            presets = [item for item in presets if item.get("id") != preset.id] + [preset.to_dict()]
+            selected_id = preset.id
+        elif action == "importScoringConfig":
+            preset = import_preset(str(payload.get("serialized") or ""))
+            presets = [item for item in presets if item.get("id") != preset.id] + [preset.to_dict()]
+            selected_id = preset.id
+        elif action == "exportScoringConfig":
+            stored = next((item for item in presets if item.get("id") == str(payload.get("presetId") or selected_id)), None)
+            preset = ScoringPreset.from_dict(stored) if isinstance(stored, Mapping) else recommended_preset()
+            return "scoringConfigExported", {"serialized": export_preset(preset), "presetId": preset.id}
+        if action != "getScoringConfig":
+            config["scoring_presets"] = presets
+            config["selected_scoring_preset_id"] = selected_id
+            _save_desktop_config(config)
+        metadata = {
+            mode.value: [
+                {"signal": item.name.value, "label": item.label, "explanation": item.explanation,
+                 "simpleControl": item.simple_control}
+                for item in signal_metadata(mode)
+            ]
+            for mode in (SettingsMode.SIMPLE, SettingsMode.ADVANCED)
+        }
+        return "scoringConfigLoaded", {"presets": presets, "selectedPresetId": selected_id, "signalMetadata": metadata}
+    if action in {"listPromptTemplates", "getPromptTemplate", "savePromptTemplate", "resetPromptTemplate", "importPromptTemplates", "exportPromptTemplates", "previewPrompt"}:
+        registry = prompt_registry_from_config(config)
+        if action == "listPromptTemplates":
+            return "promptTemplatesLoaded", {"templates": [_prompt_template_payload(registry.resolve(task)) for task in PromptTask]}
+        if action == "importPromptTemplates":
+            try:
+                imported = json.loads(str(payload.get("serialized") or ""))
+            except json.JSONDecodeError as exc:
+                raise OperationError("invalid_prompt_import", "Prompt presets are not valid JSON.") from exc
+            if not isinstance(imported, Mapping):
+                raise OperationError("invalid_prompt_import", "Prompt presets must be a JSON object.")
+            # Validate every imported override; invalid entries are rejected
+            # rather than silently disappearing during normalization.
+            candidate_registry = _strict_prompt_registry_import(imported)
+            config["ai_prompt_config"] = normalize_prompt_config(imported)
+            _save_desktop_config(config)
+            registry = candidate_registry
+            return "promptTemplatesLoaded", {"templates": [_prompt_template_payload(registry.resolve(task)) for task in PromptTask]}
+        if action == "exportPromptTemplates":
+            return "promptTemplatesExported", {"serialized": json.dumps(config.get("ai_prompt_config") or {}, ensure_ascii=False, indent=2)}
+        task = PromptTask(str(payload.get("task") or ""))
+        scope, provider_id, profile_id = _prompt_scope(payload)
+        if action == "savePromptTemplate":
+            raw_template = payload.get("template")
+            if not isinstance(raw_template, Mapping):
+                raise OperationError("invalid_prompt_template", "The prompt template must be an object.")
+            template = _prompt_template_from_payload(task, raw_template)
+            if scope == "task":
+                registry.register_default(template)
+            else:
+                registry.register_override(template, provider_id=provider_id if scope == "provider" else "", profile_id=profile_id if scope == "profile" else "")
+            _save_prompt_registry(config, registry)
+            return "promptTemplateSaved", {"template": _prompt_template_payload(template), "scope": scope}
+        if action == "resetPromptTemplate":
+            _remove_prompt_override(config, task, payload)
+            template = prompt_registry_from_config(config).resolve(task, provider_id=provider_id, profile_id=profile_id)
+            return "promptTemplateReset", {"template": _prompt_template_payload(template), "scope": scope}
+        template = registry.resolve(task, provider_id=provider_id, profile_id=profile_id)
+        if action == "getPromptTemplate":
+            return "promptTemplateLoaded", {"template": _prompt_template_payload(template), "scope": scope}
+        preview_template = payload.get("template")
+        if isinstance(preview_template, Mapping):
+            template = _prompt_template_from_payload(task, preview_template)
+        values = payload.get("values") if isinstance(payload.get("values"), Mapping) else {}
+        referenced = {item.name for item in template.documented_variables if "{" + item.name in (template.system_template + template.user_template)}
+        missing = sorted(name for name in referenced if name != "output_format_contract" and (name not in values or values[name] is None))
+        if missing:
+            return "promptPreview", {
+                "task": task.value, "system": "", "user": "", "responseContract": template.response_contract,
+                "messages": [], "missingVariables": missing, "effectiveSettings": None,
+            }
+        rendered = render_prompt(template, values)
+        _provider_id, capabilities, settings, _transport = _provider_context(config)
+        built = settings.build(capabilities, rendered)
+        return "promptPreview", {
+            "task": task.value, "system": rendered.system, "user": rendered.user,
+            "responseContract": rendered.response_contract, "messages": list(rendered.messages),
+            "missingVariables": [], "effectiveSettings": built.effective_settings.to_safe_dict(),
+        }
+    if action in {"getReasoningSettings", "saveReasoningSettings", "previewReasoningSettings"}:
+        if action == "saveReasoningSettings":
+            intent = _strict_reasoning_intent(payload.get("reasoning"))
+            # Validate explicit values against the selected provider now.
+            known_provider_capabilities(str(config.get("selected_provider_profile") or "custom")).validate_reasoning(intent)
+            config["reasoning"] = reasoning_intent_to_dict(intent)
+            _save_desktop_config(config)
+        elif action == "previewReasoningSettings":
+            intent = _strict_reasoning_intent(payload.get("reasoning") if payload.get("reasoning") is not None else config.get("reasoning"))
+            capabilities = known_provider_capabilities(str(config.get("selected_provider_profile") or "custom"))
+            capabilities.validate_reasoning(intent)
+            from dairr_core.prompt_templates import RenderedPrompt
+            preview = RenderedPrompt(PromptTask.PREPROCESSING, "", "Preview", ResponseMode.PLAIN_TEXT, "", 1, ())
+            settings = ModelRequestSettings(
+                model=str(config.get("model") or ""), max_output_tokens=int(config.get("max_tokens") or 30000),
+                temperature=(float(config["temperature"]) if config.get("temperature") is not None else None),
+                reasoning=intent,
+            )
+            built = settings.build(capabilities, preview)
+            return "reasoningSettingsPreview", {
+                "reasoning": _reasoning_bridge_payload(intent),
+                "capabilities": {
+                    "supportsReasoning": capabilities.supports_reasoning,
+                    "controls": sorted(item.value for item in capabilities.reasoning_controls),
+                    "effortLevels": list(capabilities.effort_levels),
+                    "minimumBudgetTokens": capabilities.minimum_budget_tokens,
+                    "maximumBudgetTokens": capabilities.maximum_budget_tokens,
+                },
+                "effectiveSettings": built.effective_settings.to_safe_dict(),
+            }
+        intent = reasoning_intent_from_config(config.get("reasoning"))
+        capabilities = known_provider_capabilities(str(config.get("selected_provider_profile") or "custom"))
+        return "reasoningSettingsLoaded", {
+            "reasoning": _reasoning_bridge_payload(intent),
+            "capabilities": {
+                "supportsReasoning": capabilities.supports_reasoning,
+                "controls": sorted(item.value for item in capabilities.reasoning_controls),
+                "effortLevels": list(capabilities.effort_levels),
+                "minimumBudgetTokens": capabilities.minimum_budget_tokens,
+                "maximumBudgetTokens": capabilities.maximum_budget_tokens,
+            },
+        }
+    raise OperationError("unknown_action", "The requested bridge action is unavailable.")
 
 def handle_action(action: str, payload: dict[str, Any]) -> dict[str, Any]:
     """Dispatch one bridge action and return an {event, payload} envelope.
@@ -837,8 +1795,8 @@ def handle_action(action: str, payload: dict[str, Any]) -> dict[str, Any]:
         try:
             deleted = DesktopDeckAdapter().delete_saved_article(path)
             return {"event": "articleDeleted", "payload": deleted}
-        except RuntimeError as exc:
-            return {"event": "error", "payload": {"message": str(exc)}}
+        except RuntimeError:
+            return {"event": "error", "payload": {"message": "The selected article could not be deleted."}}
 
     if action == "deleteAllArticles":
         if not _DESKTOP_ADAPTERS_AVAILABLE:
@@ -854,8 +1812,8 @@ def handle_action(action: str, payload: dict[str, Any]) -> dict[str, Any]:
                 str((payload or {}).get("generatedDay") or "")
             )
             return {"event": "articlesDeletedByDay", "payload": deleted}
-        except RuntimeError as exc:
-            return {"event": "error", "payload": {"message": str(exc)}}
+        except RuntimeError:
+            return {"event": "error", "payload": {"message": "The selected article group could not be deleted."}}
 
     if action == "fetchModels":
         if _DESKTOP_ADAPTERS_AVAILABLE:
@@ -868,7 +1826,9 @@ def handle_action(action: str, payload: dict[str, Any]) -> dict[str, Any]:
                 
                 settings = payload.get("settings") or {}
                 api_key = str(settings.get("apiKey") or config.get("api_key") or "").strip()
-                base_url = _utils.clean_base_url(settings.get("baseUrl") or config.get("base_url"))
+                base_url = _safe_public_base_url(
+                    _utils.clean_base_url(settings.get("baseUrl") or config.get("base_url"))
+                )
                 
                 if not api_key:
                     return {"event": "error", "payload": {"message": "Enter or save an API key before fetching models."}}
@@ -879,8 +1839,8 @@ def handle_action(action: str, payload: dict[str, Any]) -> dict[str, Any]:
                 if not models:
                     return {"event": "error", "payload": {"message": "No models were returned by this provider."}}
                 return {"event": "modelsFetched", "payload": {"models": models}}
-            except Exception as exc:
-                return {"event": "error", "payload": {"message": str(exc)}}
+            except Exception:
+                return {"event": "error", "payload": {"message": "Could not fetch models. Check the provider settings and connection."}}
         else:
             return {"event": "modelsFetched", "payload": {"models": ["mock-model-1", "mock-model-2"]}}
 
@@ -893,21 +1853,21 @@ def handle_action(action: str, payload: dict[str, Any]) -> dict[str, Any]:
             config = DesktopConfigAdapter().load() or {}
             settings = payload.get("settings") or {}
             api_key = str(settings.get("apiKey") or config.get("api_key") or "").strip()
-            base_url = str(settings.get("baseUrl") or config.get("base_url") or "").strip().rstrip("/")
+            base_url = _safe_public_base_url(settings.get("baseUrl") or config.get("base_url"))
             model = str(settings.get("model") or config.get("model") or "").strip()
             if not api_key or not base_url or not model:
                 return {"event": "error", "payload": {"message": "API key, base URL, and model are required for testing."}}
             result = _llm.test_openai_compatible_config(base_url, api_key, model)
             return {"event": "apiSettingsTested", "payload": result}
-        except Exception as exc:
-            return {"event": "error", "payload": {"message": str(exc)}}
+        except Exception:
+            return {"event": "error", "payload": {"message": "The API settings test failed. Check the provider settings and connection."}}
 
     if _DESKTOP_ADAPTERS_AVAILABLE:
         config_adapter = DesktopConfigAdapter()
         config = config_adapter.load() or {}
 
         if action == "getConfig":
-            return {"event": "configLoaded", "payload": config}
+            return {"event": "configLoaded", "payload": _safe_config_payload(config)}
         if action == "saveDesktopSettings":
             settings = payload.get("settings") or {}
             momo_key = str(settings.get("momoApiKey") or "").strip()
@@ -937,13 +1897,13 @@ def handle_action(action: str, payload: dict[str, Any]) -> dict[str, Any]:
                 from desktop_adapters import _import_core
                 _utils = _import_core("utils")
                 provider_id = _utils.clean_provider_id(settings.get("providerId"))
-                base_url = _utils.clean_base_url(settings.get("baseUrl"))
+                base_url = _safe_public_base_url(_utils.clean_base_url(settings.get("baseUrl")))
                 model = _utils.clean_text(settings.get("model"))
                 temperature = _utils.clean_temperature(settings.get("temperature"))
                 max_tokens = _utils.clean_max_tokens(settings.get("maxTokens"))
             except Exception:
                 provider_id = str(settings.get("providerId") or "").strip()
-                base_url = str(settings.get("baseUrl") or "").strip().rstrip("/")
+                base_url = _safe_public_base_url(settings.get("baseUrl"))
                 model = str(settings.get("model") or "").strip()
                 try:
                     temperature = float(settings.get("temperature"))
@@ -985,8 +1945,7 @@ def handle_action(action: str, payload: dict[str, Any]) -> dict[str, Any]:
             config_adapter.save(config)
 
             try:
-                from mock_data import _api_settings_payload
-                api_settings_resp = _api_settings_payload(config)
+                api_settings_resp = _safe_api_settings_payload(config)
             except Exception:
                 api_settings_resp = config
 
@@ -996,8 +1955,7 @@ def handle_action(action: str, payload: dict[str, Any]) -> dict[str, Any]:
             if not activate_llm_api_profile(config, str(payload.get("profileId") or "")):
                 return {"event": "error", "payload": {"message": "API profile not found."}}
             config_adapter.save(config)
-            from mock_data import _api_settings_payload
-            return {"event": "apiSettingsSaved", "payload": {"apiSettings": _api_settings_payload(config)}}
+            return {"event": "apiSettingsSaved", "payload": {"apiSettings": _safe_api_settings_payload(config)}}
         if action == "savePromptPreset":
             preset = payload.get("preset") or {}
             try:
@@ -1062,13 +2020,71 @@ def handle_action(action: str, payload: dict[str, Any]) -> dict[str, Any]:
             ui_lang = str(payload.get("uiLanguage", ""))
             config["ui_language"] = ui_lang
             config_adapter.save(config)
-            return {"event": "uiLanguageSaved", "payload": config}
+            return {"event": "uiLanguageSaved", "payload": {"uiLanguage": ui_lang}}
 
     return {"event": "error", "payload": {"message": f"Unknown command: {action}"}}
 
 
-@lru_cache(maxsize=1)
-def _build_index_page() -> str:
+def handle_bridge_message(message: Mapping[str, Any]) -> dict[str, Any]:
+    """Dispatch one versioned bridge request without exposing private failures."""
+    request_id = secrets.token_hex(16)
+    try:
+        request = BridgeRequest.from_mapping(message)
+        request_id = request.request_id
+        payload = dict(request.payload)
+        if request.action == "operationStatus":
+            operation_id = str(payload.get("operationId") or "")
+            if not operation_id:
+                raise OperationError("missing_operation_id", "An operation identifier is required.")
+            return _OPERATIONS.status(operation_id)
+        if request.action == "cancelOperation":
+            operation_id = str(payload.get("operationId") or "")
+            if not operation_id:
+                raise OperationError("missing_operation_id", "An operation identifier is required.")
+            return _OPERATIONS.cancel(operation_id)
+        if request.action in ASYNC_ACTIONS:
+            return _OPERATIONS.submit(
+                request.action,
+                request.request_id,
+                lambda context: _run_release_operation(request.action, payload, context),
+            )
+        if request.action in RELEASE_ACTIONS:
+            event, result = _handle_release_action(request.action, payload)
+            return response_envelope(
+                request.request_id,
+                SYNC_EVENT_BY_ACTION.get(request.action, event),
+                result,
+            )
+
+        legacy = handle_action(request.action, payload)
+        event = str(legacy.get("event") or "error")
+        result = legacy.get("payload") if isinstance(legacy.get("payload"), Mapping) else {}
+        if event == "error":
+            # Some legacy branches predate privacy-safe error types and may
+            # contain third-party exception text. Never forward that text on
+            # the network bridge.
+            raise OperationError(
+                "legacy_action_failed",
+                "The requested action could not be completed. Check the relevant settings and try again.",
+                retryable=True,
+            )
+        return response_envelope(request.request_id, event, result)
+    except (OperationError, PromptTemplateError, ProviderConfigurationError, ValueError, KeyError) as exc:
+        if isinstance(exc, OperationError):
+            safe = exc
+        elif isinstance(exc, (PromptTemplateError, ProviderConfigurationError)):
+            safe = OperationError(getattr(exc, "code", "invalid_settings"), str(exc))
+        else:
+            safe = OperationError("invalid_request", "The request contains invalid or stale data.")
+        return failure_envelope(request_id, safe)
+    except Exception:
+        return failure_envelope(
+            request_id,
+            OperationError("operation_failed", "The operation failed."),
+        )
+
+
+def _build_index_page(bridge_token: str | None = None) -> str:
     """Inline css + index.html body + mock bridge + app.js, mirroring _load_page."""
     body = (WEB_DIR / "index.html").read_text(encoding="utf-8")
     css = (WEB_DIR / "style.css").read_text(encoding="utf-8")
@@ -1083,14 +2099,17 @@ def _build_index_page() -> str:
     # The mock bridge replaces the Anki pycmd path. It posts to /api/bridge and
     # feeds the response straight into the shared app.js receive handler
     # (window.DAIRR.receive), which expects { event, payload }.
+    token = bridge_token or _BRIDGE_TOKEN
     bridge = (
         '<script>\n'
+        f'window.__DAIRR_BRIDGE_TOKEN__ = {json.dumps(token)};\n'
         'window.__DAIRR_BRIDGE__ = {\n'
-        '  send(action, payload) {\n'
+        '  send(action, payload, envelope) {\n'
+        '    var requestId = (envelope && envelope.requestId) || ((window.crypto && window.crypto.randomUUID) ? window.crypto.randomUUID() : (Date.now().toString(36) + Math.random().toString(36).slice(2)));\n'
         '    fetch("/api/bridge", {\n'
         '      method: "POST",\n'
-        '      headers: {"Content-Type": "application/json"},\n'
-        '      body: JSON.stringify({action: action, payload: payload})\n'
+        f'      headers: {{"Content-Type": "application/json", "{BRIDGE_TOKEN_HEADER}": window.__DAIRR_BRIDGE_TOKEN__}},\n'
+        f'      body: JSON.stringify({{version: (envelope && envelope.version) || {BRIDGE_VERSION}, requestId: requestId, action: action, payload: payload || {{}}}})\n'
         '    })\n'
         '      .then(function (r) { return r.json(); })\n'
         '      .then(function (data) {\n'
@@ -1098,8 +2117,9 @@ def _build_index_page() -> str:
         '          window.DAIRR.receive(data);\n'
         '        }\n'
         '      })\n'
-        '      .catch(function (err) { console.error("Mock bridge error", err); });\n'
-        '  }\n'
+        '      .catch(function () { if (window.DAIRR) { window.DAIRR.receive({version:2, requestId:requestId, event:"operationFailed", payload:{status:"failed", error:{code:"bridge_unavailable", message:"The local DAIRR bridge is unavailable.", retryable:true, details:{}}}}); } });\n'
+        '  },\n'
+        '  sendRequest(request) { return this.send(request.action, request.payload, request); }\n'
         '};\n'
         '</script>\n'
     )
@@ -1107,13 +2127,56 @@ def _build_index_page() -> str:
 
 
 class MockHandler(BaseHTTPRequestHandler):
-    server_version = "DAIRRMock/1.0"
+    server_version = "DAIRR/2.0"
+
+    def _allowed_origins(self) -> set[str]:
+        host, port = self.server.server_address[:2]
+        origins = {
+            f"http://127.0.0.1:{port}",
+            f"http://localhost:{port}",
+            f"http://[::1]:{port}",
+        }
+        if str(host) in {"127.0.0.1", "localhost", "::1"}:
+            origins.add(f"http://{host}:{port}" if ":" not in str(host) else f"http://[{host}]:{port}")
+        return origins
+
+    def _valid_host(self) -> bool:
+        supplied = (self.headers.get("Host") or "").strip().lower()
+        _host, port = self.server.server_address[:2]
+        return supplied in {f"127.0.0.1:{port}", f"localhost:{port}", f"[::1]:{port}"}
+
+    def _valid_origin(self) -> bool:
+        origin = (self.headers.get("Origin") or "").strip()
+        return not origin or origin in self._allowed_origins()
+
+    def _valid_bridge_token(self) -> bool:
+        supplied = self.headers.get(BRIDGE_TOKEN_HEADER) or ""
+        return bool(supplied) and secrets.compare_digest(supplied, _BRIDGE_TOKEN)
+
+    def _security_headers(self) -> None:
+        self.send_header("Cache-Control", "no-store")
+        self.send_header("X-Content-Type-Options", "nosniff")
+        self.send_header("X-Frame-Options", "DENY")
+        self.send_header("Referrer-Policy", "no-referrer")
+        self.send_header(
+            "Content-Security-Policy",
+            "default-src 'none'; style-src 'unsafe-inline'; script-src 'unsafe-inline'; "
+            "img-src data:; connect-src 'self'; base-uri 'none'; frame-ancestors 'none'",
+        )
+
+    def _cors_header(self) -> None:
+        origin = (self.headers.get("Origin") or "").strip()
+        if origin in self._allowed_origins():
+            self.send_header("Access-Control-Allow-Origin", origin)
+            self.send_header("Vary", "Origin")
 
     def _send_json(self, status: int, obj: dict[str, Any]) -> None:
         body = json.dumps(obj, ensure_ascii=False).encode("utf-8")
         self.send_response(status)
         self.send_header("Content-Type", "application/json; charset=utf-8")
         self.send_header("Content-Length", str(len(body)))
+        self._security_headers()
+        self._cors_header()
         self.end_headers()
         self.wfile.write(body)
 
@@ -1122,10 +2185,14 @@ class MockHandler(BaseHTTPRequestHandler):
         self.send_response(200)
         self.send_header("Content-Type", "text/html; charset=utf-8")
         self.send_header("Content-Length", str(len(body)))
+        self._security_headers()
         self.end_headers()
         self.wfile.write(body)
 
     def do_GET(self) -> None:
+        if not self._valid_host():
+            self._send_json(403, {"error": "invalid_host"})
+            return
         if self.path == "/api/health":
             self._send_json(200, build_health_payload())
             return
@@ -1134,7 +2201,22 @@ class MockHandler(BaseHTTPRequestHandler):
             return
         self.send_error(404, "Not found")
 
+    def do_OPTIONS(self) -> None:
+        if self.path != "/api/bridge" or not self._valid_host() or not self._valid_origin():
+            self._send_json(403, {"error": "request_rejected"})
+            return
+        self.send_response(204)
+        self.send_header("Access-Control-Allow-Methods", "POST, OPTIONS")
+        self.send_header("Access-Control-Allow-Headers", f"Content-Type, {BRIDGE_TOKEN_HEADER}")
+        self.send_header("Access-Control-Max-Age", "600")
+        self._security_headers()
+        self._cors_header()
+        self.end_headers()
+
     def do_POST(self) -> None:
+        if not self._valid_host() or not self._valid_origin():
+            self._send_json(403, {"error": "request_rejected"})
+            return
         if self.path == "/api/shutdown":
             expected = os.environ.get("DAIRR_SHUTDOWN_TOKEN") or ""
             supplied = self.headers.get("X-DAIRR-Shutdown-Token") or ""
@@ -1142,33 +2224,51 @@ class MockHandler(BaseHTTPRequestHandler):
                 self._send_json(403, {"ok": False})
                 return
             self._send_json(200, {"ok": True})
+            _OPERATIONS.shutdown(wait=False)
             threading.Thread(target=self.server.shutdown, daemon=True).start()
             return
         if self.path != "/api/bridge":
             self.send_error(404, "Not found")
             return
+        if not self._valid_bridge_token():
+            self._send_json(403, failure_envelope(
+                secrets.token_hex(16),
+                OperationError("bridge_authorization_failed", "The local bridge request was rejected."),
+            ))
+            return
+        content_type = (self.headers.get("Content-Type") or "").split(";", 1)[0].strip().lower()
+        if content_type != "application/json":
+            self._send_json(415, failure_envelope(
+                secrets.token_hex(16),
+                OperationError("unsupported_content_type", "The bridge accepts JSON requests only."),
+            ))
+            return
         try:
             length = int(self.headers.get("Content-Length") or 0)
+            if length < 0 or length > MAX_BRIDGE_BODY_BYTES:
+                raise OperationError("request_too_large", "The bridge request exceeds the explicit size limit.")
             raw = self.rfile.read(length) if length else b"{}"
             message = json.loads(raw.decode("utf-8") or "{}")
-        except Exception as exc:
-            self._send_json(400, {"event": "error", "payload": {"message": f"Bad request: {exc}"}})
+            if not isinstance(message, Mapping):
+                raise OperationError("invalid_request", "The bridge request must be a JSON object.")
+        except OperationError as exc:
+            self._send_json(400, failure_envelope(secrets.token_hex(16), exc))
             return
-
-        action = str(message.get("action") or "")
-        payload = message.get("payload") or {}
-        if not isinstance(payload, dict):
-            payload = {}
-        try:
-            self._send_json(200, handle_action(action, payload))
-        except Exception as exc:
-            self._send_json(200, {"event": "error", "payload": {"message": str(exc)}})
+        except Exception:
+            self._send_json(400, failure_envelope(
+                secrets.token_hex(16),
+                OperationError("invalid_json", "The bridge request is not valid JSON."),
+            ))
+            return
+        self._send_json(200, handle_bridge_message(message))
 
     def log_message(self, fmt: str, *args: Any) -> None:
         sys.stderr.write("[mock] " + (fmt % args) + "\n")
 
 
 def run_server(host: str = HOST, port: int = PORT) -> None:
+    if host not in {"127.0.0.1", "localhost", "::1"}:
+        raise ValueError("DAIRR's local bridge may bind only to a loopback interface.")
     get_deck_provider()
     server = ThreadingHTTPServer((host, port), MockHandler)
     server.daemon_threads = True
@@ -1192,6 +2292,7 @@ def run_server(host: str = HOST, port: int = PORT) -> None:
     except KeyboardInterrupt:
         print("\nStopping.")
     finally:
+        _OPERATIONS.shutdown(wait=False)
         server.server_close()
 
 
