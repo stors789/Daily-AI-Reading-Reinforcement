@@ -116,17 +116,19 @@ class AddonReleaseServiceTests(unittest.TestCase):
             })
         self.assertEqual(self.config["reasoning"], {"mode": "disabled"})
 
-        self.config.update({"temperature": None, "top_p": 0.9})
-        with self.assertRaisesRegex(Exception, "top-p"):
+        with patch.object(self.service, "config", return_value={
+            **self.config, "temperature": None, "top_p": 0.9,
+        }), self.assertRaisesRegex(Exception, "top-p"):
             self.service.save_reasoning_settings({
                 "reasoning": {"mode": "explicit", "control": "effort", "effort": "low"}
             })
-        self.config.update({
+        with patch.object(self.service, "config", return_value={
+            **self.config,
             "selected_provider_profile": "custom",
+            "temperature": None,
             "top_p": None,
             "use_native_structured_output": True,
-        })
-        with self.assertRaisesRegex(Exception, "response_format"):
+        }), self.assertRaisesRegex(Exception, "response_format"):
             self.service.save_reasoning_settings({"reasoning": {"mode": "disabled"}})
 
     def test_capabilities_add_offline_practice_and_local_history(self) -> None:
