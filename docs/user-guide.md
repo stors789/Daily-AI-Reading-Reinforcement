@@ -206,7 +206,7 @@ Open **Scoring**. The **Recommended** preset supplies defaults for:
 - equivalent-target duplicates and sibling cards;
 - recent DAIRR reuse and recent inclusion count.
 
-**Simple** shows the highest-value signal rows. **Advanced** exposes every signal’s enable toggle, weight, and linear/square-root/logarithmic/square transform. The versioned preset format also supports normalization divisors, contribution floors/ceilings, and optional half-life decay for compatible imported presets. Reset restores a fresh recommended preset.
+**Simple** shows the highest-value signal rows. **Advanced** exposes every signal’s enable toggle, weight, linear/square-root/logarithmic/square transform, normalization divisor, and optional contribution floor/ceiling. Compatible time-based signals such as recent reuse also expose decay and half-life controls. Reset restores a fresh recommended preset, and the same fields round-trip through the versioned preset format.
 
 Selection controls set minimum inclusion score, maximum cards, Required/Preferred/Optional counts, and total normalization (`None`, `Clamp 0–100`, or candidate `min–max`). Candidate min–max maps an equal-score set to zero because there is no relative distinction.
 

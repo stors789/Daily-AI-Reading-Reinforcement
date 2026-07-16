@@ -1,110 +1,107 @@
-# Tauri App Shell Technical Verification
+# Tauri app-shell architecture
 
 ## Decision
 
-DAIRR's first standalone desktop verification shell lives in `apps/desktop/`.
-That matches the target layout in `AGENTS.md` without moving the existing
-Anki add-on, shared web UI, or Python desktop backend.
+DAIRR's preferred standalone desktop shell lives in `apps/desktop/` and uses
+Tauri v2. Tauri owns the native process and window while the existing Python
+backend remains the authority for providers, AnkiConnect, persistence,
+generation, practice, scoring, and the shared web interface. This keeps the
+standalone and Anki add-on paths on the same domain/application logic without
+introducing Anki internals into the desktop process.
 
-Tauri is the preferred proof-of-concept shell because DAIRR's current product
-surface is already HTML/CSS/JS, and Tauri can provide a macOS/Windows native
-window while the existing Python provider stack stays intact. The current
-Tauri configuration follows the Tauri v2 model where `devUrl` is the
-development URL and `frontendDist` can point at a URL during this brownfield
-phase.
+The browser launcher and pywebview launcher remain development and diagnostic
+fallbacks. They do not provide evidence that a Tauri installer is releasable.
 
-## Current Boundary
+## Process boundary
 
-The shell is deliberately thin:
+The shell is intentionally thin:
 
-- Tauri owns the native desktop process and the main app window.
-- In development mode, `desktop_app.py` still owns provider selection,
-  environment setup, and loading `desktop_mock/main.py`.
-- In production mode, Tauri expects to start a bundled backend sidecar with
-  the same CLI shape as `desktop_app.py`.
-- `desktop_mock/main.py` still serves
-  `addon/daily_ai_reading_reinforcement/web/`, injects
-  `window.__DAIRR_BRIDGE__`, and handles `/api/bridge` plus `/api/health`.
-- `real_momo_provider.py`, AnkiConnect, config persistence, article
-  generation, and card saving remain in Python.
+- debug builds normally start `desktop_app.py` from the source checkout;
+- release builds start a target-native PyInstaller sidecar bundled as a Tauri
+  resource;
+- `desktop_mock/main.py` serves the shared UI and authenticated loopback HTTP
+  bridge;
+- the backend injects `window.__DAIRR_BRIDGE__` and a high-entropy,
+  per-process bridge token into the served page;
+- provider credentials, AnkiConnect access, configuration, article history,
+  and practice persistence stay in Python;
+- Tauri owns the child process and sends an instance-specific authenticated
+  shutdown request before applying its bounded termination fallback.
 
-At startup, the Rust shell checks `127.0.0.1:8755`. A listening port is never
-trusted by TCP alone. Tauri first requests `GET /api/health` and only reuses
-the process if the response identifies itself as DAIRR and reports the bridge
-as available. If another local service owns the port, startup fails with a
-clear port ownership error instead of loading an unrelated page.
+The production resource layout is an onedir runtime:
 
-## Backend Modes
+```text
+binaries/
+└── dairr-backend/
+    ├── dairr-backend        # dairr-backend.exe on Windows
+    └── _internal/           # PyInstaller runtime files
+```
 
-### Development Backend
+`apps/desktop/src-tauri/tauri.conf.json` includes
+`binaries/dairr-backend` as a resource. The repository tracks only the empty
+runtime directory marker and documentation. It does **not** contain an
+executable or target-triple placeholder. Each macOS ARM64, macOS Intel, or
+Windows x64 release job must generate its own target-native onedir runtime;
+PyInstaller does not cross-compile. The `--target-triple` option selects the
+expected runtime-entry convention and validates the requested target, but it
+does not create a differently named checked-in executable.
 
-Debug builds default to the Python development launcher:
+The Rust launcher retains target-triple filename candidates only as a runtime
+compatibility fallback for older locally built bundles. They are not the
+current packaging contract.
+
+## Backend modes
+
+### Development backend
+
+Debug builds default to the Python launcher:
 
 ```bash
 python3 desktop_app.py --provider mock --host 127.0.0.1 --port 8755 --no-browser
 ```
 
-Environment overrides are preserved:
+Supported environment overrides include:
 
-- `DAIRR_REPO_ROOT`: explicit repository root for development or unusual
-  launch locations.
-- `DAIRR_PYTHON`: Python executable to use instead of `python3`.
-- `DAIRR_DESKTOP_PROVIDER`: `mock`, `ankiconnect`, or `real_momo`.
-- `DAIRR_ANKICONNECT_URL`: AnkiConnect endpoint when using that provider.
-- `MOMO_TOKEN` / `Maimemo_key`: MoMo token consumed by the existing provider.
-- `DAIRR_BACKEND_MODE=dev` or `DAIRR_BACKEND_MODE=python`: force the Python
-  development launcher.
+- `DAIRR_REPO_ROOT`: explicit source root for development;
+- `DAIRR_PYTHON`: Python executable instead of `python3`;
+- `DAIRR_DESKTOP_PROVIDER`: `mock`, `ankiconnect`, or `real_momo`;
+- `DAIRR_ANKICONNECT_URL`: non-default AnkiConnect endpoint;
+- `MOMO_TOKEN` or `Maimemo_key`: MoMo credential consumed by the Python
+  provider;
+- `DAIRR_BACKEND_MODE=dev` or `python`: force the development launcher.
 
-This path keeps the current developer workflow intact and preserves the
-browser launcher and pywebview fallback.
+### Production sidecar
 
-### Production Sidecar
+Release builds default to the bundled sidecar. Tauri starts it with the same
+public CLI plus shell-owned lifecycle values:
 
-Release builds default to the production sidecar path. Tauri looks for a
-bundled backend executable named `dairr-backend` and starts it with the same
-arguments as the development launcher:
-
-```bash
-dairr-backend --provider ankiconnect --host 127.0.0.1 --port 8755 --no-browser
+```text
+dairr-backend --provider ankiconnect --host 127.0.0.1 --port 8755 \
+  --no-browser --parent-pid <pid> --instance-id <random> \
+  --shutdown-token <random>
 ```
 
-The sidecar boundary is intentionally at the process and HTTP bridge level.
-MoMo, AnkiConnect, article generation, config storage, and card saving remain
-inside the Python backend. This phase does not migrate provider logic to Rust.
+`DAIRR_BACKEND_MODE=sidecar` (or `production`) forces this path in a debug
+build. `DAIRR_BACKEND_SIDECAR=/absolute/path/to/dairr-backend` can select a
+specific target-native onedir entry for testing.
 
-The Tauri config now enables bundling and declares the onedir runtime as a
-resource:
+The shell writes bounded operational diagnostics to the platform application
+log directory. It does not put provider credentials, prompt bodies, or private
+practice text into shell arguments or health responses.
 
-```json
-"resources": ["binaries/dairr-backend"]
-```
+## Startup and ownership checks
 
-The packaged runtime entry is `binaries/dairr-backend/dairr-backend` (or
-`dairr-backend.exe` on Windows). Legacy target-triple files remain available
-as compatibility fallbacks, for example:
+Port `8755` is a local singleton. Before spawning a backend, Tauri probes
+`GET /api/health` with an exact loopback `Host`. Any existing listener causes
+startup to stop: even another DAIRR instance is not silently reused.
 
-- `dairr-backend-aarch64-apple-darwin`
-- `dairr-backend-x86_64-apple-darwin`
-- `dairr-backend-x86_64-pc-windows-msvc.exe`
+After spawning, Tauri waits for a valid response whose `instanceId` matches
+the fresh value passed to that child. The response must also have HTTP 200,
+valid JSON, `app == "DAIRR"`, and `bridge.available == true`. This prevents an
+unrelated service or stale DAIRR process from being treated as the owned
+backend.
 
-The checked-in files with those names are placeholders for Tauri config
-validation and `cargo check`. They are not production backends and must be
-replaced by packaged Python sidecar executables before distributable builds are
-created.
-
-Useful overrides:
-
-- `DAIRR_BACKEND_MODE=sidecar` or `DAIRR_BACKEND_MODE=production`: force the
-  sidecar path, even in a debug build.
-- `DAIRR_BACKEND_SIDECAR=/absolute/path/to/dairr-backend`: test a specific
-  sidecar executable before it is bundled.
-
-## Health Check Protocol
-
-`GET /api/health` returns JSON and must be cheap, local, and safe. It must not
-initialize network-backed providers.
-
-Current response shape:
+A representative health response is:
 
 ```json
 {
@@ -112,225 +109,134 @@ Current response shape:
   "name": "Daily AI Reading Reinforcement",
   "version": "0.1.0",
   "mode": "desktop",
-  "provider": "mock",
+  "provider": "ankiconnect",
+  "instanceId": "instance-...",
+  "parentPid": 12345,
   "bridge": {
     "available": true,
     "type": "http",
+    "protocolVersion": 2,
     "endpoint": "/api/bridge",
-    "windowObject": "__DAIRR_BRIDGE__"
+    "windowObject": "__DAIRR_BRIDGE__",
+    "tokenRequired": true,
+    "maxRequestBytes": 2000000
   }
 }
 ```
 
-Tauri requires:
+Health confirms process identity and bridge availability; it does not prove
+that Anki or a remote model provider is connected.
 
-- HTTP 200
-- valid JSON
-- `app == "DAIRR"`
-- `bridge.available == true`
+## Authenticated loopback bridge
 
-`provider` and `mode` are logged for diagnosis but are not provider
-connectivity guarantees. Provider diagnostics stay in the existing Python
-diagnostic tools.
+The backend accepts bridge traffic only on loopback and validates the request
+`Host`. A browser-originated POST must use one of the exact origins for the
+active port, such as `http://127.0.0.1:8755`, and every bridge POST must include
+the per-process token in `X-DAIRR-Bridge-Token`. JSON is mandatory and request
+bodies have an explicit size limit. The served page applies no-store and
+restrictive content-security headers.
 
-## Why Not Rewrite the Backend Yet
+The token is injected into the page as `window.__DAIRR_BRIDGE_TOKEN__`; it is
+not returned from `/api/health`, written to configuration, or a substitute for
+an operating-system sandbox. Normal UI code should call the injected bridge
+instead of handling the token directly.
 
-The existing Python backend already isolates the standalone runtime from Anki
-internals. Rewriting provider calls as Rust commands in this phase would
-increase risk without proving the app-shell question. Keeping the HTTP bridge
-lets the first Tauri build validate window startup, resource loading, and
-provider connectivity while preserving add-on compatibility.
+For a local manual smoke test with disposable data, obtain the current process
+token from the locally served page and send both required headers:
 
-## Android Path
+```bash
+BRIDGE_TOKEN="$(curl -fsS http://127.0.0.1:8755/ | python3 -c 'import re,sys; page=sys.stdin.read(); match=re.search(r"window\.__DAIRR_BRIDGE_TOKEN__ = \"([0-9A-Za-z_-]+)\"", page); print(match.group(1) if match else "")')"
+test -n "$BRIDGE_TOKEN"
 
-Android is not packaged in this phase. The useful boundary for Android is the
-same bridge contract:
+curl -X POST http://127.0.0.1:8755/api/bridge \
+  -H 'Origin: http://127.0.0.1:8755' \
+  -H 'Content-Type: application/json' \
+  -H "X-DAIRR-Bridge-Token: $BRIDGE_TOKEN" \
+  -d '{"version":2,"requestId":"manual-smoke-1","action":"load","payload":{}}'
+```
 
-- Shared UI remains portable.
-- Provider/storage behavior sits behind adapters.
-- A future Android shell can replace the local Python HTTP backend with a
-  mobile-native bridge while keeping `window.__DAIRR_BRIDGE__.send(action,
-  payload)` as the UI contract.
+Omitting the token returns HTTP 403. An origin from outside the exact loopback
+allow-list is rejected before dispatch.
 
-Before Android packaging, avoid adding desktop-only assumptions to
-`addon/daily_ai_reading_reinforcement/web/`. Platform details should remain in
-the shell or provider adapters.
+## Build and verification
 
-## Run
+From the repository root, build the onedir runtime on the target operating
+system and architecture:
+
+```bash
+# Auto-detect the current target.
+python3 package_tauri_sidecar.py --clean
+
+# These commands must run on their named native targets.
+python3 package_tauri_sidecar.py --target-triple x86_64-apple-darwin --clean
+python3 package_tauri_sidecar.py --target-triple x86_64-pc-windows-msvc --clean
+
+# Inspect the command or verify the generated runtime entry.
+python3 package_tauri_sidecar.py --dry-run
+python3 package_tauri_sidecar.py --check-placeholder
+```
+
+Despite the legacy option name, `--check-placeholder` now serves as a release
+guard: because no placeholder executable is checked in, it fails until a real
+generated runtime entry exists and rejects a small placeholder-like file.
+
+Start and verify a generated sidecar:
+
+```bash
+./apps/desktop/src-tauri/binaries/dairr-backend/dairr-backend \
+  --provider mock --host 127.0.0.1 --port 8755 --no-browser
+
+curl http://127.0.0.1:8755/api/health
+```
+
+Use the authenticated bridge example above for POST verification. Then test
+the native shell:
 
 ```bash
 cd apps/desktop
 npm install
-npm run dev
-```
-
-For AnkiConnect:
-
-```bash
-cd apps/desktop
-DAIRR_DESKTOP_PROVIDER=ankiconnect npm run dev
-```
-
-For MoMo:
-
-```bash
-cd apps/desktop
-DAIRR_DESKTOP_PROVIDER=real_momo MOMO_TOKEN=... npm run dev
-```
-
-To test the production path before bundling:
-
-```bash
-cd apps/desktop
-DAIRR_BACKEND_MODE=sidecar DAIRR_BACKEND_SIDECAR=/path/to/dairr-backend npm run dev
-```
-
-## Next Steps
-
-- Package the Python backend as a Tauri sidecar instead of assuming a developer
-  checkout and `python3`.
-- Decide whether desktop production should keep the HTTP bridge or expose a
-  narrower Rust command bridge.
-- Generate and verify platform sidecar binaries for macOS ARM64, macOS Intel,
-  and Windows MSVC.
-- Decide whether production should keep loading web assets through the backend
-  or bundle static assets as Tauri resources and let the backend only serve API
-  routes.
-- Add production icons and app metadata. The current
-  `src-tauri/icons/icon.png` is still a development placeholder copied from
-  existing project assets.
-- Add signing, notarization, and installer publishing only after unsigned local
-  bundles are verified.
-
-## macOS and Windows Packaging Risks
-
-- Sidecar generation is not complete in this phase. The configured
-  `externalBin` path documents the bundle contract, and the current
-  target-triple files are placeholders. CI still needs to replace them with
-  real packaged Python sidecar binaries.
-- macOS packaging will need code signing and notarization for distribution.
-  Those are deliberately not enabled yet.
-- Windows packaging will need a stable WebView2 and installer strategy. The
-  current config keeps the existing WebView2 bootstrapper behavior but does not
-  sign installers.
-- Port `8755` remains a local singleton. Health checks prevent accidental reuse
-  of unrelated services, but the product may later need dynamic port selection
-  for multiple running instances.
-- The sidecar must include or locate the shared web UI and Python modules in a
-  way that does not rely on the source checkout.
-
-## Sidecar Build Pipeline (Phase 3)
-
-### Build Script
-
-`package_tauri_sidecar.py` (repository root) generates platform-specific
-sidecar binaries from the existing Python backend using PyInstaller.
-
-The script:
-
-1. Auto-detects the current platform's target triple
-2. Builds a PyInstaller onedir runtime containing `desktop_app.py`,
-   `desktop_mock/`, shared core, and shared web UI
-3. Writes it to `apps/desktop/src-tauri/binaries/dairr-backend/`
-4. Lets Tauri copy that directory into the application resources
-
-Onedir is deliberate: the previous onefile build took about 15 seconds to
-unpack on every cold launch, while the same backend starts from onedir in about
-0.13 seconds on the ARM64 development machine.
-
-### Supported Target Triples
-
-| Triple                      | Build environment     | Status (2026-07-08)            |
-|-----------------------------|-----------------------|--------------------------------|
-| `aarch64-apple-darwin`      | macOS ARM64           | Real binary, smoke-tested      |
-| `x86_64-apple-darwin`       | macOS Intel           | Placeholder — build on Intel   |
-| `x86_64-pc-windows-msvc`    | Windows               | Placeholder — build on Windows |
-
-### Build Commands
-
-```bash
-# macOS ARM64 (auto-detected)
-python3 package_tauri_sidecar.py
-
-# macOS Intel
-python3 package_tauri_sidecar.py --target-triple x86_64-apple-darwin
-
-# Windows
-python3 package_tauri_sidecar.py --target-triple x86_64-pc-windows-msvc
-
-# Dry-run, check placeholder, clean rebuild
-python3 package_tauri_sidecar.py --dry-run
-python3 package_tauri_sidecar.py --check-placeholder
-python3 package_tauri_sidecar.py --clean
-```
-
-### Sidecar Verification
-
-The sidecar exposes the same three endpoints as `desktop_mock/main.py`:
-
-- `GET /api/health` — returns `{"app":"DAIRR","bridge":{"available":true}}`
-- `POST /api/bridge` — handles all `load`, `generate`, `saveArticleCard`, etc.
-- `GET /` — serves the full DAIRR web UI with injected `__DAIRR_BRIDGE__`
-
-Smoke test procedure:
-
-```bash
-python3 package_tauri_sidecar.py --check-placeholder
-./apps/desktop/src-tauri/binaries/dairr-backend/dairr-backend \
-  --provider mock --host 127.0.0.1 --port 8755 --no-browser
-curl http://127.0.0.1:8755/api/health
-curl -X POST http://127.0.0.1:8755/api/bridge \
-  -H 'Content-Type: application/json' -d '{"action":"load","payload":{}}'
-```
-
-### Running Tauri with Sidecar Mode
-
-```bash
-cd apps/desktop
 DAIRR_BACKEND_MODE=sidecar npm run dev
-DAIRR_BACKEND_SIDECAR=/path/to/dairr-backend-aarch64-apple-darwin \
-  DAIRR_BACKEND_MODE=sidecar npm run dev
 ```
 
-### Sandbox Note
-
-The PyInstaller bootloader calls `nice(5)` and `semctl` during startup.
-These calls are blocked by macOS application sandboxing, which means the
-sidecar binary cannot run inside a strict sandbox. This affects the
-`npm run dev` and `cargo test` development flows when using `direnv` or
-sandboxed environments.
-
-In production, the Tauri bundle includes the runtime under
-`Resources/binaries/dairr-backend/` and starts it while the startup window is
-visible. The Tauri process itself will have the necessary entitlements.
-
-The Desktop dev flow (`python3 desktop_app.py` and `npm run dev` with the
-default Python launcher) is unaffected since it runs `python3` directly
-without a PyInstaller wrapper.
-
-### Testing
-
-Sidecar-specific tests live in `tests/test_tauri_app_shell.py` class
-`TauriSidecarTests`:
-
-- Placeholder detection for all three target triples
-- `package_tauri_sidecar.py` build script exists and is runnable
-- Target triple naming rules produce correct filenames
-- Dry-run mode outputs expected PyInstaller command
-- Known target triples are in the valid set
-- `is_placeholder()` correctly detects known placeholder files
-
-Run with:
+The consolidated credential-free gate is:
 
 ```bash
-python3 -m pytest tests/test_tauri_app_shell.py -v -k Sidecar
+python3 scripts/desktop_release.py pre-publish
 ```
 
-### Next Steps
+That gate checks source/configuration, tests, UI syntax, Android static
+validation, packaging dry-runs, and locked Rust compilation. It does not build
+or certify signed installers for an operating system other than the runner.
 
-- Build macOS Intel sidecar on Intel hardware
-- Build Windows sidecar on Windows
-- Sign and notarize macOS sidecar for distribution
-- Verify the full `npm run build` pipeline with real sidecar binaries
-- Consider caching the PyInstaller build output in CI to avoid repeated
-  Python bundling
+## Android boundary
+
+Android uses the shared bridge-v2 UI contract behind a native allow-listed
+adapter rather than this loopback Python server. The current Android edge
+supports app-private offline pasted-text practice; provider-backed AI review,
+article history, Anki data, scoring, prompts, and reasoning remain explicit
+unavailable capabilities. Shared HTML therefore does not imply desktop feature
+parity.
+
+## Release evidence and remaining risks
+
+- A release job must build a fresh sidecar natively and verify the runtime
+  entry before invoking Tauri. Repository state alone contains no executable.
+- macOS ARM64 and Intel artifacts require their respective native build
+  evidence. Public distribution additionally requires Developer ID signing,
+  notarization, stapling, and installed-app verification.
+- Windows x64 requires a native build, NSIS installer verification,
+  Authenticode/timestamping, WebView2 behavior checks, and installed-app smoke
+  testing. A macOS run cannot prove these properties.
+- Updater signatures are independent of macOS/Windows code signing. Checked-in
+  updater configuration remains credential-free; release jobs inject public
+  metadata and signing material without committing secrets.
+- The fixed local port prevents concurrent desktop instances. Ownership checks
+  fail closed rather than attaching to an existing process.
+- Generated `binaries/dairr-backend/` contents, PyInstaller work trees, and
+  release artifacts are ignored and must not be committed.
+- Live MoMo/OpenAI-compatible and AnkiConnect behavior still requires
+  disposable credentials and environment-specific manual verification.
+
+See [desktop shells](../native_shell.md), [packaging](../packaging.md),
+[automatic updates](../desktop_auto_updates.md), and the
+[manual verification guide](../manual-verification.md).

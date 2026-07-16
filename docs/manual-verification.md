@@ -137,10 +137,10 @@ Each case must produce actionable, redacted feedback while pasted practice remai
 ## 8. Scoring and target-plan acceptance
 
 - [ ] Recommended reset produces stable defaults.
-- [ ] Simple shows only designated controls; Advanced exposes all signals.
+- [ ] Simple shows only designated controls; Advanced exposes all signals plus normalization divisor and optional contribution floor/ceiling fields.
 - [ ] Toggle every signal and confirm disabled is distinct from unavailable.
 - [ ] Test visible positive/negative weights and linear/sqrt/log1p/square transforms.
-- [ ] Import controlled compatible presets to test normalization divisors, floor/ceiling, and decay half-life fields that are supported by the preset schema but not individually surfaced in the current editor.
+- [ ] Edit normalization divisors and optional contribution floor/ceiling fields directly; for recent reuse, enable decay and change the half-life. Save, reload, export, and re-import to confirm the visible values round-trip.
 - [ ] Test None, Clamp 0–100, and candidate min–max normalization, including an equal-score set.
 - [ ] Verify Again/Hard/Good/Easy, attempts, recovery, repeated failure, lapse, elapsed/overdue, state, FSRS, duplicate, sibling, and reuse contributions against controlled fixtures.
 - [ ] Preview totals and inspect applied/disabled/unavailable evidence plus visible unavailability reasons.

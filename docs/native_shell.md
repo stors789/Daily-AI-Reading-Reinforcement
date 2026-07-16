@@ -19,9 +19,9 @@ DAIRR_DESKTOP_PROVIDER=ankiconnect npm run dev
 DAIRR_DESKTOP_PROVIDER=real_momo MOMO_TOKEN=your-test-token npm run dev
 ```
 
-Debug builds normally start the Python development launcher. Release builds expect a real PyInstaller sidecar under the Tauri resources. Checked-in placeholders are validation aids, not distributable backends; run the sidecar build and placeholder check before building an artifact.
+Debug builds normally start the Python development launcher. Release jobs build a target-native PyInstaller onedir runtime at `apps/desktop/src-tauri/binaries/dairr-backend/`, and Tauri bundles that directory as a resource. Generated runtime contents are ignored; the repository contains no sidecar executable or target-triple placeholder. PyInstaller does not cross-compile, so each macOS architecture and Windows x64 must build on its corresponding native runner. Run the sidecar build and runtime-entry check before building an artifact.
 
-The shell probes `/api/health` before loading the UI so another process on the configured port is not mistaken for DAIRR. The bridge itself additionally requires the per-process token and exact loopback security policy.
+The shell probes `/api/health` before loading the UI, rejects an already-owned port, and waits for the child-specific `instanceId` before opening the workbench. Browser-originated bridge POSTs require an exact loopback `Origin` such as `http://127.0.0.1:8755` and the page-injected per-process token in `X-DAIRR-Bridge-Token`; `/api/health` does not reveal that token. The shared UI uses the injected bridge automatically.
 
 ## Browser fallback
 
