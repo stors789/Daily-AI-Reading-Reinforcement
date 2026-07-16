@@ -166,7 +166,16 @@ def request_chat_completion(
         raise ProviderTransportError("invalid_timeout", "AI request timeout must be positive.")
     provider_id = clean_provider_id(config.get("selected_provider_profile"))
     provider = next((p for p in PROVIDER_PROFILES if p["id"] == provider_id), PROVIDER_PROFILES[-1])
-    response_format = {"type": "json_object"} if rendered_prompt.response_mode is ResponseMode.STRUCTURED else None
+    capabilities = known_provider_capabilities(provider_id)
+    # Structured prompts always carry their complete, visible textual
+    # response contract.  Native ``response_format`` is an optional wire
+    # optimization and must not be guessed for custom/unknown endpoints.
+    response_format = (
+        {"type": "json_object"}
+        if rendered_prompt.response_mode is ResponseMode.STRUCTURED
+        and capabilities.supports_response_format
+        else None
+    )
     extra_body = config.get("extra_body") if isinstance(config.get("extra_body"), dict) else {}
     temperature_raw = config.get("temperature", DEFAULT_CONFIG["temperature"])
     temperature = DEFAULT_CONFIG["temperature"] if temperature_raw is None else float(temperature_raw)
@@ -181,7 +190,7 @@ def request_chat_completion(
         extra_body=extra_body,
     )
     built = build_chat_completion_request(
-        known_provider_capabilities(provider_id),
+        capabilities,
         options,
         reasoning_intent_from_config(config.get("reasoning")),
     )
@@ -212,15 +221,21 @@ def preview_chat_completion_request(
     provider_id = clean_provider_id(config.get("selected_provider_profile"))
     provider = next((p for p in PROVIDER_PROFILES if p["id"] == provider_id), PROVIDER_PROFILES[-1])
     temperature_raw = config.get("temperature", DEFAULT_CONFIG["temperature"])
+    capabilities = known_provider_capabilities(provider_id)
     built = build_chat_completion_request(
-        known_provider_capabilities(provider_id),
+        capabilities,
         ChatRequestOptions(
             model=str(config.get("model") or provider.get("model") or DEFAULT_CONFIG["model"]),
             messages=rendered_prompt.messages,
             max_output_tokens=max_tokens_for_request(config, {}),
             temperature=DEFAULT_CONFIG["temperature"] if temperature_raw is None else float(temperature_raw),
             top_p=float(config["top_p"]) if config.get("top_p") is not None else None,
-            response_format={"type": "json_object"} if rendered_prompt.response_mode is ResponseMode.STRUCTURED else None,
+            response_format=(
+                {"type": "json_object"}
+                if rendered_prompt.response_mode is ResponseMode.STRUCTURED
+                and capabilities.supports_response_format
+                else None
+            ),
             stream=bool(config.get("stream", False)),
             extra_body=config.get("extra_body") if isinstance(config.get("extra_body"), dict) else {},
         ),

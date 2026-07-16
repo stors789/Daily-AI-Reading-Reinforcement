@@ -128,8 +128,13 @@ class AddonReleaseServiceTests(unittest.TestCase):
             "temperature": None,
             "top_p": None,
             "use_native_structured_output": True,
-        }), self.assertRaisesRegex(Exception, "response_format"):
-            self.service.save_reasoning_settings({"reasoning": {"mode": "disabled"}})
+        }):
+            custom = self.service.save_reasoning_settings({"reasoning": {"mode": "disabled"}})
+            custom_preview = self.service.preview_reasoning_settings({
+                "reasoning": {"mode": "disabled"}
+            })
+        self.assertEqual(custom["reasoning"], {"mode": "disabled"})
+        self.assertFalse(custom_preview["effectiveSettings"]["responseFormatEnabled"])
 
     def test_capabilities_add_offline_practice_and_local_history(self) -> None:
         payload = self.service.capabilities(CapabilitySet())["capabilities"]
@@ -182,6 +187,31 @@ class AddonReleaseServiceTests(unittest.TestCase):
                 "translation": "stale",
                 "persist": False,
             })
+
+    def test_delete_is_revision_atomic_and_disk_failure_preserves_memory(self) -> None:
+        created = self.service.create_pasted_practice({
+            "sourceText": "durable", "sourceLanguage": "en", "targetLanguage": "ja",
+            "save": True,
+        })["session"]
+        updated = self.service.save_practice_draft({
+            "sessionId": created["id"], "revision": 0,
+            "translation": "new", "persist": True,
+        })["session"]
+        path = self.service.repository._path(created["id"])
+        with self.assertRaisesRegex(Exception, "changed in another operation"):
+            self.service.delete_practice_session({
+                "sessionId": created["id"], "revision": 0,
+            })
+        self.assertTrue(path.is_file())
+
+        with patch.object(self.service.repository, "delete", side_effect=OSError("private disk")):
+            with self.assertRaises(OSError):
+                self.service.delete_practice_session({
+                    "sessionId": created["id"], "revision": updated["revision"],
+                })
+        self.assertTrue(path.is_file())
+        loaded = self.service.load_practice_session({"sessionId": created["id"]})["session"]
+        self.assertEqual(loaded["completeTextDraft"], "new")
 
     def test_article_practice_loads_selected_history_path(self) -> None:
         article_root = Path(self.temp.name) / "articles"
@@ -243,6 +273,46 @@ class AddonReleaseServiceTests(unittest.TestCase):
         loaded = self.service.load_practice_session({"sessionId": created["id"]})["session"]
         self.assertEqual(loaded["completeTextDraft"], "newer autosave")
         self.assertEqual(loaded["attempts"], [])
+
+    def test_delete_wins_against_inflight_review_without_resurrection(self) -> None:
+        created = self.service.create_pasted_practice({
+            "sourceText": "source", "sourceLanguage": "en", "targetLanguage": "ja",
+            "save": True,
+        })["session"]
+        entered = threading.Event()
+        release = threading.Event()
+        outcome = {}
+
+        class BlockingTransport:
+            def complete(self, _request, *, cancellation):
+                entered.set()
+                release.wait(2)
+                return ModelResponse('{"overall":"review","meaning":[]}')
+
+        def worker():
+            try:
+                with patch("addon_release_service.OpenAICompatibleTransport", return_value=BlockingTransport()):
+                    self.service.submit_practice_review({
+                        "sessionId": created["id"], "revision": 0,
+                        "translation": "answer", "persist": True,
+                    }, OperationContext("addon-delete-race"))
+            except Exception as exc:
+                outcome["error"] = exc
+
+        thread = threading.Thread(target=worker)
+        thread.start()
+        self.assertTrue(entered.wait(1))
+        deleted = self.service.delete_practice_session({
+            "sessionId": created["id"], "revision": 0,
+        })
+        self.assertTrue(deleted["deleted"])
+        release.set()
+        thread.join(2)
+        self.assertEqual(getattr(outcome.get("error"), "code", ""), "stale_practice_revision")
+        self.assertFalse(self.service.repository._path(created["id"]).exists())
+        with self.assertRaises(Exception) as missing:
+            self.service.load_practice_session({"sessionId": created["id"]})
+        self.assertEqual(getattr(missing.exception, "code", ""), "practice_not_found")
 
     def test_target_generation_save_article_returns_paths_history_and_reuse_evidence(self) -> None:
         class Transport:

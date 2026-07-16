@@ -381,7 +381,8 @@ def _target_outcomes(
             forms = (value,) if value else ()
         if forms:
             verified_forms = tuple(
-                form for form in forms if _surface_occurs(form, article)
+                form for form in forms
+                if _surface_occurs(form, article) and _surface_related(form, target)
             )
         else:
             verified_forms = tuple(
@@ -564,6 +565,49 @@ def _surface_occurs(surface: str, article: str) -> bool:
     if needle.isascii() and re.fullmatch(r"[\w'-]+", needle):
         return re.search(rf"(?<!\w){re.escape(needle)}(?!\w)", haystack) is not None
     return needle in haystack
+
+
+def _surface_related(surface: str, target: GenerationTarget) -> bool:
+    """Conservatively validate a model-claimed inflection or equivalent.
+
+    Presence in the article is necessary but not sufficient: otherwise a
+    model can claim any unrelated word already in the article as the surface
+    form for a target. Exact declared forms are always related. For ASCII
+    inflections we additionally accept shared meaningful tokens or a common
+    word stem; opaque non-ASCII forms require an explicit equivalent or direct
+    containment so language-specific morphology is never fabricated here.
+    """
+    candidate = _surface_key(surface)
+    declared = tuple(
+        key for key in (_surface_key(target.text), *map(_surface_key, target.equivalent_forms))
+        if key
+    )
+    if candidate in declared:
+        return True
+    if not candidate:
+        return False
+    if any(candidate in value or value in candidate for value in declared):
+        return True
+    if not candidate.isascii() or not all(value.isascii() for value in declared):
+        return False
+
+    token_pattern = re.compile(r"[a-z0-9]+")
+    candidate_tokens = {
+        token for token in token_pattern.findall(candidate) if len(token) >= 3
+    }
+    declared_tokens = {
+        token
+        for value in declared
+        for token in token_pattern.findall(value)
+        if len(token) >= 3
+    }
+    if candidate_tokens.intersection(declared_tokens):
+        return True
+    return any(
+        left[:3] == right[:3]
+        for left in candidate_tokens
+        for right in declared_tokens
+    )
 
 
 def _unreported_outcomes(request: ArticleGenerationRequest) -> tuple[TargetOutcome, ...]:

@@ -41,18 +41,27 @@ def run_diagnostics(
     if environ is None:
         environ = os.environ
 
-    if provider == "mock":
-        result = _check_mock(provider_factory=provider_factory)
-    elif provider == "ankiconnect":
-        base_url = environ.get("DAIRR_ANKICONNECT_URL", DEFAULT_ANKICONNECT_URL)
-        result = _check_ankiconnect(base_url, opener=opener)
-    elif provider == "real_momo":
-        token = environ.get("MOMO_TOKEN") or environ.get("Maimemo_key")
-        result = _check_real_momo(token, provider_factory=provider_factory)
-    else:
+    try:
+        if provider == "mock":
+            result = _check_mock(provider_factory=provider_factory)
+        elif provider == "ankiconnect":
+            base_url = environ.get("DAIRR_ANKICONNECT_URL", DEFAULT_ANKICONNECT_URL)
+            result = _check_ankiconnect(base_url, opener=opener)
+        elif provider == "real_momo":
+            token = environ.get("MOMO_TOKEN") or environ.get("Maimemo_key")
+            result = _check_real_momo(token, provider_factory=provider_factory)
+        else:
+            result = {
+                "provider": provider,
+                "checks": [_check("provider", False, "The requested diagnostic provider is unknown.")],
+            }
+    except Exception as exc:
+        # Provider construction is third-party code too. Apply the same fixed
+        # privacy boundary as individual checks rather than allowing arbitrary
+        # exception text to reach a CLI, log, or screenshot.
         result = {
             "provider": provider,
-            "checks": [_check("provider", False, f"Unknown provider: {provider}")],
+            "checks": [_check("provider initialization", False, _safe_error_message(exc))],
         }
 
     result["ok"] = all(item.get("ok") for item in result.get("checks", []))
@@ -399,25 +408,15 @@ def _check(name: str, ok: bool, message: str) -> dict[str, Any]:
 
 
 def _safe_error_message(exc: BaseException) -> str:
-    text = str(exc)
     if isinstance(exc, _DiagnosticError):
-        return text or type(exc).__name__
+        return str(exc) or "Diagnostic request failed."
     if isinstance(exc, AnkiConnectCardSaverError):
         return exc.public_message
     if isinstance(exc, ValueError):
-        return _redact_secrets(text)
-    return type(exc).__name__
-
-
-def _redact_secrets(text: str) -> str:
-    redacted_words = []
-    for word in text.split():
-        lowered = word.lower()
-        if "token" in lowered or "secret" in lowered or "key" in lowered:
-            redacted_words.append("[redacted]")
-        else:
-            redacted_words.append(word)
-    return " ".join(redacted_words)
+        # ValueError text can be supplied by third-party providers and may
+        # contain a URL, credential, request body, or private card content.
+        return "Diagnostic input or provider configuration is invalid."
+    return "Diagnostic request failed."
 
 
 def _request_action(req: Any) -> str:

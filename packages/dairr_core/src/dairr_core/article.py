@@ -373,6 +373,9 @@ def _manifest_target_keys(manifest: Mapping[str, Any]) -> tuple[set[str], set[st
                 for key in ("term", "target", "text", "expression")
                 if isinstance(row.get(key), str) and str(row.get(key)).strip()
             }
+            row_terms.update(_reuse_string_aliases(
+                row, "equivalentForms", "equivalent_forms"
+            ))
             for alias in row_ids | row_terms:
                 declarations[alias] = (row_ids, row_terms)
 
@@ -394,6 +397,11 @@ def _manifest_target_keys(manifest: Mapping[str, Any]) -> tuple[set[str], set[st
                 for key in ("term", "target", "text", "expression")
                 if isinstance(row.get(key), str) and str(row.get(key)).strip()
             }
+            row_terms.update(_reuse_string_aliases(
+                row,
+                "actualSurfaceForms", "actual_surface_forms",
+                "equivalentForms", "equivalent_forms",
+            ))
             identifiers.update(row_ids)
             terms.update(row_terms)
             # Declarations are identity aliases only. They never establish use
@@ -411,6 +419,22 @@ def _manifest_target_keys(manifest: Mapping[str, Any]) -> tuple[set[str], set[st
             if str(key).strip() and isinstance(value, (int, float)) and not isinstance(value, bool) and value > 0
         )
     return identifiers - {""}, terms - {""}
+
+
+def _reuse_string_aliases(row: Mapping[str, Any], *keys: str) -> set[str]:
+    aliases: set[str] = set()
+    for key in keys:
+        value = row.get(key)
+        if isinstance(value, str):
+            if value.strip():
+                aliases.add(_reuse_key(value))
+        elif isinstance(value, (list, tuple)):
+            aliases.update(
+                _reuse_key(item)
+                for item in value
+                if isinstance(item, str) and item.strip()
+            )
+    return aliases - {""}
 
 
 def _manifest_datetime(

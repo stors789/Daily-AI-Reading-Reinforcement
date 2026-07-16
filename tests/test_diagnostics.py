@@ -135,6 +135,38 @@ class TestDiagnostics(unittest.TestCase):
         self.assertNotIn("sk-secret", output)
         self.assertIn("HTTP 500", output)
 
+    def test_arbitrary_value_error_never_echoes_credential_or_content(self) -> None:
+        credential = "exact-credential-value-9381"
+
+        def factory(_provider):
+            raise ValueError(f"bad URL with {credential} and PRIVATE CARD CONTENT")
+
+        result = run_diagnostics(
+            "real_momo",
+            environ={"MOMO_TOKEN": "present"},
+            provider_factory=factory,
+        )
+        output = format_diagnostics(result)
+        serialized = json.dumps(result)
+        self.assertFalse(result["ok"])
+        self.assertNotIn(credential, serialized)
+        self.assertNotIn("PRIVATE CARD CONTENT", serialized)
+        self.assertNotIn(credential, output)
+        self.assertEqual(
+            result["checks"][-1]["message"],
+            "Diagnostic input or provider configuration is invalid.",
+        )
+
+        # Construction failures in every diagnostic mode cross the same
+        # fixed-message privacy boundary.
+        mock_result = run_diagnostics("mock", environ={}, provider_factory=factory)
+        self.assertFalse(mock_result["ok"])
+        self.assertNotIn(credential, json.dumps(mock_result))
+        self.assertEqual(
+            mock_result["checks"][0]["message"],
+            "Diagnostic input or provider configuration is invalid.",
+        )
+
     def test_ankiconnect_missing_article_field_fails_clearly(self) -> None:
         fields = [field for field in ARTICLE_FIELDS if field != "Article"]
         opener = FakeAnkiConnectOpener(article_fields=fields)

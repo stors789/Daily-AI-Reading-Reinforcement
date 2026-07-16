@@ -147,7 +147,11 @@ class ModelRequestSettings:
         prompt: RenderedPrompt,
     ) -> BuiltProviderRequest:
         response_format = None
-        if self.use_native_structured_output and prompt.response_mode is ResponseMode.STRUCTURED:
+        if (
+            self.use_native_structured_output
+            and prompt.response_mode is ResponseMode.STRUCTURED
+            and capabilities.supports_response_format
+        ):
             response_format = {"type": "json_object"}
         return build_chat_completion_request(
             capabilities,

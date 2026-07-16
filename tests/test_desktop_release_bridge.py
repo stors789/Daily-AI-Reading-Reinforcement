@@ -87,6 +87,49 @@ class DesktopReleaseBridgeTests(unittest.TestCase):
         self.assertEqual(stale["payload"]["error"]["code"], "stale_practice_revision")
         self.assertNotIn("古い訳", str(stale))
 
+    def test_delete_is_revision_aware_and_disk_failure_keeps_session(self) -> None:
+        created = request("createPastedPractice", {
+            "sourceText": "durable", "sourceLanguage": "en", "targetLanguage": "ja",
+            "save": True,
+        })["payload"]["session"]
+        path = main._practice_repository()._path(created["id"])
+        updated = request("savePracticeDraft", {
+            "sessionId": created["id"], "revision": 0,
+            "translation": "new", "persist": True,
+        })["payload"]["session"]
+        stale = request("deletePracticeSession", {
+            "sessionId": created["id"], "revision": 0,
+        })
+        self.assertEqual(stale["payload"]["error"]["code"], "stale_practice_revision")
+        self.assertTrue(path.is_file())
+
+        with patch.object(main.PracticeRepository, "delete", side_effect=OSError("disk private")):
+            failed = request("deletePracticeSession", {
+                "sessionId": created["id"], "revision": updated["revision"],
+            })
+        self.assertEqual(failed["event"], "operationFailed")
+        self.assertTrue(path.is_file())
+        loaded = request("loadPracticeSession", {"sessionId": created["id"]})
+        self.assertEqual(loaded["payload"]["session"]["completeTextDraft"], "new")
+
+    def test_delete_never_unlinks_before_reporting_busy(self) -> None:
+        created = request("createPastedPractice", {
+            "sourceText": "busy", "sourceLanguage": "en", "targetLanguage": "ja",
+            "save": True,
+        })["payload"]["session"]
+        path = main._practice_repository()._path(created["id"])
+        with main._PRACTICE_LOCK:
+            main._PRACTICE_MUTATIONS[created["id"]] = "active-save"
+        try:
+            result = request("deletePracticeSession", {
+                "sessionId": created["id"], "revision": 0,
+            })
+        finally:
+            with main._PRACTICE_LOCK:
+                main._PRACTICE_MUTATIONS.pop(created["id"], None)
+        self.assertEqual(result["payload"]["error"]["code"], "practice_session_busy")
+        self.assertTrue(path.is_file())
+
     def test_article_back_translation_uses_translation_as_source_and_original_as_reference(self) -> None:
         saved = main.DesktopDeckAdapter().save_article(
             "Deck",
@@ -286,26 +329,26 @@ class DesktopReleaseBridgeTests(unittest.TestCase):
         self.assertEqual(conflict["payload"]["error"]["code"], "reasoning_temperature_conflict")
         save.assert_not_called()
 
-        for config_override, expected_code, reasoning_payload in (
-            (
-                {"selected_provider_profile": "openai", "model": "gpt", "max_tokens": 4000,
-                 "temperature": None, "top_p": 0.9},
-                "reasoning_top_p_conflict",
-                {"mode": "explicit", "control": "effort", "effort": "low"},
-            ),
-            (
-                {"selected_provider_profile": "custom", "model": "model", "max_tokens": 4000,
-                 "temperature": None, "top_p": None, "use_native_structured_output": True},
-                "unsupported_response_format",
-                {"mode": "disabled"},
-            ),
-        ):
-            with self.subTest(expected_code=expected_code), patch.object(
-                main, "_load_generation_config", return_value=config_override
-            ), patch.object(main, "_save_desktop_config") as save:
-                rejected = request("saveReasoningSettings", {"reasoning": reasoning_payload})
-            self.assertEqual(rejected["payload"]["error"]["code"], expected_code)
-            save.assert_not_called()
+        with patch.object(main, "_load_generation_config", return_value={
+            "selected_provider_profile": "openai", "model": "gpt", "max_tokens": 4000,
+            "temperature": None, "top_p": 0.9,
+        }), patch.object(main, "_save_desktop_config") as save:
+            rejected = request("saveReasoningSettings", {
+                "reasoning": {"mode": "explicit", "control": "effort", "effort": "low"}
+            })
+        self.assertEqual(rejected["payload"]["error"]["code"], "reasoning_top_p_conflict")
+        save.assert_not_called()
+
+        with patch.object(main, "_load_generation_config", return_value={
+            "selected_provider_profile": "custom", "model": "model", "max_tokens": 4000,
+            "temperature": None, "top_p": None, "use_native_structured_output": True,
+        }), patch.object(main, "_save_desktop_config"):
+            custom = request("saveReasoningSettings", {"reasoning": {"mode": "disabled"}})
+            custom_preview = request("previewReasoningSettings", {
+                "reasoning": {"mode": "disabled"}
+            })
+        self.assertEqual(custom["event"], "reasoningSettingsLoaded")
+        self.assertFalse(custom_preview["payload"]["effectiveSettings"]["responseFormatEnabled"])
 
     def test_async_registry_retains_request_id_and_returns_terminal_result(self) -> None:
         with patch.object(main, "_run_release_operation", return_value={"candidateCount": 0}):
@@ -397,6 +440,48 @@ class DesktopReleaseBridgeTests(unittest.TestCase):
         self.assertEqual(loaded["payload"]["session"]["completeTextDraft"], "newer autosave")
         self.assertEqual(loaded["payload"]["session"]["attempts"], [])
 
+    def test_delete_wins_against_inflight_review_without_resurrection(self) -> None:
+        created = request("createPastedPractice", {
+            "sourceText": "source", "sourceLanguage": "en", "targetLanguage": "ja",
+            "save": True,
+        })["payload"]["session"]
+        entered = threading.Event()
+        release = threading.Event()
+        outcome = {}
+
+        class BlockingTransport:
+            def complete(self, _request, *, cancellation):
+                entered.set()
+                release.wait(2)
+                return ModelResponse('{"overall":"review","meaning":[]}')
+
+        def worker():
+            try:
+                with patch.object(main, "_provider_context", return_value=(
+                    "custom", known_provider_capabilities("custom"),
+                    ModelRequestSettings(model="model"), BlockingTransport(),
+                )):
+                    main._run_release_operation("submitPracticeReview", {
+                        "sessionId": created["id"], "revision": 0,
+                        "translation": "answer", "persist": True,
+                    }, OperationContext("review-delete-race"))
+            except Exception as exc:
+                outcome["error"] = exc
+
+        thread = threading.Thread(target=worker)
+        thread.start()
+        self.assertTrue(entered.wait(1))
+        deleted = request("deletePracticeSession", {
+            "sessionId": created["id"], "revision": 0,
+        })
+        self.assertTrue(deleted["payload"]["deleted"])
+        release.set()
+        thread.join(2)
+        self.assertEqual(getattr(outcome.get("error"), "code", ""), "stale_practice_revision")
+        self.assertFalse(main._practice_repository()._path(created["id"]).exists())
+        missing = request("loadPracticeSession", {"sessionId": created["id"]})
+        self.assertEqual(missing["event"], "operationFailed")
+
     def test_target_aware_generation_service_boundary_preserves_categories(self) -> None:
         class Transport:
             def complete(self, _request, *, cancellation):
@@ -428,6 +513,36 @@ class DesktopReleaseBridgeTests(unittest.TestCase):
         self.assertEqual(outcomes["optional-1"]["category"], "optional")
         self.assertEqual(outcomes["excluded-1"]["status"], "excluded")
         self.assertEqual(result["title"], "Natural story")
+
+    def test_saved_target_article_preserves_translations_for_back_translation(self) -> None:
+        class Transport:
+            def complete(self, _request, *, cancellation):
+                return ModelResponse(json.dumps({
+                    "title": "Bilingual",
+                    "article": "Original one.\n\nOriginal two.",
+                    "paragraph_translations": ["Source one.", "Source two."],
+                }))
+
+        with patch.object(main, "_provider_context", return_value=(
+            "custom", known_provider_capabilities("custom"),
+            ModelRequestSettings(model="model"), Transport(),
+        )):
+            generated = main._run_release_operation("generateTargetAware", {
+                "targetLanguage": "English", "saveArticle": True, "deckName": "Deck",
+            }, OperationContext("save-bilingual"))
+        markdown = Path(generated["savedArticle"]["markdown"])
+        text = markdown.read_text(encoding="utf-8")
+        self.assertIn("Original one.\n\n[T] Source one.", text)
+        self.assertIn("Original two.\n\n[T] Source two.", text)
+        reopened = request("createArticlePractice", {
+            "articlePath": str(markdown), "sourceLanguage": "en", "targetLanguage": "ja",
+            "direction": "back_translation", "save": False,
+        })["payload"]["session"]
+        self.assertEqual(reopened["sourceText"], "Source one.\n\nSource two.")
+        self.assertEqual(
+            [segment["referenceText"] for segment in reopened["segments"]],
+            ["Original one.", "Original two."],
+        )
 
     def test_real_generation_failure_does_not_become_mock_success(self) -> None:
         fake_source = type("Source", (), {"provider": object()})()

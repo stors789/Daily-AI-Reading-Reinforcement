@@ -287,15 +287,47 @@ class TestGenerateArticle(unittest.TestCase):
         }).encode("utf-8")
 
         urls = []
+        payloads = []
 
         def mock_urlopen(request, timeout=None):
             urls.append(request.get_full_url())
+            payloads.append(json.loads(request.data.decode("utf-8")))
             return MockHTTPResponse(response_body)
 
         with patch("urllib.request.urlopen", mock_urlopen):
             generate_article(config, "Deck", [self._make_mock_card()], ["Front"], self.preset)
 
         self.assertEqual(urls[0], "https://my-api.example.com/chat/completions")
+        self.assertNotIn("response_format", payloads[0])
+        rendered_text = "\n".join(item["content"] for item in payloads[0]["messages"])
+        self.assertIn("[ARTICLE_TITLE]", rendered_text)
+
+    def test_custom_provider_generate_keeps_visible_contract_without_native_format(self):
+        config = dict(self.base_config)
+        config.update({
+            "selected_provider_profile": "custom",
+            "base_url": "https://custom.example/v1",
+        })
+        seen = {}
+        response = json.dumps({
+            "choices": [{"message": {"content":
+                "[ARTICLE_TITLE]\nCustom\n[MAIN_ARTICLE]\nGenerated body."}}]
+        }).encode("utf-8")
+
+        def mock_urlopen(request, timeout=None):
+            seen.update(json.loads(request.data.decode("utf-8")))
+            return MockHTTPResponse(response)
+
+        with patch("urllib.request.urlopen", mock_urlopen):
+            article = generate_article(
+                config, "Deck", [self._make_mock_card()], ["Front"], self.preset
+            )
+        self.assertIn("Generated body", article)
+        self.assertNotIn("response_format", seen)
+        self.assertIn(
+            "[MAIN_ARTICLE]",
+            "\n".join(message["content"] for message in seen["messages"]),
+        )
 
 
 if __name__ == "__main__":

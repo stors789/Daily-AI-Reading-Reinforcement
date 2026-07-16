@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import json
 import time
+import urllib.parse
 from dataclasses import dataclass, replace
 from datetime import datetime
 from pathlib import Path
@@ -391,7 +392,9 @@ window.addEventListener("error", function (event) {
     def _fetch_models(self, settings: dict[str, Any], request_id: str) -> None:
         config = load_config()
         api_key = str(settings.get("apiKey") or config.get("api_key") or "").strip()
-        base_url = clean_base_url(settings.get("baseUrl") or config.get("base_url"))
+        base_url = _safe_addon_base_url(
+            clean_base_url(settings.get("baseUrl") or config.get("base_url"))
+        )
         if not api_key:
             self._emit("error", {"message": "Enter or save an API key before fetching models."})
             return
@@ -417,7 +420,9 @@ window.addEventListener("error", function (event) {
     def _test_api_settings(self, settings: dict[str, Any], request_id: str) -> None:
         config = load_config()
         api_key = str(settings.get("apiKey") or config.get("api_key") or "").strip()
-        base_url = clean_base_url(settings.get("baseUrl") or config.get("base_url"))
+        base_url = _safe_addon_base_url(
+            clean_base_url(settings.get("baseUrl") or config.get("base_url"))
+        )
         model = clean_text(settings.get("model") or config.get("model"))
         if not api_key or not base_url or not model:
             self._emit("error", {"message": "API key, base URL, and model are required for testing."})
@@ -538,7 +543,7 @@ window.addEventListener("error", function (event) {
 
     def _save_api_settings(self, settings: dict[str, Any]) -> None:
         provider_id = clean_provider_id(settings.get("providerId"))
-        base_url = clean_base_url(settings.get("baseUrl"))
+        base_url = _safe_addon_base_url(clean_base_url(settings.get("baseUrl")))
         model = clean_text(settings.get("model"))
         temperature = clean_temperature(settings.get("temperature"))
         max_tokens = clean_max_tokens(settings.get("maxTokens"))
@@ -1093,18 +1098,57 @@ def first_meaningful_field(fields: dict[str, str]) -> str:
 def api_settings_payload(config: dict[str, Any]) -> dict[str, Any]:
     return {
         "providerId": clean_provider_id(config.get("selected_provider_profile")),
-        "baseUrl": clean_base_url(config.get("base_url") or DEFAULT_CONFIG["base_url"]),
+        "baseUrl": _public_addon_base_url(
+            clean_base_url(config.get("base_url") or DEFAULT_CONFIG["base_url"])
+        ),
         "model": clean_text(config.get("model") or DEFAULT_CONFIG["model"]),
         "temperature": clean_temperature(config.get("temperature")),
         "maxTokens": clean_max_tokens(config.get("max_tokens")),
         "hasApiKey": bool(str(config.get("api_key") or "").strip()),
         "profileId": str(config.get("selected_llm_api_profile_id") or ""),
         "profiles": [{"id": p["id"], "name": p.get("name") or p.get("model") or "API",
-                      "providerId": p.get("provider_id") or "custom", "baseUrl": p.get("base_url") or "",
+                      "providerId": p.get("provider_id") or "custom",
+                      "baseUrl": _public_addon_base_url(p.get("base_url") or "", allow_empty=True),
                       "model": p.get("model") or "", "temperature": p.get("temperature", 0.7),
                       "maxTokens": p.get("max_tokens", 30000), "hasApiKey": bool(p.get("api_key"))}
                      for p in normalize_llm_api_profiles(config)],
     }
+
+
+def _safe_addon_base_url(value: Any, *, allow_empty: bool = False) -> str:
+    """Validate and canonicalize provider URLs without retaining credentials."""
+    text = str(value or "").strip().rstrip("/")
+    if not text and allow_empty:
+        return ""
+    try:
+        parsed = urllib.parse.urlsplit(text)
+        port = parsed.port
+    except (TypeError, ValueError) as exc:
+        raise OperationError(
+            "invalid_base_url", "Enter a valid HTTP or HTTPS provider base URL."
+        ) from exc
+    if (
+        parsed.scheme not in {"http", "https"}
+        or not parsed.hostname
+        or parsed.username is not None
+        or parsed.password is not None
+        or parsed.query
+        or parsed.fragment
+    ):
+        raise OperationError(
+            "invalid_base_url",
+            "Provider base URLs must use HTTP or HTTPS and cannot contain credentials, query parameters, or fragments.",
+        )
+    hostname = f"[{parsed.hostname}]" if ":" in parsed.hostname else parsed.hostname
+    authority = f"{hostname}:{port}" if port is not None else hostname
+    return urllib.parse.urlunsplit((parsed.scheme, authority, parsed.path.rstrip("/"), "", ""))
+
+
+def _public_addon_base_url(value: Any, *, allow_empty: bool = False) -> str:
+    try:
+        return _safe_addon_base_url(value, allow_empty=allow_empty)
+    except OperationError:
+        return ""
 
 
 def provider_profiles_payload() -> list[dict[str, str]]:

@@ -13,6 +13,7 @@ from __future__ import annotations
 
 import json
 import os
+import re
 import secrets
 import sys
 import threading
@@ -791,6 +792,29 @@ def _article_practice_material(raw_article: str, direction: TranslationDirection
     return "\n\n".join(source_values), references, str(parsed.get("title") or "")
 
 
+def _target_article_markdown(
+    title: str,
+    article: str,
+    paragraph_translations: tuple[str, ...],
+) -> str:
+    """Preserve structured paragraph translations in authoritative Markdown."""
+    paragraphs = [part.strip() for part in re.split(r"\n\s*\n", article) if part.strip()]
+    translations = list(paragraph_translations)
+    body: list[str] = []
+    for index, paragraph in enumerate(paragraphs):
+        body.append(paragraph)
+        if index < len(translations) and str(translations[index]).strip():
+            body.append(f"[T] {str(translations[index]).strip()}")
+    if not paragraphs and article.strip():
+        body.append(article.strip())
+    joined = "\n\n".join(body)
+    return (
+        f"[ARTICLE_TITLE]\n{title.strip()}\n"
+        f"[MAIN_ARTICLE]\n{joined}\n"
+        "[REVIEW_NOTES]\n"
+    )
+
+
 def _practice_repository() -> PracticeRepository:
     if not _DESKTOP_ADAPTERS_AVAILABLE:
         root = Path(os.environ.get("DESKTOP_OUTPUT_DIR") or (REPO_ROOT / "desktop_mock" / "output"))
@@ -880,12 +904,16 @@ def _remember_session(session: PracticeSession, *, increment_revision: bool = Fa
 
 
 def _load_practice_session(session_id: str) -> PracticeSession:
+    # Coordinate disk load with delete. Holding the host lock across this
+    # bounded private-file read prevents a loader from re-inserting an
+    # in-memory snapshot after another request has successfully unlinked it.
     with _PRACTICE_LOCK:
         session = _PRACTICE_DRAFTS.get(session_id)
-    if session is None:
-        session = _practice_service().load_session(session_id)
-        _remember_session(session)
-    return session
+        if session is None:
+            session = _practice_service().load_session(session_id)
+            _PRACTICE_DRAFTS[session.id] = session
+            _PRACTICE_REVISIONS.setdefault(session.id, 0)
+        return session
 
 
 def _check_practice_revision(session_id: str, payload: Mapping[str, Any]) -> None:
@@ -1484,7 +1512,9 @@ def _run_release_operation(action: str, payload: dict[str, Any], context: Operat
         )
         response = result.to_dict()
         if payload.get("saveArticle"):
-            legacy_article = "[ARTICLE_TITLE]\n" + result.title + "\n[MAIN_ARTICLE]\n" + result.article
+            legacy_article = _target_article_markdown(
+                result.title, result.article, result.paragraph_translations
+            )
             outcomes = [item.to_dict() for item in result.target_outcomes]
             saved = DesktopDeckAdapter().save_article(
                 str(payload.get("deckName") or "DAIRR"),
@@ -1616,18 +1646,31 @@ def _handle_release_action(action: str, payload: dict[str, Any]) -> tuple[str, d
         return "practiceSegmentsUpdated", {"session": _session_payload(updated)}
     if action == "deletePracticeSession":
         session_id = str(payload.get("sessionId") or "")
-        deleted = _practice_repository().delete(session_id)
+        _session, claim = _claim_practice_mutation(session_id, payload)
+        try:
+            # Unlink while the mutation claim is active. Any disk failure
+            # leaves the authoritative in-memory session and revision intact.
+            deleted_on_disk = _practice_repository().delete(session_id)
+        except BaseException:
+            _abort_practice_mutation(session_id, claim)
+            raise
         with _PRACTICE_LOCK:
-            if session_id in _PRACTICE_MUTATIONS:
+            if _PRACTICE_MUTATIONS.get(session_id) != claim:
+                # This cannot occur after a successful claim without an
+                # internal invariant violation. Crucially, do not report the
+                # ordinary "busy" error after the file has been removed.
                 raise OperationError(
-                    "practice_session_busy",
-                    "This practice session is being updated. Wait for that operation before deleting it.",
-                    retryable=True,
+                    "practice_delete_commit_failed",
+                    "The practice session was removed but local state could not be finalized. Reload practice history.",
                 )
+            known_in_memory = session_id in _PRACTICE_DRAFTS
             _PRACTICE_DRAFTS.pop(session_id, None)
             _PRACTICE_REVISIONS.pop(session_id, None)
             _PRACTICE_MUTATIONS.pop(session_id, None)
-        return "practiceSessionDeleted", {"sessionId": session_id, "deleted": deleted}
+        return "practiceSessionDeleted", {
+            "sessionId": session_id,
+            "deleted": deleted_on_disk or known_in_memory,
+        }
     if action in {"getScoringConfig", "resetScoringConfig", "saveScoringConfig", "importScoringConfig", "exportScoringConfig"}:
         presets = list(config.get("scoring_presets") or [recommended_preset().to_dict()])
         selected_id = str(config.get("selected_scoring_preset_id") or presets[0]["id"])

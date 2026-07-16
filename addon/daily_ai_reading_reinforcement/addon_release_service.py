@@ -277,10 +277,21 @@ class AddonReleaseService:
 
     def delete_practice_session(self, payload: Mapping[str, Any]) -> dict[str, Any]:
         session_id = _required_id(payload, "sessionId")
+        self._load_session(session_id)
         with self._session_lock:
-            known_in_memory = self._sessions.pop(session_id, None) is not None
+            self._check_revision(session_id, payload)
+            known_in_memory = session_id in self._sessions
+            # Keep the revision and snapshot authoritative until the unlink
+            # succeeds. Saves/segment edits hold this same lock through their
+            # atomic file replacement, while in-flight reviews fail their CAS
+            # after this commit and therefore cannot resurrect the record.
+            deleted_on_disk = self.repository.delete(session_id)
+            self._sessions.pop(session_id, None)
             self._revisions.pop(session_id, None)
-        return {"sessionId": session_id, "deleted": self.repository.delete(session_id) or known_in_memory}
+        return {
+            "sessionId": session_id,
+            "deleted": deleted_on_disk or known_in_memory,
+        }
 
     def submit_practice_review(
         self,
@@ -717,15 +728,14 @@ class AddonReleaseService:
             ) from exc
 
     def _load_session(self, session_id: str):
+        # Serialize a bounded private-file load with delete so a stale loader
+        # cannot repopulate memory after the authoritative file was removed.
         with self._session_lock:
             session = self._sessions.get(session_id)
-        if session is not None:
-            return session
-        loaded = self.practice.load_session(session_id)
-        with self._session_lock:
-            # Another worker may have populated or changed the session while
-            # disk I/O was in progress. Never overwrite that newer snapshot.
-            session = self._sessions.setdefault(session_id, loaded)
+            if session is not None:
+                return session
+            session = self.practice.load_session(session_id)
+            self._sessions[session_id] = session
             self._revisions.setdefault(session_id, 0)
             return session
 

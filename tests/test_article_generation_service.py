@@ -182,6 +182,19 @@ class ArticleGenerationServiceTests(unittest.TestCase):
         self.assertFalse(outcome.used)
         self.assertTrue(any("surface form was absent" in item for item in result.warnings))
 
+    def test_unrelated_claimed_surface_present_in_article_is_not_trusted(self) -> None:
+        raw = json.dumps({
+            "article": "A coherent article mentions a completely unrelated banana.",
+            "target_usage": [{
+                "target_id": "r", "actual_surface_form": "banana", "status": "used",
+            }],
+        })
+        result = parse_article_generation_response(request(), raw, mode=ResponseMode.STRUCTURED)
+        outcome = next(item for item in result.target_outcomes if item.target_id == "r")
+        self.assertIs(outcome.status, TargetOutcomeStatus.UNREPORTED)
+        self.assertFalse(outcome.used)
+        self.assertTrue(any("Rejected 1 target usage" in item for item in result.warnings))
+
     def test_plain_text_mode_returns_article_and_honest_unreported_usage(self) -> None:
         result = parse_article_generation_response(
             request(), "Plain article text.", mode=ResponseMode.PLAIN_TEXT, finish_reason="length"
@@ -229,6 +242,26 @@ class ArticleGenerationServiceTests(unittest.TestCase):
         )
         self.assertEqual(result.article, "Body")
         self.assertEqual(transport.request.body["model"], "fake-model")
+
+    def test_custom_generation_omits_requested_native_format_but_keeps_visible_contract(self) -> None:
+        transport = FakeTransport('{"title":"T","article":"Body"}')
+        result = generate_target_aware_article(
+            request(),
+            registry=default_prompt_registry(),
+            provider_capabilities=known_provider_capabilities("custom-private-gateway"),
+            request_settings=ModelRequestSettings(
+                "fake-model", use_native_structured_output=True
+            ),
+            transport=transport,
+            context=OperationContext(),
+        )
+        self.assertEqual(result.article, "Body")
+        self.assertNotIn("response_format", transport.request.body)
+        visible = "\n".join(
+            message["content"] for message in transport.request.body["messages"]
+        )
+        self.assertIn("target_usage", visible)
+        self.assertIn("unused_targets", visible)
 
     def test_missing_article_and_invalid_response_type_are_rejected(self) -> None:
         for raw in ('{"title":"Only title"}', 42):

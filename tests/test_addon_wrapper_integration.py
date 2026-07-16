@@ -208,6 +208,60 @@ class AddonWrapperIntegrationTests(unittest.TestCase):
         self.mw.taskman.finish()
         self.assertEqual(len(self.dialog.web.evaluated), accepted_count)
 
+    def test_api_urls_with_credentials_query_or_fragment_are_rejected_and_redacted(self):
+        variants = (
+            "https://user:exact-secret@example.invalid/v1",
+            "https://example.invalid/v1?token=exact-secret",
+            "https://example.invalid/v1#exact-secret",
+        )
+        for index, base_url in enumerate(variants):
+            with self.subTest(base_url=base_url):
+                self.dialog._on_bridge_command(json.dumps({
+                    "version": 2,
+                    "requestId": f"unsafe-url-{index}",
+                    "action": "saveApiSettings",
+                    "payload": {"settings": {
+                        "providerId": "custom", "baseUrl": base_url,
+                        "model": "model", "apiKey": "api-secret",
+                    }},
+                }))
+                response = _last_envelope(self.dialog)
+                serialized = json.dumps(response)
+                self.assertEqual(response["event"], "operationFailed")
+                self.assertNotIn("exact-secret", serialized)
+                self.assertNotIn("api-secret", serialized)
+
+        unsafe = {
+            "api_key": "api-secret",
+            "base_url": variants[0],
+            "model": "model",
+            "llm_api_profiles": [{
+                "id": "unsafe", "name": "Unsafe", "provider_id": "custom",
+                "base_url": variants[1], "model": "model", "api_key": "profile-secret",
+            }],
+        }
+        payload = self.module.api_settings_payload(unsafe)
+        serialized = json.dumps(payload)
+        self.assertEqual(payload["baseUrl"], "")
+        self.assertEqual(payload["profiles"][0]["baseUrl"], "")
+        self.assertNotIn("exact-secret", serialized)
+        self.assertNotIn("profile-secret", serialized)
+
+        for action in ("fetchModels", "testApiSettings"):
+            self.dialog._on_bridge_command(json.dumps({
+                "version": 2,
+                "requestId": f"unsafe-{action}",
+                "action": action,
+                "payload": {"settings": {
+                    "baseUrl": "https://user:exact-secret@example.invalid/v1?x=1",
+                    "model": "model", "apiKey": "api-secret",
+                }},
+            }))
+            response = _last_envelope(self.dialog)
+            self.assertEqual(response["event"], "operationFailed")
+            self.assertNotIn("exact-secret", json.dumps(response))
+            self.assertNotIn("api-secret", json.dumps(response))
+
     def test_supported_profile_and_collection_close_hooks_are_registered(self):
         self.assertEqual(len(self.hooks.profile_will_close), 1)
         self.assertEqual(len(self.hooks.collection_will_close), 1)
