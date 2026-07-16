@@ -335,11 +335,16 @@
       createPractice: "创建练习",
       saveSession: "保存练习",
       reviewTranslation: "点评翻译",
+      previewPendingPrompt: "预览完整提示词",
       refreshPracticeHistory: "刷新",
       previewCandidates: "预览候选卡",
       useTargetPlan: "使用目标方案",
       saveScoring: "保存评分设置",
       renderPromptPreview: "渲染最终预览",
+      promptPreviewValues: "本次预览的变量值",
+      promptPreviewValuesHelp: "如果有待提交的练习或生成内容，这里会显示实际值。预览前可编辑。",
+      mandatoryResponseWrapper: "必需的响应包装",
+      mandatoryResponseWrapperHelp: "每次执行此任务都会发送",
       savePrompt: "保存提示词",
       editApiProfile: "编辑 API 配置",
       previewReasoning: "预览有效设置",
@@ -528,11 +533,16 @@
       createPractice: "Create practice",
       saveSession: "Save session",
       reviewTranslation: "Review translation",
+      previewPendingPrompt: "Preview exact prompt",
       refreshPracticeHistory: "Refresh",
       previewCandidates: "Preview candidates",
       useTargetPlan: "Use target plan",
       saveScoring: "Save scoring",
       renderPromptPreview: "Render exact preview",
+      promptPreviewValues: "Values for this preview",
+      promptPreviewValuesHelp: "These are the actual pending practice or generation values when available. Edit them before previewing.",
+      mandatoryResponseWrapper: "Mandatory response wrapper",
+      mandatoryResponseWrapperHelp: "Always sent with this task",
       savePrompt: "Save prompt",
       editApiProfile: "Edit API profile",
       previewReasoning: "Preview effective settings",
@@ -721,11 +731,16 @@
       createPractice: "練習を作成",
       saveSession: "練習を保存",
       reviewTranslation: "翻訳を添削",
+      previewPendingPrompt: "実際のプロンプトを確認",
       refreshPracticeHistory: "更新",
       previewCandidates: "候補をプレビュー",
       useTargetPlan: "対象プランを使用",
       saveScoring: "スコア設定を保存",
       renderPromptPreview: "最終プレビュー",
+      promptPreviewValues: "このプレビューの値",
+      promptPreviewValuesHelp: "保留中の練習または生成内容がある場合は実際の値を表示します。確認前に編集できます。",
+      mandatoryResponseWrapper: "必須の応答ラッパー",
+      mandatoryResponseWrapperHelp: "このタスクで常に送信",
       savePrompt: "プロンプトを保存",
       editApiProfile: "API 設定を編集",
       previewReasoning: "有効な設定を確認",
@@ -742,6 +757,77 @@
     if (Object.prototype.hasOwnProperty.call(I18N.en, key)) return I18N.en[key];
     return key;
   }
+
+  // The release workbench contains dense, task-specific copy.  Keep the
+  // English source in the portable markup and translate exact phrases here so
+  // host-rendered and dynamically inserted controls follow the same language
+  // switch as the legacy surface.
+  const WORKBENCH_COPY = {
+    zh: {
+      "Translation studio": "翻译工作台", "Practice setup": "练习设置", "Not saved yet": "尚未保存", "Pasted text": "粘贴文本", "DAIRR article": "DAIRR 文章",
+      "Source text": "原文", "Nothing is truncated silently.": "不会静默截断任何内容。", "Saved article": "已保存文章", "Choose an article": "选择文章", "Source language": "源语言",
+      "Target language": "目标语言", "Direction": "方向", "Source → target": "原文 → 目标语", "Back-translation": "回译", "Proficiency (optional)": "熟练度（可选）",
+      "Review instructions (optional)": "点评要求（可选）", "No session open": "未打开练习", "Translation desk": "翻译桌", "Cancel": "取消", "One segment": "单个分段", "Complete text": "完整文本",
+      "Split": "拆分", "Merge next": "合并下一段", "Source segment": "原文分段", "Reveal reference": "显示参考译文", "Your translation": "你的译文", "Drafts recover locally on this device.": "草稿可在本设备恢复。",
+      "AI review": "AI 点评", "Review feedback": "点评反馈", "Suggested revision": "建议译文", "Revise and resubmit": "修改后重新提交", "Previous attempts": "历史尝试", "Local learning record": "本地学习记录", "Practice history": "练习历史",
+      "Transparent heuristic": "透明启发式评分", "Reinforcement scoring": "巩固评分", "Preset and selection": "预设与选择", "Simple": "简易", "Advanced": "高级", "Preset": "预设", "Recommended": "推荐",
+      "Minimum inclusion score": "最低纳入分数", "Maximum selected cards": "最多选卡数", "Required": "必需", "Preferred": "优先", "Optional": "可选", "Score normalization": "分数归一化", "None": "无", "Signals": "信号", "Unavailable evidence contributes zero.": "不可用证据按零计入。",
+      "Use": "使用", "Weight": "权重", "Transform": "变换", "Normalize by": "归一化除数", "Minimum": "下限", "Maximum": "上限", "Decay": "衰减", "Half-life days": "半衰期（天）", "Candidate": "候选卡", "Category": "类别", "Evidence": "证据",
+      "Nothing important is hidden": "重要内容全部可见", "Prompt workshop": "提示词工作台", "Prompt scope": "提示词范围", "Task": "任务", "Override": "覆盖层级", "Project default": "项目默认", "Current provider": "当前提供商", "Current API profile": "当前 API 配置",
+      "Response mode": "响应模式", "Structured output": "结构化输出", "Plain text": "纯文本", "Documented variables": "已说明变量", "System prompt": "系统提示词", "User prompt template": "用户提示词模板", "Exact request preview": "完整请求预览", "Response contract": "响应约定", "Effective request settings": "有效请求设置",
+      "Provider-aware controls": "感知提供商的控件", "API and reasoning": "API 与推理", "Reasoning intent": "推理意图", "Disabled": "禁用", "Provider default": "提供商默认", "Explicit": "显式设置", "Control": "控制方式", "Named effort": "推理强度", "Token budget": "Token 预算", "Effort": "强度", "Thinking budget": "思考预算", "Effective settings": "有效设置",
+      "Import": "导入", "Export": "导出", "Reset": "重置", "Reset task": "重置任务", "Refresh": "刷新", "Working…": "处理中…", "Priority ↓": "优先级 ↓", "Priority ↑": "优先级 ↑",
+      "Bring any piece of writing.": "带来任何一段文字。", "Create a pasted-text session, or choose a saved article. Practice continues even when Anki is unavailable.": "创建粘贴文本练习，或选择已保存文章。即使 Anki 不可用，练习仍可继续。", "The article reference is a comparison point, not a single canonical answer.": "文章参考译文用于对照，不是唯一标准答案。",
+      "Rank today’s candidates without pretending to measure intrinsic difficulty.": "对今日候选卡排序，不把启发式分数冒充为内在难度。", "Preview scoring to inspect candidates and contributions.": "预览评分以检查候选卡和各项贡献。", "Candidate min–max": "候选集最小–最大", "Clamp 0–100": "限制在 0–100",
+      "Edit the wording and inspect the exact rendered messages and response contract.": "编辑文案，并检查完整渲染消息与响应约定。", "Article generation": "文章生成", "Translation review": "翻译点评", "Back-translation review": "回译点评", "Target usage validation": "目标词使用验证", "Text segmentation": "文本分段", "Preprocessing": "预处理", "Non-secret content only": "不含密钥；私密文本仅在本地显示",
+      "Reasoning controls follow the selected provider’s declared capabilities.": "推理控件严格遵循所选提供商声明的能力。", "Send no reasoning or thinking parameter.": "不发送推理或思考参数。", "Do not send an override.": "不发送覆盖值。", "Use a provider-supported effort or budget.": "使用提供商支持的强度或预算。", "API keys and private prompt content never appear here.": "API 密钥和私密提示词内容不会出现在此处。"
+    },
+    ja: {
+      "Translation studio": "翻訳スタジオ", "Practice setup": "練習設定", "Not saved yet": "未保存", "Pasted text": "貼り付けテキスト", "DAIRR article": "DAIRR 記事",
+      "Source text": "原文", "Nothing is truncated silently.": "内容を自動で切り捨てません。", "Saved article": "保存済み記事", "Choose an article": "記事を選択", "Source language": "原文の言語",
+      "Target language": "翻訳先の言語", "Direction": "方向", "Source → target": "原文 → 翻訳先", "Back-translation": "逆翻訳", "Proficiency (optional)": "習熟度（任意）", "Review instructions (optional)": "添削指示（任意）",
+      "No session open": "セッション未選択", "Translation desk": "翻訳デスク", "Cancel": "キャンセル", "One segment": "1 セグメント", "Complete text": "全文", "Split": "分割", "Merge next": "次と結合", "Source segment": "原文セグメント", "Reveal reference": "参考訳を表示", "Your translation": "あなたの翻訳", "Drafts recover locally on this device.": "下書きはこの端末で復元できます。",
+      "AI review": "AI 添削", "Review feedback": "添削結果", "Suggested revision": "修正案", "Revise and resubmit": "修正して再送信", "Previous attempts": "過去の回答", "Local learning record": "ローカル学習記録", "Practice history": "練習履歴",
+      "Transparent heuristic": "透明なヒューリスティック", "Reinforcement scoring": "強化スコア", "Preset and selection": "プリセットと選択", "Simple": "シンプル", "Advanced": "詳細", "Preset": "プリセット", "Recommended": "推奨", "Minimum inclusion score": "最低採用スコア", "Maximum selected cards": "最大カード数", "Required": "必須", "Preferred": "優先", "Optional": "任意", "Score normalization": "スコア正規化", "None": "なし", "Signals": "シグナル", "Unavailable evidence contributes zero.": "利用できない根拠は 0 とします。",
+      "Use": "使用", "Weight": "重み", "Transform": "変換", "Normalize by": "正規化除数", "Minimum": "下限", "Maximum": "上限", "Decay": "減衰", "Half-life days": "半減期（日）", "Candidate": "候補", "Category": "カテゴリ", "Evidence": "根拠",
+      "Nothing important is hidden": "重要な内容はすべて表示", "Prompt workshop": "プロンプト工房", "Prompt scope": "プロンプト範囲", "Task": "タスク", "Override": "上書き", "Project default": "プロジェクト既定", "Current provider": "現在のプロバイダー", "Current API profile": "現在の API 設定", "Response mode": "応答形式", "Structured output": "構造化出力", "Plain text": "プレーンテキスト", "Documented variables": "定義済み変数", "System prompt": "システムプロンプト", "User prompt template": "ユーザープロンプト", "Exact request preview": "実際のリクエスト", "Response contract": "応答契約", "Effective request settings": "有効なリクエスト設定",
+      "Provider-aware controls": "プロバイダー対応制御", "API and reasoning": "API と推論", "Reasoning intent": "推論設定", "Disabled": "無効", "Provider default": "プロバイダー既定", "Explicit": "明示的", "Control": "制御", "Named effort": "推論強度", "Token budget": "Token 予算", "Effort": "強度", "Thinking budget": "思考予算", "Effective settings": "有効な設定",
+      "Import": "インポート", "Export": "エクスポート", "Reset": "リセット", "Reset task": "タスクをリセット", "Refresh": "更新", "Working…": "処理中…", "Priority ↓": "優先度 ↓", "Priority ↑": "優先度 ↑",
+      "Bring any piece of writing.": "どんな文章でも練習できます。", "Create a pasted-text session, or choose a saved article. Practice continues even when Anki is unavailable.": "貼り付けテキストを使うか、保存済み記事を選びます。Anki が利用できなくても練習できます。", "The article reference is a comparison point, not a single canonical answer.": "参考訳は比較対象であり、唯一の正解ではありません。",
+      "Rank today’s candidates without pretending to measure intrinsic difficulty.": "ヒューリスティックを本質的な難度とみなさず、今日の候補を並べます。", "Preview scoring to inspect candidates and contributions.": "スコアをプレビューし、候補と寄与を確認します。", "Candidate min–max": "候補の最小–最大", "Clamp 0–100": "0–100 に制限",
+      "Edit the wording and inspect the exact rendered messages and response contract.": "文言を編集し、実際のメッセージと応答契約を確認します。", "Article generation": "記事生成", "Translation review": "翻訳添削", "Back-translation review": "逆翻訳添削", "Target usage validation": "対象語の使用検証", "Text segmentation": "テキスト分割", "Preprocessing": "前処理", "Non-secret content only": "API key を除き、非公開テキストはローカルのみで表示",
+      "Reasoning controls follow the selected provider’s declared capabilities.": "推論制御は選択したプロバイダーの宣言済み機能に従います。", "Send no reasoning or thinking parameter.": "推論または thinking パラメーターを送信しません。", "Do not send an override.": "上書きを送信しません。", "Use a provider-supported effort or budget.": "プロバイダー対応の強度または予算を使います。", "API keys and private prompt content never appear here.": "API key と非公開プロンプトはここに表示されません。"
+    }
+  };
+
+  function applyWorkbenchCopy(root = document) {
+    const dictionary = WORKBENCH_COPY[state.uiLanguage] || {};
+    const roots = root === document ? Array.from(document.querySelectorAll("[data-view-panel],#capabilityDetails")) : [root];
+    roots.forEach((scope) => {
+      if (!scope || scope.nodeType !== 1) return;
+      const walker = document.createTreeWalker(scope, NodeFilter.SHOW_TEXT);
+      let node;
+      while ((node = walker.nextNode())) {
+        if (node.parentElement && node.parentElement.closest("[data-i18n]")) continue;
+        const current = node.nodeValue || "", trimmed = current.trim();
+        if (!trimmed) continue;
+        if (!node._dairrWorkbenchSource) node._dairrWorkbenchSource = trimmed;
+        const translated = state.uiLanguage === "en" ? node._dairrWorkbenchSource : (dictionary[node._dairrWorkbenchSource] || node._dairrWorkbenchSource);
+        const next = current.replace(trimmed, translated);
+        if (current !== next) node.nodeValue = next;
+      }
+      scope.querySelectorAll("[placeholder],[title],[aria-label]").forEach((element) => {
+        ["placeholder", "title", "aria-label"].forEach((attribute) => {
+          if (!element.hasAttribute(attribute)) return;
+          const dataKey = `dairrSource${attribute.replace(/-([a-z])/g, (_m, c) => c.toUpperCase()).replace(/^./, (c) => c.toUpperCase())}`;
+          if (!element.dataset[dataKey]) element.dataset[dataKey] = element.getAttribute(attribute);
+          const source = element.dataset[dataKey];
+          element.setAttribute(attribute, state.uiLanguage === "en" ? source : (dictionary[source] || source));
+        });
+      });
+    });
+  }
+  window.__DAIRR_APPLY_WORKBENCH_I18N__ = applyWorkbenchCopy;
 
   const MESSAGE_KEYS = {
     "Enter or save an API key before fetching models.": "apiMissingKeyForModels",
@@ -867,6 +953,7 @@
         }
       }
     });
+    applyWorkbenchCopy();
    renderModelOptions();
     renderDesktopSettings();
     updateCardSelectionControls();
@@ -2479,6 +2566,15 @@
     practiceSessions: [],
     selectedSegmentIndex: 0,
     revisionOf: null,
+    revisionOfSessionId: null,
+    practiceSessionEpoch: 0,
+    draftEditVersion: 0,
+    draftSaveInFlight: null,
+    queuedDraftSave: null,
+    pendingDraftSaves: new Map(),
+    segmentSaveInFlight: null,
+    queuedSegments: null,
+    pendingSegmentSaves: new Map(),
     draftDirty: false,
     autosaveTimer: null,
     latestRequests: new Map(),
@@ -2489,15 +2585,19 @@
     scoringConfig: null,
     scoringMode: "simple",
     scoringCandidates: [],
+    scoringSortDescending: true,
     scoringOverrides: new Map(),
     targetPlanActive: false,
     promptTemplate: null,
+    promptPreviewValues: {},
+    pendingPromptPreviewValues: null,
     reasoningCapabilities: null,
     pendingImportKind: null,
   };
 
   const $ = (id) => document.getElementById(id);
   const qa = (selector, root = document) => Array.from(root.querySelectorAll(selector));
+  const reducedMotion = () => window.matchMedia && window.matchMedia("(prefers-reduced-motion: reduce)").matches;
 
   function requestId() {
     if (window.crypto && typeof window.crypto.randomUUID === "function") return window.crypto.randomUUID();
@@ -2508,7 +2608,12 @@
     const id = requestId();
     const envelope = { version: BRIDGE_VERSION, requestId: id, action, payload };
     releaseState.latestRequests.set(options.channel || action, id);
-    releaseState.requestActions.set(id, { action, channel: options.channel || action });
+    releaseState.requestActions.set(id, {
+      action,
+      channel: options.channel || action,
+      sessionId: options.sessionId || null,
+      sessionEpoch: options.sessionEpoch ?? null,
+    });
     const bridge = window.__DAIRR_BRIDGE__;
     if (bridge && typeof bridge.sendRequest === "function") {
       bridge.sendRequest(envelope);
@@ -2524,6 +2629,14 @@
     const meta = releaseState.requestActions.get(message.requestId);
     if (!meta) return true; // Legacy bridge may have generated the request ID.
     return releaseState.latestRequests.get(meta.channel) === message.requestId;
+  }
+
+  function operationIsCurrent(operationId) {
+    const meta = releaseState.operationActions.get(operationId);
+    if (!meta) return false;
+    if (releaseState.latestRequests.get(meta.channel) !== meta.requestId) return false;
+    if (meta.sessionId && (meta.sessionId !== (releaseState.practiceSession || {}).id || meta.sessionEpoch !== releaseState.practiceSessionEpoch)) return false;
+    return true;
   }
 
   function escapeText(value) {
@@ -2569,34 +2682,70 @@
     if (view === "scoring" && !releaseState.scoringConfig) sendV2("getScoringConfig");
     if (view === "prompts") loadPromptTemplate();
     if (view === "api") sendV2("getReasoningSettings");
-    window.scrollTo({ top: 0, behavior: "smooth" });
+    window.scrollTo({ top: 0, behavior: reducedMotion() ? "auto" : "smooth" });
+  }
+
+  function capability(id) { return releaseState.capabilities[id] || null; }
+  function effectivePracticeCharacterLimit() {
+    const hostLimit = Number(releaseState.practiceLimits.maxSourceCharacters || MAX_PASTED_CHARACTERS);
+    return Math.min(MAX_PASTED_CHARACTERS, Number.isFinite(hostLimit) && hostLimit > 0 ? hostLimit : MAX_PASTED_CHARACTERS);
+  }
+  function capabilityAvailable(id) { const item = capability(id); return !item || item.status === "available"; }
+  function capabilityMessage(id, fallback) {
+    const item = capability(id);
+    return (item && (item.message || item.detail || item.reason)) || fallback;
+  }
+
+  function setCapabilityAction(id, capabilityId, fallback) {
+    const control = $(id);
+    if (!control) return;
+    const available = capabilityAvailable(capabilityId);
+    control.disabled = !available;
+    control.setAttribute("aria-disabled", String(!available));
+    control.title = available ? "" : capabilityMessage(capabilityId, fallback);
   }
 
   function renderCapabilities(payload) {
     releaseState.capabilities = payload.capabilities || {};
     releaseState.practiceLimits = payload.practiceLimits || releaseState.practiceLimits;
+    const practiceLimit = effectivePracticeCharacterLimit();
+    $("practiceTextCount").textContent = `${$("practiceSourceText").value.length.toLocaleString()} / ${practiceLimit.toLocaleString()} characters`;
     const values = Object.values(releaseState.capabilities);
     const available = values.filter((item) => item.status === "available").length;
     const summary = $("capabilitySummary");
     if (summary) summary.textContent = `${available} of ${values.length} workspace capabilities available · Pasted-text practice stays local and independent of Anki.`;
+    const details = $("capabilityDetails");
+    const unavailable = Object.entries(releaseState.capabilities).filter(([, item]) => item.status !== "available");
+    if (details) {
+      details.hidden = !unavailable.length;
+      details.innerHTML = unavailable.map(([id, item]) => `<p><strong>${escapeText(id.replace(/_/g, " "))}</strong><span>${escapeText(item.message || item.detail || item.reason || "Unavailable in this runtime.")}</span></p>`).join("");
+    }
     const dot = document.querySelector(".capability-dot");
     if (dot) {
       dot.classList.remove("checking");
       dot.classList.toggle("limited", available < values.length);
     }
-    const pasted = releaseState.capabilities.pasted_text_practice;
-    const create = $("createPracticeButton");
-    if (create && pasted && pasted.status !== "available") {
-      create.disabled = true;
-      create.title = pasted.message || pasted.detail || "Pasted-text practice is unavailable.";
-    }
+    setCapabilityAction("createPracticeButton", releaseState.practiceKind === "article" ? "article_history" : "pasted_text_practice", "Practice is unavailable in this runtime.");
+    setCapabilityAction("previewScoringButton", "target_card_scoring", "Anki scoring data is unavailable.");
+    setCapabilityAction("useTargetPlanButton", "target_card_scoring", "A target plan requires scoring capability.");
+    setCapabilityAction("previewPromptButton", "custom_prompts", "Prompt customization is unavailable.");
+    setCapabilityAction("savePromptButton", "custom_prompts", "Prompt customization is unavailable.");
+    setCapabilityAction("previewPracticePromptButton", "custom_prompts", "AI prompt preview is unavailable in this runtime.");
+    setCapabilityAction("submitPracticeButton", "custom_prompts", "AI review is unavailable in this runtime. Your local draft remains editable.");
+    setCapabilityAction("previewReasoningButton", "provider_reasoning", "Reasoning controls are unavailable for this provider.");
+    setCapabilityAction("saveReasoningButton", "provider_reasoning", "Reasoning controls are unavailable for this provider.");
     const reasoning = releaseState.capabilities.provider_reasoning;
     if (reasoning) renderReasoningCapabilityReason(reasoning.message || reasoning.detail, reasoning.status === "available");
   }
 
   function setPracticeKind(kind) {
     releaseState.practiceKind = kind;
-    qa("[data-practice-kind]").forEach((button) => button.classList.toggle("active", button.dataset.practiceKind === kind));
+    qa("[data-practice-kind]").forEach((button) => {
+      const active = button.dataset.practiceKind === kind;
+      button.classList.toggle("active", active);
+      button.setAttribute("aria-pressed", String(active));
+    });
+    setCapabilityAction("createPracticeButton", kind === "article" ? "article_history" : "pasted_text_practice", "This practice source is unavailable in this runtime.");
     $("pastedPracticeSetup").hidden = kind !== "pasted_text";
     $("articlePracticeSetup").hidden = kind !== "article";
     if (kind === "article") {
@@ -2646,6 +2795,24 @@
   }
 
   function applyPracticeSession(session, options = {}) {
+    const previous = releaseState.practiceSession;
+    const switched = !previous || previous.id !== session.id;
+    if (switched) {
+      releaseState.practiceSessionEpoch += 1;
+      releaseState.selectedSegmentIndex = 0;
+      releaseState.revisionOf = null;
+      releaseState.revisionOfSessionId = null;
+      releaseState.draftEditVersion = 0;
+      releaseState.draftSaveInFlight = null;
+      releaseState.queuedDraftSave = null;
+      releaseState.pendingDraftSaves.clear();
+      releaseState.segmentSaveInFlight = null;
+      releaseState.queuedSegments = null;
+      releaseState.pendingSegmentSaves.clear();
+      window.clearTimeout(releaseState.autosaveTimer);
+      $("practiceFeedback").hidden = true;
+      if (releaseState.activeOperations.has("practice")) clearPracticeOperation();
+    }
     releaseState.practiceSession = session;
     releaseState.selectedSegmentIndex = Math.min(releaseState.selectedSegmentIndex, Math.max(0, (session.segments || []).length - 1));
     releaseState.draftDirty = false;
@@ -2656,6 +2823,8 @@
     setDraftState(session.lastAutosavedAt ? `Saved ${formatRelativeTime(session.lastAutosavedAt)}` : "Not saved yet", false);
     renderPracticeEditor();
     renderPracticeAttempts();
+    const reviewed = (session.attempts || []).filter((attempt) => attempt.review).slice(-1)[0];
+    if (reviewed) renderReview({ review: reviewed.review }, { scroll: false });
     const recovered = options.recover === false ? null : recoverLocalDraft(session);
     if (recovered) {
       releaseState.practiceScope = recovered.scope === "complete_text" ? "complete_text" : "segment";
@@ -2688,6 +2857,10 @@
   }
 
   function markPracticeDirty(message = "Unsaved changes") {
+    // Capture the DOM value synchronously. A concurrent segmentation response
+    // may arrive before the debounce fires and must merge this newest draft.
+    saveDraftInMemory();
+    releaseState.draftEditVersion += 1;
     releaseState.draftDirty = true;
     setDraftState(message, true);
     rememberLocalDraft();
@@ -2698,7 +2871,13 @@
   function setPracticeScope(scope) {
     saveDraftInMemory();
     releaseState.practiceScope = scope;
-    qa("[data-practice-scope]").forEach((button) => button.classList.toggle("active", button.dataset.practiceScope === scope));
+    qa("[data-practice-scope]").forEach((button) => {
+      const active = button.dataset.practiceScope === scope;
+      button.classList.toggle("active", active);
+      button.setAttribute("aria-pressed", String(active));
+    });
+    releaseState.revisionOf = null;
+    releaseState.revisionOfSessionId = null;
     renderPracticeEditor();
   }
 
@@ -2719,6 +2898,8 @@
     saveDraftInMemory();
     releaseState.selectedSegmentIndex = Math.max(0, Math.min(index, releaseState.practiceSession.segments.length - 1));
     releaseState.practiceScope = "segment";
+    releaseState.revisionOf = null;
+    releaseState.revisionOfSessionId = null;
     renderPracticeEditor();
   }
 
@@ -2730,13 +2911,18 @@
     const session = releaseState.practiceSession;
     if (!session) return;
     const segment = currentSegment();
-    qa("[data-practice-scope]").forEach((button) => button.classList.toggle("active", button.dataset.practiceScope === releaseState.practiceScope));
+    qa("[data-practice-scope]").forEach((button) => {
+      const active = button.dataset.practiceScope === releaseState.practiceScope;
+      button.classList.toggle("active", active);
+      button.setAttribute("aria-pressed", String(active));
+    });
     $("segmentRail").innerHTML = (session.segments || []).map((item, index) => {
       const classes = ["segment-marker"];
       if (index === releaseState.selectedSegmentIndex && releaseState.practiceScope === "segment") classes.push("active");
       if ((session.segmentDrafts || {})[item.id]) classes.push("has-draft");
       if (segmentReviewed(item.id)) classes.push("reviewed");
-      return `<button type="button" class="${classes.join(" ")}" data-segment-index="${index}" aria-label="Open segment ${index + 1}">${index + 1}</button>`;
+      const active = index === releaseState.selectedSegmentIndex && releaseState.practiceScope === "segment";
+      return `<button type="button" class="${classes.join(" ")}" data-segment-index="${index}" aria-label="Open segment ${index + 1}" aria-pressed="${active}">${index + 1}</button>`;
     }).join("");
     const complete = releaseState.practiceScope === "complete_text";
     $("segmentPosition").textContent = complete ? `Complete text · ${session.segments.length} segments` : `Segment ${releaseState.selectedSegmentIndex + 1} of ${session.segments.length}`;
@@ -2744,7 +2930,9 @@
     $("segmentSourceEditor").value = complete ? session.sourceText : (segment ? segment.sourceText : "");
     $("segmentSourceEditor").readOnly = complete || Boolean((session.attempts || []).length);
     $("practiceTranslation").value = currentPracticeTranslation();
-    const reference = !complete && segment ? segment.referenceText : null;
+    const completeReference = (session.segments || []).map((item) => item.referenceText).filter(Boolean).join("\n\n")
+      || (session.articleReference && (session.articleReference.referenceSnapshot || session.articleReference.reference_text)) || null;
+    const reference = complete ? completeReference : (segment ? segment.referenceText : null);
     $("practiceReferenceBlock").hidden = !reference;
     $("practiceReferenceText").textContent = reference || "";
     $("practiceReferenceText").hidden = true;
@@ -2762,27 +2950,45 @@
       container.innerHTML = '<p class="empty-state">No reviewed attempts yet.</p>';
       return;
     }
-    container.innerHTML = session.attempts.slice().reverse().map((attempt, index) => `
+    container.innerHTML = session.attempts.slice().reverse().map((attempt, index) => {
+      const review = attempt.review || null;
+      const categories = review && review.categories ? Object.entries(review.categories).map(([name, value]) => `<li><strong>${escapeText(name.replace(/_/g, " "))}</strong>: ${escapeText(Array.isArray(value) ? value.join(" · ") : value)}</li>`).join("") : "";
+      return `
       <article class="attempt-row">
         <strong>${session.attempts.length - index}</strong>
         <span>${escapeText(attempt.scope === "segment" ? "Segment attempt" : "Complete-text attempt")} · ${escapeText(formatRelativeTime(attempt.createdAt))}</span>
         <button class="text-button" type="button" data-revise-attempt="${escapeText(attempt.id)}">Revise</button>
         <p>${escapeText(attempt.translation)}</p>
-      </article>`).join("");
+        ${review ? `<div class="attempt-review"><strong>${escapeText(review.overall || "Review feedback")}</strong>${review.score != null ? `<span>${escapeText(review.score)}</span>` : ""}${categories ? `<ul>${categories}</ul>` : ""}${review.suggestedRevision || review.suggestedTranslation ? `<p>${escapeText(review.suggestedRevision || review.suggestedTranslation)}</p>` : ""}</div>` : ""}
+      </article>`;
+    }).join("");
   }
 
   function savePracticeDraft(persist = true) {
     const session = releaseState.practiceSession;
     if (!session) return;
     saveDraftInMemory();
+    if (releaseState.draftSaveInFlight || releaseState.segmentSaveInFlight) {
+      releaseState.queuedDraftSave = { persist: Boolean(persist || (releaseState.queuedDraftSave && releaseState.queuedDraftSave.persist)) };
+      setDraftState(persist ? "Save queued…" : "Newer changes queued…", true);
+      return;
+    }
     const segment = releaseState.practiceScope === "segment" ? currentSegment() : null;
-    sendV2("savePracticeDraft", {
+    const meta = {
+      sessionId: session.id,
+      sessionEpoch: releaseState.practiceSessionEpoch,
+      editVersion: releaseState.draftEditVersion,
+      persist,
+    };
+    const id = sendV2("savePracticeDraft", {
       sessionId: session.id,
       revision: session.revision,
       segmentId: segment ? segment.id : null,
       translation: currentPracticeTranslation(),
       persist,
-    }, { channel: "practiceDraft" });
+    }, { channel: `practiceDraft:${session.id}`, sessionId: session.id, sessionEpoch: releaseState.practiceSessionEpoch });
+    releaseState.draftSaveInFlight = id;
+    releaseState.pendingDraftSaves.set(id, meta);
     setDraftState(persist ? "Saving session…" : "Autosaving…", true);
   }
 
@@ -2791,9 +2997,37 @@
     if (!session) return;
     session.segments = segments.map((segment, position) => ({ ...segment, position }));
     session.sourceText = session.segments.map((segment) => segment.sourceText).join("\n\n");
+    releaseState.draftEditVersion += 1;
+    releaseState.draftDirty = true;
+    rememberLocalDraft();
     renderPracticeEditor();
     setDraftState("Saving segmentation…", true);
-    sendV2("updatePracticeSegments", { sessionId: session.id, revision: session.revision, segments: session.segments, persist: true }, { channel: "practiceSegments" });
+    releaseState.queuedSegments = session.segments.map((segment) => ({ ...segment }));
+    flushPracticeMutationQueue();
+  }
+
+  function sendQueuedSegments() {
+    const session = releaseState.practiceSession;
+    if (!session || !releaseState.queuedSegments || releaseState.draftSaveInFlight || releaseState.segmentSaveInFlight) return;
+    const segments = releaseState.queuedSegments;
+    releaseState.queuedSegments = null;
+    const id = sendV2("updatePracticeSegments", { sessionId: session.id, revision: session.revision, segments, persist: true }, {
+      channel: `practiceSegments:${session.id}`, sessionId: session.id, sessionEpoch: releaseState.practiceSessionEpoch,
+    });
+    releaseState.segmentSaveInFlight = id;
+    releaseState.pendingSegmentSaves.set(id, {
+      sessionId: session.id, sessionEpoch: releaseState.practiceSessionEpoch, editVersion: releaseState.draftEditVersion,
+    });
+  }
+
+  function flushPracticeMutationQueue() {
+    if (releaseState.draftSaveInFlight || releaseState.segmentSaveInFlight) return;
+    if (releaseState.queuedSegments) return sendQueuedSegments();
+    if (releaseState.queuedDraftSave) {
+      const queued = releaseState.queuedDraftSave;
+      releaseState.queuedDraftSave = null;
+      savePracticeDraft(queued.persist);
+    }
   }
 
   function splitCurrentSegment() {
@@ -2844,7 +3078,7 @@
   function clearPracticeOperation() {
     $("practiceOperation").hidden = true;
     $("cancelPracticeOperationButton").hidden = true;
-    $("submitPracticeButton").disabled = false;
+    $("submitPracticeButton").disabled = !capabilityAvailable("custom_prompts");
     releaseState.activeOperations.delete("practice");
   }
 
@@ -2853,7 +3087,7 @@
     releaseState.operationPolls.set(operationId, window.setTimeout(() => sendV2("operationStatus", { operationId }, { channel: `poll:${operationId}` }), 300));
   }
 
-  function renderReview(result) {
+  function renderReview(result, options = {}) {
     const review = result.review || {};
     $("practiceFeedback").hidden = false;
     $("feedbackSummary").textContent = review.overall || "Review feedback";
@@ -2866,7 +3100,7 @@
     const suggestion = review.suggestedRevision || review.suggestedTranslation;
     $("suggestedRevision").hidden = !suggestion;
     if (suggestion) $("suggestedRevision").querySelector("p").textContent = suggestion;
-    $("practiceFeedback").scrollIntoView({ behavior: "smooth", block: "nearest" });
+    if (options.scroll !== false) $("practiceFeedback").scrollIntoView({ behavior: reducedMotion() ? "auto" : "smooth", block: "nearest" });
   }
 
   function renderPracticeHistory(sessions) {
@@ -2907,6 +3141,15 @@
       rule.enabled = row.querySelector('[data-role="enabled"]').checked;
       rule.weight = Number(row.querySelector('[data-role="weight"]').value);
       rule.transform = row.querySelector('[data-role="transform"]').value;
+      const normalize = row.querySelector('[data-role="normalizeBy"]');
+      const minimum = row.querySelector('[data-role="minimumContribution"]');
+      const maximum = row.querySelector('[data-role="maximumContribution"]');
+      const decayEnabled = row.querySelector('[data-role="decayEnabled"]');
+      const halfLife = row.querySelector('[data-role="halfLifeDays"]');
+      if (normalize) rule.normalizeBy = Number(normalize.value);
+      if (minimum) rule.minimumContribution = minimum.value === "" ? null : Number(minimum.value);
+      if (maximum) rule.maximumContribution = maximum.value === "" ? null : Number(maximum.value);
+      if (decayEnabled) rule.decay = { enabled: decayEnabled.checked, halfLifeDays: Number(halfLife.value) };
     });
     return preset;
   }
@@ -2934,21 +3177,33 @@
     const metadata = payload.signalMetadata ? payload.signalMetadata[releaseState.scoringMode] || [] : [];
     $("scoringSignalList").innerHTML = metadata.map((meta) => {
       const rule = (preset.rules || {})[meta.signal] || { enabled: false, weight: 0, transform: "linear" };
-      return `<div class="signal-row" data-signal-rule="${escapeText(meta.signal)}">
+      const advanced = releaseState.scoringMode === "advanced";
+      const decay = rule.decay || { enabled: false, halfLifeDays: 14 };
+      return `<div class="signal-row${advanced ? " advanced" : ""}" data-signal-rule="${escapeText(meta.signal)}">
         <label class="signal-name"><strong>${escapeText(meta.label)}</strong><small>${escapeText(meta.explanation)}</small></label>
         <label class="inline-check"><input data-role="enabled" type="checkbox" ${rule.enabled ? "checked" : ""}><span>Use</span></label>
-        <label><span class="sr-only">Weight</span><input data-role="weight" type="number" step="0.5" value="${Number(rule.weight || 0)}" title="Signal weight"></label>
-        <label><span class="sr-only">Transform</span><select data-role="transform" title="Nonlinear transform"><option value="linear">Linear</option><option value="sqrt">Square root</option><option value="log1p">Log</option><option value="square">Square</option></select></label>
+        <label class="signal-control"><span>Weight</span><input data-role="weight" type="number" step="0.5" value="${Number(rule.weight || 0)}"></label>
+        <label class="signal-control"><span>Transform</span><select data-role="transform"><option value="linear">Linear</option><option value="sqrt">Square root</option><option value="log1p">Log</option><option value="square">Square</option></select></label>
+        ${advanced ? `<label class="signal-control"><span>Normalize by</span><input data-role="normalizeBy" type="number" min="0.000001" step="any" value="${Number(rule.normalizeBy || 1)}"></label>
+        <label class="signal-control"><span>Minimum</span><input data-role="minimumContribution" type="number" step="any" value="${rule.minimumContribution == null ? "" : Number(rule.minimumContribution)}" placeholder="No cap"></label>
+        <label class="signal-control"><span>Maximum</span><input data-role="maximumContribution" type="number" step="any" value="${rule.maximumContribution == null ? "" : Number(rule.maximumContribution)}" placeholder="No cap"></label>
+        ${meta.signal === "recent_reuse" ? `<label class="inline-check signal-decay"><input data-role="decayEnabled" type="checkbox" ${decay.enabled ? "checked" : ""}><span>Decay</span></label><label class="signal-control"><span>Half-life days</span><input data-role="halfLifeDays" type="number" min="0.1" step="0.1" value="${Number(decay.halfLifeDays || 14)}"></label>` : ""}` : ""}
       </div>`;
     }).join("");
     qa("[data-signal-rule]").forEach((row) => { row.querySelector('[data-role="transform"]').value = (preset.rules[row.dataset.signalRule] || {}).transform || "linear"; });
   }
 
   function renderScoringCandidates(result) {
-    const assignments = result.selection && result.selection.assignments ? result.selection.assignments : [];
+    const assignments = result.selection && result.selection.assignments ? result.selection.assignments.slice() : [];
+    assignments.sort((left, right) => {
+      const delta = Number((right.score || {}).total || 0) - Number((left.score || {}).total || 0);
+      return releaseState.scoringSortDescending ? delta : -delta;
+    });
     releaseState.scoringCandidates = assignments;
     releaseState.targetPlanActive = false;
-    $("useTargetPlanButton").disabled = !assignments.length;
+    $("useTargetPlanButton").disabled = !assignments.length || !capabilityAvailable("target_card_scoring");
+    $("sortCandidatesButton").textContent = releaseState.scoringSortDescending ? "Priority ↓" : "Priority ↑";
+    $("sortCandidatesButton").setAttribute("aria-pressed", String(releaseState.scoringSortDescending));
     if ($("useTargetPlanButton").dataset.baseLabel) $("useTargetPlanButton").textContent = $("useTargetPlanButton").dataset.baseLabel;
     $("scoringCandidates").innerHTML = assignments.map((assignment) => {
       const score = assignment.score || {}, contributions = score.contributions || [];
@@ -2994,9 +3249,16 @@
     $("promptResponseMode").value = template.responseMode || "structured";
     $("promptResponseContract").value = template.responseContract || "";
     $("promptVariables").innerHTML = (template.variables || []).map((variable) => `<button class="variable-chip" type="button" data-prompt-variable="${escapeText(variable.name)}" title="${escapeText(variable.description || "Insert variable")}">{${escapeText(variable.name)}}</button>`).join("");
+    renderPromptValueFields();
+    if (releaseState.pendingPromptPreviewValues) {
+      releaseState.promptPreviewValues = { ...releaseState.promptPreviewValues, ...releaseState.pendingPromptPreviewValues };
+      releaseState.pendingPromptPreviewValues = null;
+      renderPromptValueFields();
+      sendV2("previewPrompt", { ...promptScopePayload(), template: templatePayload(), values: promptPreviewValuePayload() }, { channel: "promptPreview" });
+    }
   }
 
-  function promptExampleValues() {
+  function defaultPromptValues() {
     const values = {};
     ((releaseState.promptTemplate && releaseState.promptTemplate.variables) || []).forEach((variable) => {
       const examples = {
@@ -3009,6 +3271,59 @@
       values[variable.name] = variable.example || examples[variable.name] || "Example value";
     });
     return values;
+  }
+
+  function currentPendingPromptValues() {
+    const session = releaseState.practiceSession;
+    if (releaseState.view === "practice" && session) {
+      const segment = releaseState.practiceScope === "segment" ? currentSegment() : null;
+      const sourceText = segment ? segment.sourceText : session.sourceText;
+      const reference = segment ? segment.referenceText : (session.segments || []).map((item) => item.referenceText).filter(Boolean).join("\n\n");
+      return {
+        source_text: sourceText || "",
+        source_language: session.sourceLanguage || "",
+        target_language: session.targetLanguage || "",
+        user_translation: $("practiceTranslation").value,
+        reference_translation: reference || "",
+        proficiency_level: session.proficiencyLevel || "",
+        custom_instructions: session.customReviewInstructions || "",
+      };
+    }
+    return {
+      source_language: $("presetReaderNativeLanguage").value,
+      target_language: $("presetArticleLanguage").value,
+      proficiency_level: $("presetDifficulty").value,
+      desired_length: $("presetMaxWords").value,
+      custom_instructions: $("presetInstructions").value,
+      response_contract: $("promptResponseContract").value,
+      output_format_contract: $("promptResponseContract").value,
+    };
+  }
+
+  function renderPromptValueFields() {
+    const container = $("promptValueFields");
+    if (!container) return;
+    const examples = defaultPromptValues();
+    const pending = currentPendingPromptValues();
+    const variables = (releaseState.promptTemplate && releaseState.promptTemplate.variables) || [];
+    variables.forEach((variable) => {
+      if (!Object.prototype.hasOwnProperty.call(releaseState.promptPreviewValues, variable.name)) {
+        releaseState.promptPreviewValues[variable.name] = pending[variable.name] ?? examples[variable.name] ?? "";
+      }
+    });
+    container.innerHTML = variables.map((variable) => {
+      const value = releaseState.promptPreviewValues[variable.name] ?? "";
+      const description = variable.description || "Prompt value";
+      const input = String(value).length > 90 || /text|translation|instructions|targets|contract/.test(variable.name)
+        ? `<textarea rows="3" data-prompt-value="${escapeText(variable.name)}">${escapeText(value)}</textarea>`
+        : `<input data-prompt-value="${escapeText(variable.name)}" value="${escapeText(value)}">`;
+      return `<label class="form-field prompt-value-field"><span>{${escapeText(variable.name)}}</span>${input}<small>${escapeText(description)}</small></label>`;
+    }).join("");
+  }
+
+  function promptPreviewValuePayload() {
+    qa("[data-prompt-value]").forEach((input) => { releaseState.promptPreviewValues[input.dataset.promptValue] = input.value; });
+    return { ...defaultPromptValues(), ...releaseState.promptPreviewValues };
   }
 
   function renderPromptPreview(payload) {
@@ -3043,12 +3358,24 @@
     const radio = document.querySelector(`input[name="reasoningMode"][value="${intent.mode || "provider_default"}"]`);
     if (radio) radio.checked = true;
     const caps = releaseState.reasoningCapabilities;
+    const controls = Array.isArray(caps.controls) ? caps.controls : [];
+    const explicitAvailable = Boolean(caps.supportsReasoning && controls.length);
+    $("reasoningControl").innerHTML = [
+      controls.includes("effort") ? '<option value="effort">Named effort</option>' : "",
+      controls.includes("budget") ? '<option value="budget">Token budget</option>' : "",
+    ].join("");
     $("reasoningEffort").innerHTML = (caps.effortLevels || []).map((level) => `<option value="${escapeText(level)}">${escapeText(level)}</option>`).join("");
-    if (intent.control) $("reasoningControl").value = intent.control;
+    if (intent.control && controls.includes(intent.control)) $("reasoningControl").value = intent.control;
     if (intent.effort) $("reasoningEffort").value = intent.effort;
-    if (intent.budgetTokens != null) $("reasoningBudget").value = intent.budgetTokens;
-    qa('input[name="reasoningMode"][value="explicit"]').forEach((item) => { item.disabled = !caps.supportsReasoning; });
-    renderReasoningCapabilityReason(caps.supportsReasoning ? "Explicit controls are supported by this provider." : "This provider declares no safe explicit reasoning controls. Disabled and provider default remain available.", caps.supportsReasoning);
+    const minimumBudget = Number(caps.minimumBudgetTokens || 1);
+    const maximumBudget = Number(caps.maximumBudgetTokens || Number.MAX_SAFE_INTEGER);
+    $("reasoningBudget").min = String(minimumBudget);
+    $("reasoningBudget").max = String(maximumBudget);
+    $("reasoningBudget").setAttribute("aria-describedby", "reasoningBudgetBounds");
+    $("reasoningBudgetBounds").textContent = controls.includes("budget") ? `Provider range: ${minimumBudget.toLocaleString()}–${maximumBudget.toLocaleString()} tokens.` : "Token budgets are unavailable for this provider.";
+    if (intent.budgetTokens != null) $("reasoningBudget").value = Math.max(minimumBudget, Math.min(maximumBudget, intent.budgetTokens));
+    qa('input[name="reasoningMode"][value="explicit"]').forEach((item) => { item.disabled = !explicitAvailable; });
+    renderReasoningCapabilityReason(explicitAvailable ? "Explicit controls are supported by this provider." : "This provider declares no safe explicit reasoning controls. Disabled and provider default remain available.", explicitAvailable);
     updateReasoningFields();
   }
 
@@ -3065,6 +3392,51 @@
     $("reasoningBudgetField").hidden = control !== "budget";
   }
 
+  function validateReasoning() {
+    const intent = reasoningPayload();
+    const caps = releaseState.reasoningCapabilities || {};
+    if (intent.mode !== "explicit") { setError("reasoningError", ""); return intent; }
+    if (!caps.supportsReasoning) { setError("reasoningError", "Explicit reasoning is unavailable for this provider."); return null; }
+    if (!(caps.controls || []).includes(intent.control)) { setError("reasoningError", "Choose a reasoning control supported by this provider."); return null; }
+    if (intent.control === "effort" && !(caps.effortLevels || []).includes(intent.effort)) { setError("reasoningError", "Choose a supported effort level."); return null; }
+    if (intent.control === "budget") {
+      const minimum = Number(caps.minimumBudgetTokens || 1), maximum = Number(caps.maximumBudgetTokens || Number.MAX_SAFE_INTEGER);
+      if (!Number.isInteger(intent.budgetTokens) || intent.budgetTokens < minimum || intent.budgetTokens > maximum) {
+        setError("reasoningError", `Enter a whole-token budget from ${minimum.toLocaleString()} to ${maximum.toLocaleString()}.`); return null;
+      }
+    }
+    setError("reasoningError", "");
+    return intent;
+  }
+
+  function handlePracticeMutationFailure(message, action, error) {
+    const id = message.requestId;
+    const isDraft = action === "savePracticeDraft" && releaseState.draftSaveInFlight === id;
+    const isSegments = action === "updatePracticeSegments" && releaseState.segmentSaveInFlight === id;
+    if (!isDraft && !isSegments) return false;
+    if (isDraft) {
+      releaseState.pendingDraftSaves.delete(id);
+      releaseState.draftSaveInFlight = null;
+    } else {
+      releaseState.pendingSegmentSaves.delete(id);
+      releaseState.segmentSaveInFlight = null;
+    }
+    // Do not automatically replay stale/invalid mutations: the server revision
+    // must be refreshed first.  Local recovery keeps the learner's exact text.
+    releaseState.queuedDraftSave = null;
+    releaseState.queuedSegments = null;
+    releaseState.draftDirty = true;
+    rememberLocalDraft();
+    const stale = error.code === "stale_revision" || error.code === "invalid_request";
+    const text = stale
+      ? "This session changed elsewhere. Your local draft is safe; reopen the session before saving again."
+      : (error.message || "The draft could not be saved. Your local copy is still safe.");
+    setDraftState("Local changes not saved", true);
+    setError("practiceEditorError", text);
+    showToast(text);
+    return true;
+  }
+
   function downloadJson(filename, serialized) {
     const blob = new Blob([serialized], { type: "application/json" });
     const url = URL.createObjectURL(blob), anchor = document.createElement("a");
@@ -3076,15 +3448,29 @@
     if (!message || message.version !== BRIDGE_VERSION) return;
     const { event, payload = {}, operationId } = message;
     if (!isCurrent(message) && !["operationProgress", "operationCompleted", "operationFailed", "operationCancelled"].includes(event)) return;
+    if ((event === "operationFailed" || event === "operationCancelled" || event === "error") && !operationId) {
+      const requestMeta = releaseState.requestActions.get(message.requestId) || {};
+      const error = payload.error || { message: payload.message || "The request failed." };
+      if (handlePracticeMutationFailure(message, requestMeta.action || "", error)) return;
+      const text = error.message || "The request failed.";
+      if ((requestMeta.action || "") === "submitPracticeReview" || releaseState.view === "practice") setError("practiceEditorError", text);
+      if ((requestMeta.action || "").toLowerCase().includes("scoring")) setError("scoringError", text);
+      if ((requestMeta.action || "").toLowerCase().includes("prompt")) setError("promptError", text);
+      if ((requestMeta.action || "").toLowerCase().includes("reasoning")) setError("reasoningError", text);
+      showToast(text);
+      return;
+    }
     if (event === "operationAccepted") {
-      const action = payload.action || (releaseState.requestActions.get(message.requestId) || {}).action;
+      const requestMeta = releaseState.requestActions.get(message.requestId) || {};
+      const action = payload.action || requestMeta.action;
       releaseState.activeOperations.set(action || operationId, operationId);
-      releaseState.operationActions.set(operationId, action || "");
+      releaseState.operationActions.set(operationId, { ...requestMeta, action: action || "", requestId: message.requestId });
       if (action === "submitPracticeReview") showPracticeOperation(operationId);
       pollOperation(operationId);
       return;
     }
     if (event === "operationProgress") {
+      if (!operationIsCurrent(operationId)) { window.clearTimeout(releaseState.operationPolls.get(operationId)); releaseState.operationPolls.delete(operationId); return; }
       const progress = Number(payload.progress ?? payload.fraction ?? 0.2);
       if ($("practiceOperationProgress")) $("practiceOperationProgress").style.width = `${Math.max(8, Math.min(100, progress <= 1 ? progress * 100 : progress))}%`;
       if ($("practiceOperationDetail") && payload.message) $("practiceOperationDetail").textContent = payload.message;
@@ -3092,9 +3478,11 @@
       return;
     }
     if (["operationCompleted", "operationFailed", "operationCancelled"].includes(event)) {
+      if (!operationIsCurrent(operationId)) { window.clearTimeout(releaseState.operationPolls.get(operationId)); releaseState.operationPolls.delete(operationId); releaseState.operationActions.delete(operationId); return; }
       window.clearTimeout(releaseState.operationPolls.get(operationId));
       releaseState.operationPolls.delete(operationId);
-      const action = payload.action || releaseState.operationActions.get(operationId) || ((releaseState.requestActions.get(message.requestId) || {}).action) || "";
+      const operationMeta = releaseState.operationActions.get(operationId) || {};
+      const action = payload.action || operationMeta.action || ((releaseState.requestActions.get(message.requestId) || {}).action) || "";
       releaseState.operationActions.delete(operationId);
       if (action === "submitPracticeReview" || releaseState.activeOperations.get("practice") === operationId) clearPracticeOperation();
       if (event === "operationCompleted") {
@@ -3103,6 +3491,7 @@
           applyPracticeSession(result.session, { recover: false });
           renderReview(result);
           releaseState.revisionOf = result.attemptId || null;
+          releaseState.revisionOfSessionId = result.session && result.session.id;
           showToast("Translation reviewed. You can revise and resubmit.");
         } else if (action === "previewScoring") renderScoringCandidates(result);
         else if (action === "generateTargetAware") {
@@ -3141,22 +3530,49 @@
     }
     if (event === "operationFailed") return;
     if (event === "capabilitiesLoaded" || event === "capabilities") renderCapabilities(payload);
-    else if (event === "practiceSessionCreated" || event === "practiceSessionLoaded" || event === "practiceDraftSaved" || event === "practiceSegmentsUpdated") {
-      const localDraft = event === "practiceDraftSaved" && releaseState.draftDirty ? $("practiceTranslation").value : null;
+    else if (event === "practiceSessionCreated" || event === "practiceSessionLoaded") {
       applyPracticeSession(payload.session, { recover: event === "practiceSessionLoaded" });
-      if (event === "practiceDraftSaved") {
-        const serverDraft = $("practiceTranslation").value;
-        if (localDraft !== null && localDraft !== serverDraft) {
-          $("practiceTranslation").value = localDraft;
-          markPracticeDirty("Newer changes not saved yet");
-        } else if (payload.persisted !== false) {
-          try { localStorage.removeItem(practiceStorageKey(payload.session.id)); } catch (_error) { /* optional */ }
-        } else {
-          rememberLocalDraft();
-        }
-        if (!releaseState.draftDirty) setDraftState(payload.persisted === false ? "Autosaved locally" : "Session saved", false);
-      }
       setError("practiceSetupError", ""); setError("practiceEditorError", "");
+    } else if (event === "practiceDraftSaved" || event === "practiceSegmentsUpdated") {
+      const isDraft = event === "practiceDraftSaved";
+      const pending = isDraft ? releaseState.pendingDraftSaves.get(message.requestId) : releaseState.pendingSegmentSaves.get(message.requestId);
+      const expectedId = isDraft ? releaseState.draftSaveInFlight : releaseState.segmentSaveInFlight;
+      if (!pending || expectedId !== message.requestId || pending.sessionId !== (releaseState.practiceSession || {}).id || pending.sessionEpoch !== releaseState.practiceSessionEpoch) return;
+      // Snapshot the live editor immediately before merging. This closes the
+      // narrow race where a host response and an input event cross between
+      // the DOM and the debounced session model.
+      saveDraftInMemory();
+      const local = releaseState.practiceSession;
+      const newerEdits = releaseState.draftEditVersion > pending.editVersion;
+      const preserveLocal = releaseState.draftDirty || newerEdits;
+      const merged = preserveLocal ? {
+        ...payload.session,
+        sourceText: local.sourceText,
+        segments: local.segments,
+        segmentDrafts: local.segmentDrafts,
+        completeTextDraft: local.completeTextDraft,
+      } : payload.session;
+      applyPracticeSession(merged, { recover: false });
+      if (isDraft) {
+        releaseState.pendingDraftSaves.delete(message.requestId);
+        releaseState.draftSaveInFlight = null;
+      } else {
+        releaseState.pendingSegmentSaves.delete(message.requestId);
+        releaseState.segmentSaveInFlight = null;
+      }
+      if (newerEdits || releaseState.queuedDraftSave || releaseState.queuedSegments) {
+        releaseState.draftDirty = true;
+        setDraftState("Newer changes not saved yet", true);
+        rememberLocalDraft();
+      } else {
+        releaseState.draftDirty = false;
+        if (payload.persisted !== false) {
+          try { localStorage.removeItem(practiceStorageKey(payload.session.id)); } catch (_error) { /* optional */ }
+        } else rememberLocalDraft();
+        setDraftState(payload.persisted === false ? "Autosaved locally" : "Session saved", false);
+      }
+      flushPracticeMutationQueue();
+      setError("practiceEditorError", "");
     } else if (event === "practiceSessionsLoaded") renderPracticeHistory(payload.sessions || []);
     else if (event === "practiceSessionDeleted") { showToast("Practice session deleted."); sendV2("listPracticeSessions"); }
     else if (event === "scoringConfigLoaded") renderScoringConfig(payload);
@@ -3188,7 +3604,7 @@
   qa("[data-practice-scope]").forEach((button) => button.addEventListener("click", () => setPracticeScope(button.dataset.practiceScope)));
 
   $("practiceSourceText").addEventListener("input", () => {
-    const limit = Number(releaseState.practiceLimits.maxSourceCharacters || MAX_PASTED_CHARACTERS);
+    const limit = effectivePracticeCharacterLimit();
     const length = $("practiceSourceText").value.length;
     $("practiceTextCount").textContent = `${length.toLocaleString()} / ${limit.toLocaleString()} characters`;
     setError("practiceSetupError", length > limit ? `This text is ${length - limit} characters over the explicit limit. Split it into separate sessions.` : "");
@@ -3206,7 +3622,7 @@
     if (!common.targetLanguage) return setError("practiceSetupError", "Choose a target language.");
     if (releaseState.practiceKind === "pasted_text") {
       const sourceText = $("practiceSourceText").value.trim();
-      const limit = Number(releaseState.practiceLimits.maxSourceCharacters || MAX_PASTED_CHARACTERS);
+      const limit = effectivePracticeCharacterLimit();
       if (!sourceText) return setError("practiceSetupError", "Paste or write source text first.");
       if (sourceText.length > limit) return setError("practiceSetupError", `Text exceeds the ${limit.toLocaleString()} character limit and was not sent.`);
       sendV2("createPastedPractice", { ...common, sourceText });
@@ -3244,7 +3660,18 @@
     if (!translation) return setError("practiceEditorError", "Write a translation before requesting review.");
     const segment = releaseState.practiceScope === "segment" ? currentSegment() : null;
     setError("practiceEditorError", "");
-    sendV2("submitPracticeReview", { sessionId: session.id, revision: session.revision, translation, segmentId: segment ? segment.id : null, revisionOf: releaseState.revisionOf, persist: true }, { channel: "practiceReview" });
+    const revisionOf = releaseState.revisionOfSessionId === session.id ? releaseState.revisionOf : null;
+    sendV2("submitPracticeReview", { sessionId: session.id, revision: session.revision, translation, segmentId: segment ? segment.id : null, revisionOf, persist: true }, {
+      channel: "practiceReview", sessionId: session.id, sessionEpoch: releaseState.practiceSessionEpoch,
+    });
+  });
+  $("previewPracticePromptButton").addEventListener("click", () => {
+    const session = releaseState.practiceSession;
+    if (!session) return setError("practiceEditorError", "Create or open a practice session first.");
+    saveDraftInMemory();
+    releaseState.pendingPromptPreviewValues = currentPendingPromptValues();
+    $("promptTask").value = session.direction === "back_translation" ? "back_translation_review" : "translation_review";
+    setView("prompts");
   });
   $("cancelPracticeOperationButton").addEventListener("click", () => {
     const operationId = releaseState.activeOperations.get("practice");
@@ -3254,7 +3681,7 @@
   $("practiceAttempts").addEventListener("click", (event) => {
     const button = event.target.closest("[data-revise-attempt]"); if (!button) return;
     const attempt = releaseState.practiceSession.attempts.find((item) => item.id === button.dataset.reviseAttempt);
-    if (!attempt) return; releaseState.revisionOf = attempt.id; $("practiceTranslation").value = attempt.translation; markPracticeDirty("Revision draft"); $("practiceTranslation").focus();
+    if (!attempt) return; releaseState.revisionOf = attempt.id; releaseState.revisionOfSessionId = releaseState.practiceSession.id; $("practiceTranslation").value = attempt.translation; markPracticeDirty("Revision draft"); $("practiceTranslation").focus();
   });
   $("practiceHistoryList").addEventListener("click", (event) => {
     const remove = event.target.closest("[data-delete-practice-session]");
@@ -3273,7 +3700,7 @@
   });
   $("refreshPracticeHistoryButton").addEventListener("click", () => sendV2("listPracticeSessions", {}, { channel: "practiceHistory" }));
 
-  qa("[data-scoring-mode]").forEach((button) => button.addEventListener("click", () => { releaseState.scoringMode = button.dataset.scoringMode; qa("[data-scoring-mode]").forEach((item) => item.classList.toggle("active", item === button)); renderSelectedScoringPreset(); }));
+  qa("[data-scoring-mode]").forEach((button) => button.addEventListener("click", () => { releaseState.scoringMode = button.dataset.scoringMode; qa("[data-scoring-mode]").forEach((item) => { const active = item === button; item.classList.toggle("active", active); item.setAttribute("aria-pressed", String(active)); }); renderSelectedScoringPreset(); }));
   $("scoringPreset").addEventListener("change", renderSelectedScoringPreset);
   $("saveScoringButton").addEventListener("click", () => { const preset = scoringScopePayload(); if (preset) sendV2("saveScoringConfig", { preset }); });
   $("previewScoringButton").addEventListener("click", () => { const preset = scoringScopePayload(); if (preset) sendV2("previewScoring", { preset, manualOverrides: Array.from(releaseState.scoringOverrides, ([cardId, category]) => ({ cardId, category })) }, { channel: "scoringPreview" }); });
@@ -3297,6 +3724,10 @@
     releaseState.scoringOverrides.set(row.dataset.cardId, category);
     releaseState.targetPlanActive = false;
     $("useTargetPlanButton").textContent = "Use updated target plan";
+  });
+  $("sortCandidatesButton").addEventListener("click", () => {
+    releaseState.scoringSortDescending = !releaseState.scoringSortDescending;
+    renderScoringCandidates({ selection: { assignments: releaseState.scoringCandidates } });
   });
 
   // Preserve the legacy generation path unless the learner explicitly activates
@@ -3328,9 +3759,9 @@
     }, { channel: "targetGeneration" });
   }, true);
 
-  $("promptTask").addEventListener("change", loadPromptTemplate); $("promptOverrideScope").addEventListener("change", loadPromptTemplate);
+  $("promptTask").addEventListener("change", () => { releaseState.promptPreviewValues = {}; loadPromptTemplate(); }); $("promptOverrideScope").addEventListener("change", loadPromptTemplate);
   $("promptVariables").addEventListener("click", (event) => { const chip = event.target.closest("[data-prompt-variable]"); if (!chip) return; const editor = $("promptUserTemplate"), insertion = `{${chip.dataset.promptVariable}}`, start = editor.selectionStart; editor.setRangeText(insertion, start, editor.selectionEnd, "end"); editor.focus(); });
-  $("previewPromptButton").addEventListener("click", () => sendV2("previewPrompt", { ...promptScopePayload(), template: templatePayload(), values: promptExampleValues() }, { channel: "promptPreview" }));
+  $("previewPromptButton").addEventListener("click", () => sendV2("previewPrompt", { ...promptScopePayload(), template: templatePayload(), values: promptPreviewValuePayload() }, { channel: "promptPreview" }));
   $("savePromptButton").addEventListener("click", () => sendV2("savePromptTemplate", { ...promptScopePayload(), template: templatePayload() }, { channel: "promptTemplate" }));
   $("resetPromptButton").addEventListener("click", (event) => { const button = event.currentTarget; if (button.dataset.confirming === "true") { button.dataset.confirming = ""; button.textContent = "Reset task"; sendV2("resetPromptTemplate", promptScopePayload(), { channel: "promptTemplate" }); } else { button.dataset.confirming = "true"; button.textContent = "Confirm reset"; window.setTimeout(() => { button.dataset.confirming = ""; button.textContent = "Reset task"; }, 4000); } });
   $("exportPromptButton").addEventListener("click", () => sendV2("exportPromptTemplates"));
@@ -3338,9 +3769,9 @@
 
   qa('input[name="reasoningMode"]').forEach((radio) => radio.addEventListener("change", updateReasoningFields));
   $("reasoningControl").addEventListener("change", updateReasoningFields);
-  $("saveReasoningButton").addEventListener("click", () => sendV2("saveReasoningSettings", { reasoning: reasoningPayload() }));
-  $("previewReasoningButton").addEventListener("click", () => sendV2("previewReasoningSettings", { reasoning: reasoningPayload() }, { channel: "reasoningPreview" }));
-  $("openApiProfileSettingsButton").addEventListener("click", () => { setView("generate"); window.setTimeout(() => { const panel = document.querySelector(".settings-panel"); if (panel) panel.scrollIntoView({ behavior: "smooth", block: "start" }); }, 0); });
+  $("saveReasoningButton").addEventListener("click", () => { const reasoning = validateReasoning(); if (reasoning) sendV2("saveReasoningSettings", { reasoning }); });
+  $("previewReasoningButton").addEventListener("click", () => { const reasoning = validateReasoning(); if (reasoning) sendV2("previewReasoningSettings", { reasoning }, { channel: "reasoningPreview" }); });
+  $("openApiProfileSettingsButton").addEventListener("click", () => { setView("generate"); window.setTimeout(() => { const panel = document.querySelector(".settings-panel"); if (panel) panel.scrollIntoView({ behavior: reducedMotion() ? "auto" : "smooth", block: "start" }); }, 0); });
 
   $("configurationFileInput").addEventListener("change", (event) => {
     const file = event.target.files && event.target.files[0]; if (!file) return;
@@ -3351,6 +3782,16 @@
 
   window.addEventListener("beforeunload", (event) => { if (releaseState.draftDirty) { rememberLocalDraft(); event.preventDefault(); event.returnValue = ""; } });
 
+  if (typeof MutationObserver === "function") {
+    const workbenchObserver = new MutationObserver((records) => {
+      records.forEach((record) => record.addedNodes.forEach((node) => {
+        if (window.__DAIRR_APPLY_WORKBENCH_I18N__) window.__DAIRR_APPLY_WORKBENCH_I18N__(node.nodeType === 1 ? node : record.target);
+      }));
+    });
+    qa("[data-view-panel]").forEach((panel) => workbenchObserver.observe(panel, { childList: true, subtree: true }));
+  }
+
+  window.__DAIRR_RELEASE_UI_READY__ = { version: BRIDGE_VERSION };
   sendV2("getCapabilities", {}, { channel: "capabilities" });
 })();
 

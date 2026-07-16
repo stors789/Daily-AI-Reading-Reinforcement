@@ -71,6 +71,7 @@
     <span class="capability-dot checking" aria-hidden="true"></span>
     <span id="capabilitySummary">Checking workspace capabilities…</span>
   </div>
+  <div class="capability-details" id="capabilityDetails" role="status" hidden></div>
 
   <section class="panel history-panel" id="historyPanel" style="display: none;">
     <div class="panel-heading">
@@ -277,12 +278,12 @@
       </div>
       <div class="practice-setup-body">
         <div class="segmented-control" role="group" aria-label="Practice source">
-          <button class="active" type="button" data-practice-kind="pasted_text">Pasted text</button>
-          <button type="button" data-practice-kind="article">DAIRR article</button>
+          <button class="active" type="button" data-practice-kind="pasted_text" aria-pressed="true">Pasted text</button>
+          <button type="button" data-practice-kind="article" aria-pressed="false">DAIRR article</button>
         </div>
         <div id="pastedPracticeSetup">
           <label class="form-field"><span>Source text</span>
-            <textarea id="practiceSourceText" rows="11" maxlength="50000" placeholder="Paste prose here. Paragraph breaks become the first set of segments."></textarea>
+            <textarea id="practiceSourceText" rows="11" placeholder="Paste prose here. Paragraph breaks become the first set of segments."></textarea>
           </label>
           <div class="text-limit-row"><span id="practiceTextCount">0 / 50,000 characters</span><span>Nothing is truncated silently.</span></div>
         </div>
@@ -321,8 +322,8 @@
       <div class="practice-editor" id="practiceEditor" hidden>
         <div class="practice-toolbar">
           <div class="segmented-control" role="group" aria-label="Practice scope">
-            <button class="active" type="button" data-practice-scope="segment">One segment</button>
-            <button type="button" data-practice-scope="complete_text">Complete text</button>
+            <button class="active" type="button" data-practice-scope="segment" aria-pressed="true">One segment</button>
+            <button type="button" data-practice-scope="complete_text" aria-pressed="false">Complete text</button>
           </div>
           <div class="button-row">
             <button class="secondary-button" id="splitSegmentButton" type="button" title="Split at the text cursor">Split</button>
@@ -343,7 +344,7 @@
             <label class="form-field translation-field"><span>Your translation</span><textarea id="practiceTranslation" rows="9" placeholder="Write a meaning-preserving translation. Valid alternatives are welcome."></textarea></label>
             <div class="practice-submit-row">
               <span class="field-help" id="practiceAutosaveHint">Drafts recover locally on this device.</span>
-              <button class="primary-button" id="submitPracticeButton" type="button" data-i18n="reviewTranslation">Review translation</button>
+              <div class="button-row"><button class="secondary-button" id="previewPracticePromptButton" type="button" data-i18n="previewPendingPrompt">Preview exact prompt</button><button class="primary-button" id="submitPracticeButton" type="button" data-i18n="reviewTranslation">Review translation</button></div>
             </div>
             <p class="inline-validation" id="practiceEditorError" role="alert"></p>
           </article>
@@ -370,7 +371,7 @@
       <aside class="panel config-sidebar">
         <div class="panel-heading"><h2>Preset and selection</h2></div>
         <div class="config-body">
-          <div class="segmented-control" role="group" aria-label="Scoring detail"><button class="active" type="button" data-scoring-mode="simple">Simple</button><button type="button" data-scoring-mode="advanced">Advanced</button></div>
+          <div class="segmented-control" role="group" aria-label="Scoring detail"><button class="active" type="button" data-scoring-mode="simple" aria-pressed="true">Simple</button><button type="button" data-scoring-mode="advanced" aria-pressed="false">Advanced</button></div>
           <label class="form-field"><span>Preset</span><select id="scoringPreset"><option value="recommended">Recommended</option></select></label>
           <label class="form-field"><span>Minimum inclusion score</span><input id="minimumInclusionScore" type="number" step="0.1" value="0"></label>
           <label class="form-field"><span>Maximum selected cards</span><input id="maximumSelectedCards" type="number" min="1" value="20"></label>
@@ -396,11 +397,12 @@
         <label class="form-field"><span>Override</span><select id="promptOverrideScope"><option value="default">Project default</option><option value="provider">Current provider</option><option value="profile">Current API profile</option></select></label>
         <label class="form-field"><span>Response mode</span><select id="promptResponseMode"><option value="structured">Structured output</option><option value="plain_text">Plain text</option></select></label>
         <div><span class="field-label">Documented variables</span><div class="variable-chips" id="promptVariables"></div></div>
+        <div class="prompt-value-editor"><span class="field-label" data-i18n="promptPreviewValues">Values for this preview</span><p class="field-help" data-i18n="promptPreviewValuesHelp">These are the actual pending practice or generation values when available. Edit them before previewing.</p><div id="promptValueFields"></div></div>
       </div></aside>
       <section class="panel config-main prompt-editor"><div class="prompt-editors">
         <label class="form-field"><span>System prompt</span><textarea id="promptSystemTemplate" rows="9" spellcheck="true"></textarea></label>
         <label class="form-field"><span>User prompt template</span><textarea id="promptUserTemplate" rows="14" spellcheck="true"></textarea></label>
-        <label class="form-field"><span>Visible response contract</span><textarea id="promptResponseContract" rows="8"></textarea></label>
+        <label class="form-field mandatory-contract"><span><strong data-i18n="mandatoryResponseWrapper">Mandatory response wrapper</strong> <small data-i18n="mandatoryResponseWrapperHelp">Always sent with this task</small></span><textarea id="promptResponseContract" rows="8"></textarea></label>
       </div><div class="prompt-actions"><p class="inline-validation" id="promptError" role="alert"></p><button class="secondary-button" id="previewPromptButton" type="button" data-i18n="renderPromptPreview">Render exact preview</button><button class="primary-button" id="savePromptButton" type="button" data-i18n="savePrompt">Save prompt</button></div>
       <section class="rendered-preview" id="renderedPromptPreview" hidden><div class="preview-heading"><h3>Exact request preview</h3><span>Non-secret content only</span></div><div id="renderedPromptMessages"></div><div class="contract-preview"><h4>Response contract</h4><pre id="renderedPromptContract"></pre></div><div class="effective-settings"><h4>Effective request settings</h4><pre id="promptEffectiveSettings"></pre></div></section>
       </section>
@@ -416,7 +418,7 @@
           <label class="choice-card"><input type="radio" name="reasoningMode" value="provider_default" checked><span><strong>Provider default</strong><small>Do not send an override.</small></span></label>
           <label class="choice-card"><input type="radio" name="reasoningMode" value="explicit"><span><strong>Explicit</strong><small>Use a provider-supported effort or budget.</small></span></label>
         </div>
-        <div class="reasoning-explicit" id="reasoningExplicit" hidden><div class="form-grid two-column"><label class="form-field"><span>Control</span><select id="reasoningControl"><option value="effort">Named effort</option><option value="budget">Token budget</option></select></label><label class="form-field" id="reasoningEffortField"><span>Effort</span><select id="reasoningEffort"></select></label><label class="form-field" id="reasoningBudgetField" hidden><span>Thinking budget</span><input id="reasoningBudget" type="number" min="0" step="1"></label></div></div>
+        <div class="reasoning-explicit" id="reasoningExplicit" hidden><div class="form-grid two-column"><label class="form-field"><span>Control</span><select id="reasoningControl"><option value="effort">Named effort</option><option value="budget">Token budget</option></select></label><label class="form-field" id="reasoningEffortField"><span>Effort</span><select id="reasoningEffort"></select></label><label class="form-field" id="reasoningBudgetField" hidden><span>Thinking budget</span><input id="reasoningBudget" type="number" min="1" step="1"><small id="reasoningBudgetBounds"></small></label></div></div>
         <p class="capability-reason" id="reasoningCapabilityReason"></p><p class="inline-validation" id="reasoningError" role="alert"></p><div class="button-row"><button class="secondary-button" id="previewReasoningButton" type="button" data-i18n="previewReasoning">Preview effective settings</button><button class="primary-button" id="saveReasoningButton" type="button" data-i18n="saveReasoning">Save reasoning</button></div>
       </div></section>
       <aside class="panel config-sidebar"><div class="panel-heading"><h2>Effective settings</h2></div><div class="config-body"><p class="field-help">API keys and private prompt content never appear here.</p><pre class="diagnostic-preview" id="reasoningPreview">Choose Preview effective settings.</pre></div></aside>

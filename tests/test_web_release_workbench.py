@@ -76,6 +76,14 @@ class ReleaseWorkbenchTests(unittest.TestCase):
         self.assertIn('window.addEventListener("beforeunload"', self.js)
         self.assertIn("revision: session.revision", self.js)
         self.assertIn('sendV2("savePracticeDraft"', self.js)
+        self.assertNotIn('maxlength="50000"', self.html)
+        self.assertIn("draftSaveInFlight", self.js)
+        self.assertIn("queuedDraftSave", self.js)
+        self.assertIn("flushPracticeMutationQueue", self.js)
+        self.assertIn("pendingDraftSaves", self.js)
+        self.assertIn("sourceText: local.sourceText", self.js)
+        self.assertIn("handlePracticeMutationFailure", self.js)
+        self.assertIn("Your local draft is safe; reopen the session", self.js)
         self.assertNotIn("console.log(sourceText", self.js)
         self.assertNotIn("console.log(translation", self.js)
 
@@ -114,6 +122,15 @@ class ReleaseWorkbenchTests(unittest.TestCase):
             with self.subTest(action=action):
                 self.assertIn(f'"{action}"', self.js)
 
+    def test_async_terminal_events_are_scoped_to_request_and_session_currency(self) -> None:
+        self.assertIn("practiceSessionEpoch", self.js)
+        self.assertIn("function operationIsCurrent(operationId)", self.js)
+        self.assertIn("releaseState.latestRequests.get(meta.channel) !== meta.requestId", self.js)
+        self.assertIn("meta.sessionEpoch !== releaseState.practiceSessionEpoch", self.js)
+        self.assertIn("if (!operationIsCurrent(operationId))", self.js)
+        self.assertIn("revisionOfSessionId", self.js)
+        self.assertIn("releaseState.revisionOfSessionId === session.id", self.js)
+
     def test_scoring_ui_exposes_transparency_and_manual_categories(self) -> None:
         for text in (
             "Simple",
@@ -133,6 +150,17 @@ class ReleaseWorkbenchTests(unittest.TestCase):
         self.assertIn('id="useTargetPlanButton"', self.html)
         self.assertIn("releaseState.targetPlanActive", self.js)
         self.assertIn('sendV2("generateTargetAware"', self.js)
+        for role in (
+            "normalizeBy",
+            "minimumContribution",
+            "maximumContribution",
+            "decayEnabled",
+            "halfLifeDays",
+        ):
+            self.assertIn(f'data-role="{role}"', self.js)
+            self.assertIn(f'rule.{role}' if role not in {"decayEnabled", "halfLifeDays"} else "rule.decay", self.js)
+        self.assertIn("scoringSortDescending", self.js)
+        self.assertIn('sortCandidatesButton").addEventListener', self.js)
 
     def test_prompt_ui_shows_editable_contract_and_exact_preview(self) -> None:
         for element_id in (
@@ -149,6 +177,11 @@ class ReleaseWorkbenchTests(unittest.TestCase):
             self.assertIn(f'id="{element_id}"', self.html)
         self.assertIn("template: templatePayload()", self.js)
         self.assertIn("missingVariables", self.js)
+        self.assertIn('id="promptValueFields"', self.html)
+        self.assertIn('id="previewPracticePromptButton"', self.html)
+        self.assertIn('class="form-field mandatory-contract"', self.html)
+        self.assertIn("currentPendingPromptValues", self.js)
+        self.assertIn("promptPreviewValuePayload", self.js)
 
     def test_reasoning_modes_remain_semantically_distinct(self) -> None:
         for mode in ("disabled", "provider_default", "explicit"):
@@ -156,6 +189,18 @@ class ReleaseWorkbenchTests(unittest.TestCase):
         self.assertIn('if (mode !== "explicit") return { mode, control: null, effort: null, budgetTokens: null }', self.js)
         self.assertIn("supportsReasoning", self.js)
         self.assertIn("effectiveSettings", self.js)
+        self.assertIn("minimumBudgetTokens", self.js)
+        self.assertIn("maximumBudgetTokens", self.js)
+        self.assertIn("validateReasoning", self.js)
+        self.assertIn('(caps.controls || []).includes(intent.control)', self.js)
+
+    def test_review_history_complete_reference_and_capability_failures_are_visible(self) -> None:
+        self.assertIn('class="attempt-review"', self.js)
+        self.assertIn("reviewed.review", self.js)
+        self.assertIn("completeReference", self.js)
+        self.assertIn('id="capabilityDetails"', self.html)
+        self.assertIn("setCapabilityAction", self.js)
+        self.assertIn('setCapabilityAction("submitPracticeButton", "custom_prompts"', self.js)
 
     def test_signature_segment_rail_encodes_real_practice_state(self) -> None:
         self.assertIn(".segment-rail::before", self.css)
@@ -172,6 +217,15 @@ class ReleaseWorkbenchTests(unittest.TestCase):
         self.assertIn('aria-label="Practice segments"', self.html)
         self.assertIn('aria-expanded="false"', self.html)
         self.assertIn('role="alert"', self.html)
+        self.assertIn('aria-pressed="true"', self.html)
+        self.assertIn("reducedMotion() ? \"auto\" : \"smooth\"", self.js)
+
+    def test_workbench_static_copy_has_zh_en_ja_localization_path(self) -> None:
+        self.assertIn("const WORKBENCH_COPY", self.js)
+        self.assertIn("function applyWorkbenchCopy", self.js)
+        self.assertIn('zh: {', self.js)
+        self.assertIn('ja: {', self.js)
+        self.assertIn("MutationObserver", self.js)
 
     def test_new_javascript_id_references_exist_in_shared_markup(self) -> None:
         parser = _IdParser()
