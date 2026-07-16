@@ -70,6 +70,23 @@ def main() -> None:
         "class DisabledCredentialStore",
         "UnsupportedOperationException",
     )
+    require(
+        "jvm-tests/build.gradle.kts",
+        'kotlin("jvm") version "2.0.21"',
+        '"../app/src/main/java"',
+        "BridgeContract.kt",
+        "BridgeDispatcher.kt",
+        "AndroidPracticeRepository.kt",
+        '"../app/src/test/java"',
+    )
+    require(
+        "tests/run_jvm_tests.py",
+        "EXPECTED_TESTS = 7",
+        "discover_java17",
+        "SUPPORTED_GRADLE",
+        '"cleanTest", "test"',
+        "count_results",
+    )
     dispatcher = (ROOT / "app/src/main/java/com/dairr/android/bridge/BridgeDispatcher.kt").read_text(encoding="utf-8")
     if "UnconfiguredBridgeDispatcher" in dispatcher:
         raise AssertionError("Android dispatcher still contains the unconfigured placeholder")

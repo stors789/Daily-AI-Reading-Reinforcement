@@ -33,7 +33,7 @@ python3 scripts/desktop_release.py pre-publish
 ## 3. Standalone macOS acceptance
 
 - [ ] Build the sidecar and Tauri bundle on each supported Mac architecture.
-- [ ] Verify a real sidecar replaced every placeholder.
+- [ ] Run `package_tauri_sidecar.py --check-runtime` and verify the target-native onedir entry.
 - [ ] Launch the installed `.app` without a source checkout or system browser tab.
 - [ ] Confirm the backend binds only to loopback and the window reaches the authenticated bridge.
 - [ ] Quit and confirm the sidecar exits.
@@ -81,7 +81,7 @@ Each case must produce actionable, redacted feedback while pasted practice remai
 
 ## 5A. Android offline edge
 
-- [ ] Re-run the seven SDK-free Android production-edge tests and `python3 apps/android/tests/validate_scaffold.py`; preserve their exact output.
+- [ ] With JDK 17 and a tested Gradle version (8.10.2 or 9.6.1; CI uses canonical 8.10.2), run `python3 apps/android/tests/run_jvm_tests.py`, record its reported toolchain, and verify exactly `7/7`; then run `python3 apps/android/tests/validate_scaffold.py`. Preserve exact output. These tests compile the actual production bridge/dispatcher/repository and require no Android SDK.
 - [ ] Run `gradle :app:testDebugUnitTest` and `gradle :app:assembleDebug` in a JDK 17/SDK 35 environment. These gates were not available in the current no-SDK environment.
 - [ ] Install a debug/release candidate APK on a clean emulator/device; do not infer device behavior from static validation alone.
 - [ ] Create multi-paragraph pasted practice offline, edit/split/merge/reorder segments, save, list, reopen, and delete it.

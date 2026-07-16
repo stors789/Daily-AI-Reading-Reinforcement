@@ -40,11 +40,14 @@ Configure these repository secrets before pushing a signed `vX.Y.Z` tag:
 - `TAURI_UPDATER_PUBLIC_KEY`: corresponding public-key contents. This is not
   confidential, but is injected only into the release configuration so source
   builds cannot accidentally target an unconfigured updater.
-- `APPLE_CERTIFICATE`, `APPLE_CERTIFICATE_PASSWORD`, `KEYCHAIN_PASSWORD`, and
-  `APPLE_SIGNING_IDENTITY`: Developer ID Application signing certificate setup.
-- One notarization method: `APPLE_ID`, `APPLE_PASSWORD`, `APPLE_TEAM_ID`; or
-  `APPLE_API_ISSUER`, `APPLE_API_KEY`, and `APPLE_API_KEY_PATH` (the workflow
-  writes the API key secret to a temporary file when that method is adopted).
+- `APPLE_CERTIFICATE`, `APPLE_CERTIFICATE_PASSWORD`, and `KEYCHAIN_PASSWORD`:
+  Developer ID Application certificate import. The workflow derives
+  `APPLE_SIGNING_IDENTITY` from that imported certificate and exports it only
+  for the build; it is not a separate repository secret.
+- `APPLE_ID`, `APPLE_PASSWORD`, and `APPLE_TEAM_ID`: the Apple-ID/app-specific
+  password notarization method currently implemented by this workflow. API-key
+  notarization is not claimed unless the workflow is extended to materialize
+  `APPLE_API_KEY_PATH` securely and supply the matching key and issuer.
 - `WINDOWS_CERTIFICATE`, `WINDOWS_CERTIFICATE_PASSWORD`,
   `WINDOWS_CERTIFICATE_THUMBPRINT`, and `WINDOWS_TIMESTAMP_URL`: Authenticode
   `.pfx` material and timestamp service for the NSIS installer.

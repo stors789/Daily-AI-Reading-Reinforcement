@@ -6,6 +6,7 @@ import subprocess
 import sys
 import tempfile
 import unittest
+from unittest import mock
 from html.parser import HTMLParser
 from pathlib import Path
 
@@ -143,13 +144,22 @@ class TauriAppShellTests(unittest.TestCase):
         self.assertIn("libc::kill(-process.process_group", main_rs)
         self.assertIn("health.instance_id != process.instance_id", main_rs)
 
+    def test_windows_sidecar_spawn_suppresses_console_without_windowed_pyinstaller(self) -> None:
+        main_rs = (SRC_TAURI_DIR / "src" / "main.rs").read_text()
+        self.assertIn("std::os::windows::process::CommandExt", main_rs)
+        self.assertIn("const CREATE_NO_WINDOW: u32 = 0x0800_0000", main_rs)
+        self.assertIn("command.creation_flags(CREATE_NO_WINDOW)", main_rs)
+        packager = (ROOT / "package_tauri_sidecar.py").read_text()
+        self.assertIn('"--console"', packager)
+        self.assertNotIn('"--noconsole"', packager)
+
     def test_rust_shell_has_dev_python_and_production_sidecar_paths(self) -> None:
         main_rs = (SRC_TAURI_DIR / "src" / "main.rs").read_text()
         self.assertIn("DAIRR_BACKEND_MODE", main_rs)
         self.assertIn("DAIRR_BACKEND_SIDECAR", main_rs)
         self.assertIn("SIDECAR_BASENAME", main_rs)
-        self.assertIn("SIDECAR_TARGET_TRIPLE", main_rs)
-        self.assertIn("sidecar_target_triple_filename", main_rs)
+        self.assertNotIn("SIDECAR_TARGET_TRIPLE", main_rs)
+        self.assertNotIn("sidecar_target_triple_filename", main_rs)
         self.assertIn("start_bundled_backend", main_rs)
         self.assertIn("start_python_backend", main_rs)
 
@@ -244,14 +254,13 @@ class TauriSidecarTests(unittest.TestCase):
         self.assertTrue(script.exists(), f"missing {{script}}")
         content = script.read_text()
         self.assertIn("detect_target_triple", content)
-        self.assertIn("sidecar_filename", content)
-        self.assertIn("sidecar_output_path", content)
         self.assertIn("sidecar_runtime_path", content)
-        self.assertIn("is_placeholder", content)
+        self.assertIn("validate_runtime_entry", content)
+        self.assertIn("target_mismatch", content)
         self.assertIn("build_pyinstaller_command", content)
         self.assertIn("run_packager", content)
 
-    def test_sidecar_script_target_triple_naming_rules(self) -> None:
+    def test_sidecar_script_uses_one_target_native_onedir_entry(self) -> None:
         spec = importlib.util.spec_from_file_location(
             "dairr_sidecar_triple_test",
             ROOT / "package_tauri_sidecar.py",
@@ -261,24 +270,6 @@ class TauriSidecarTests(unittest.TestCase):
         mod = importlib.util.module_from_spec(spec)
         spec.loader.exec_module(mod)
 
-        self.assertEqual(
-            mod.sidecar_filename("aarch64-apple-darwin"),
-            "dairr-backend-aarch64-apple-darwin",
-        )
-        self.assertEqual(
-            mod.sidecar_filename("x86_64-apple-darwin"),
-            "dairr-backend-x86_64-apple-darwin",
-        )
-        self.assertEqual(
-            mod.sidecar_filename("x86_64-pc-windows-msvc"),
-            "dairr-backend-x86_64-pc-windows-msvc.exe",
-        )
-
-        output_mac = mod.sidecar_output_path("aarch64-apple-darwin")
-        self.assertTrue(str(output_mac).endswith("dairr-backend-aarch64-apple-darwin"))
-
-        output_win = mod.sidecar_output_path("x86_64-pc-windows-msvc")
-        self.assertTrue(str(output_win).endswith("dairr-backend-x86_64-pc-windows-msvc.exe"))
         runtime_mac = mod.sidecar_runtime_path("aarch64-apple-darwin")
         self.assertTrue(str(runtime_mac).endswith("dairr-backend/dairr-backend"))
         runtime_win = mod.sidecar_runtime_path("x86_64-pc-windows-msvc")
@@ -310,6 +301,37 @@ class TauriSidecarTests(unittest.TestCase):
         self.assertIn("desktop_mock/main.py", output)
         self.assertIn("desktop_mock/learning_sources.py", output)
 
+    def test_real_sidecar_build_rejects_cross_label_but_portable_dry_run_is_explicit(self) -> None:
+        from io import StringIO
+        spec = importlib.util.spec_from_file_location(
+            "dairr_sidecar_native_contract_test",
+            ROOT / "package_tauri_sidecar.py",
+        )
+        self.assertIsNotNone(spec)
+        self.assertIsNotNone(spec.loader)
+        mod = importlib.util.module_from_spec(spec)
+        spec.loader.exec_module(mod)
+
+        stderr = StringIO()
+        result = mod.run_packager(
+            ["--target-triple", "x86_64-pc-windows-msvc"],
+            native_target_triple="aarch64-apple-darwin",
+            stderr=stderr,
+        )
+        self.assertEqual(result, 1)
+        self.assertIn("does not match native host", stderr.getvalue())
+        self.assertIn("cross-compilation is not supported", stderr.getvalue())
+
+        stdout = StringIO()
+        result = mod.run_packager(
+            ["--target-triple", "x86_64-pc-windows-msvc", "--dry-run"],
+            native_target_triple="aarch64-apple-darwin",
+            stdout=stdout,
+        )
+        self.assertEqual(result, 0)
+        self.assertIn("PORTABLE DRY RUN ONLY", stdout.getvalue())
+        self.assertIn("--onedir", stdout.getvalue())
+
     def test_sidecar_script_known_target_triples_are_valid(self) -> None:
         spec = importlib.util.spec_from_file_location(
             "dairr_sidecar_triples_test",
@@ -324,9 +346,15 @@ class TauriSidecarTests(unittest.TestCase):
             with self.subTest(triple=triple):
                 self.assertIn(triple, mod.TARGET_TRIPLES)
 
-    def test_placeholder_detection_on_known_placeholder(self) -> None:
+        with mock.patch("platform.system", return_value="Windows"), mock.patch(
+            "platform.machine", return_value="ARM64"
+        ):
+            self.assertEqual(mod.detect_target_triple(), "aarch64-pc-windows-msvc")
+            self.assertNotIn(mod.detect_target_triple(), mod.TARGET_TRIPLES)
+
+    def test_runtime_entry_validation_rejects_missing_and_script_files(self) -> None:
         spec = importlib.util.spec_from_file_location(
-            "dairr_sidecar_placeholder_test",
+            "dairr_sidecar_runtime_validation_test",
             ROOT / "package_tauri_sidecar.py",
         )
         self.assertIsNotNone(spec)
@@ -334,12 +362,11 @@ class TauriSidecarTests(unittest.TestCase):
         mod = importlib.util.module_from_spec(spec)
         spec.loader.exec_module(mod)
 
-        win_placeholder = BINARIES_DIR / "dairr-backend-x86_64-pc-windows-msvc.exe"
-        if win_placeholder.exists():
-            self.assertTrue(
-                mod.is_placeholder(win_placeholder),
-                f"Expected {{win_placeholder}} to be detected as placeholder",
-            )
+        with tempfile.TemporaryDirectory() as directory:
+            entry = Path(directory) / "dairr-backend"
+            self.assertEqual(mod.validate_runtime_entry(entry), "runtime entry is missing")
+            entry.write_text("#!/bin/sh\nexit 70\n", encoding="utf-8")
+            self.assertIn("too small", mod.validate_runtime_entry(entry))
 
 
 class DesktopReleaseScriptTests(unittest.TestCase):
@@ -367,6 +394,8 @@ class DesktopReleaseScriptTests(unittest.TestCase):
                 artifact = directory / name
                 artifact.write_bytes(target.encode())
                 artifact.with_name(f"{artifact.name}.sig").write_text(f"sig-{target}\n")
+                if target.startswith("darwin-"):
+                    (directory / f"dairr-{target}.dmg").write_bytes(b"installer")
 
             output = directory / "latest.json"
             mod.latest_json(

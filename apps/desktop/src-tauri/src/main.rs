@@ -17,6 +17,8 @@ use std::{
 
 #[cfg(unix)]
 use std::os::unix::process::CommandExt;
+#[cfg(windows)]
+use std::os::windows::process::CommandExt;
 
 use serde_json::Value;
 use tauri::Manager;
@@ -27,27 +29,8 @@ const BACKEND_PORT: u16 = 8755;
 const BACKEND_WAIT: Duration = Duration::from_secs(45);
 const DAIRR_APP_ID: &str = "DAIRR";
 const SIDECAR_BASENAME: &str = "dairr-backend";
-const SIDECAR_TARGET_TRIPLE: &str = {
-    #[cfg(target_os = "macos")]
-    {
-        #[cfg(target_arch = "aarch64")]
-        {
-            "aarch64-apple-darwin"
-        }
-        #[cfg(target_arch = "x86_64")]
-        {
-            "x86_64-apple-darwin"
-        }
-    }
-    #[cfg(target_os = "windows")]
-    {
-        "x86_64-pc-windows-msvc"
-    }
-    #[cfg(all(not(target_os = "macos"), not(target_os = "windows")))]
-    {
-        ""
-    }
-};
+#[cfg(windows)]
+const CREATE_NO_WINDOW: u32 = 0x0800_0000;
 
 #[derive(Debug)]
 struct BackendHealth {
@@ -281,6 +264,11 @@ fn configure_child(command: &mut Command, logger: &ShellLogger) {
     }
     #[cfg(unix)]
     command.process_group(0);
+    // The packaged backend remains a console PyInstaller executable so its
+    // stdout/stderr can be redirected to the shell log.  Suppress only the
+    // transient Windows console window when Tauri spawns it.
+    #[cfg(windows)]
+    command.creation_flags(CREATE_NO_WINDOW);
 }
 
 fn start_python_backend(
@@ -303,28 +291,7 @@ fn start_python_backend(
     })
 }
 
-fn sidecar_filename() -> String {
-    if cfg!(windows) {
-        format!("{}.exe", SIDECAR_BASENAME)
-    } else {
-        SIDECAR_BASENAME.to_string()
-    }
-}
-
-fn sidecar_target_triple_filename() -> Option<String> {
-    if SIDECAR_TARGET_TRIPLE.is_empty() {
-        return None;
-    }
-    Some(format!(
-        "{}-{}{}",
-        SIDECAR_BASENAME,
-        SIDECAR_TARGET_TRIPLE,
-        if cfg!(windows) { ".exe" } else { "" }
-    ))
-}
-
 fn sidecar_candidates(app: &tauri::AppHandle) -> Vec<PathBuf> {
-    let filenames = [Some(sidecar_filename()), sidecar_target_triple_filename()];
     let mut candidates = Vec::new();
     if let Ok(path) = env::var("DAIRR_BACKEND_SIDECAR") {
         if !path.trim().is_empty() {
@@ -337,8 +304,8 @@ fn sidecar_candidates(app: &tauri::AppHandle) -> Vec<PathBuf> {
         } else {
             SIDECAR_BASENAME.to_string()
         };
-        // Prefer the PyInstaller onedir runtime.  It starts directly instead
-        // of extracting a onefile archive on every application launch.
+        // The release contract has one path: the executable inside the
+        // target-native PyInstaller onedir resource.
         candidates.push(
             resource_dir
                 .join("binaries")
@@ -346,10 +313,6 @@ fn sidecar_candidates(app: &tauri::AppHandle) -> Vec<PathBuf> {
                 .join(&runtime_name),
         );
         candidates.push(resource_dir.join(SIDECAR_BASENAME).join(&runtime_name));
-        for filename in filenames.iter().flatten() {
-            candidates.push(resource_dir.join(filename));
-            candidates.push(resource_dir.join("binaries").join(filename));
-        }
     }
     if let Ok(current_exe) = env::current_exe() {
         if let Some(dir) = current_exe.parent() {
@@ -363,10 +326,7 @@ fn sidecar_candidates(app: &tauri::AppHandle) -> Vec<PathBuf> {
                     .join(SIDECAR_BASENAME)
                     .join(&runtime_name),
             );
-            for filename in filenames.iter().flatten() {
-                candidates.push(dir.join(filename));
-                candidates.push(dir.join("binaries").join(filename));
-            }
+            candidates.push(dir.join(SIDECAR_BASENAME).join(&runtime_name));
         }
     }
     candidates

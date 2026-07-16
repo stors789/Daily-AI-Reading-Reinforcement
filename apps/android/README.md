@@ -73,13 +73,23 @@ gradle :app:assembleDebug
 ```
 
 First use may need network access for Android Gradle and Kotlin plugin
-resolution. The SDK-free production-edge validator is always available:
+resolution. The SDK-free production-edge tests use a standalone Kotlin/JVM
+project that compiles the actual production bridge, dispatcher, and repository
+files. They require JDK 17 and one of the tested Gradle versions (8.10.2 or
+9.6.1), but no Android SDK:
 
 ```bash
+python3 apps/android/tests/run_jvm_tests.py
 python3 apps/android/tests/validate_scaffold.py
 ```
 
-JVM tests cover bridge identity/allow-listing, explicit capabilities,
+The runner discovers JDK 17 from `JAVA_HOME`, `--java-home`, and common
+Homebrew/OpenJDK locations; it fails with an actionable message when no valid
+JDK is found. It probes and reports the actual Gradle and Java versions before
+building and fails for an untested Gradle version. CI installs the
+canonical Gradle 8.10.2 version explicitly; on a clean local machine, Gradle's first run resolves the
+pinned Kotlin 2.0.21, JUnit 4.13.2, and JSON dependencies from public Maven
+repositories. JVM tests cover bridge identity/allow-listing, explicit capabilities,
 privacy-safe unsupported operations, persistence round trips, unknown-field
 preservation, atomic-write cleanup, revision conflicts, manual segmentation,
 and input limits.

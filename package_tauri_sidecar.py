@@ -1,10 +1,9 @@
 """PyInstaller packaging script for the DAIRR Tauri sidecar backend.
 
 This generates an onedir runtime that Tauri bundles as an application
-resource.  Unlike PyInstaller onefile mode, it does not unpack itself into a
-temporary directory on every launch.
+resource and launches directly from the installed resource directory.
 
-  apps/desktop/src-tauri/binaries/dairr-backend-aarch64-apple-darwin
+  apps/desktop/src-tauri/binaries/dairr-backend/dairr-backend
 
 The sidecar exposes the same CLI as desktop_app.py:
 
@@ -13,11 +12,12 @@ The sidecar exposes the same CLI as desktop_app.py:
 Usage (from repo root):
 
   python3 package_tauri_sidecar.py                  # macOS ARM64
-  python3 package_tauri_sidecar.py --target-triple x86_64-pc-windows-msvc  # Windows
-  python3 package_tauri_sidecar.py --target-triple x86_64-apple-darwin     # macOS Intel
+  python3 package_tauri_sidecar.py --target-triple x86_64-pc-windows-msvc  # on Windows x64
+  python3 package_tauri_sidecar.py --target-triple x86_64-apple-darwin     # on macOS Intel
 
-Output is written directly into apps/desktop/src-tauri/binaries/,
-replacing the placeholder stubs there.
+Output is the target-native onedir runtime under
+apps/desktop/src-tauri/binaries/dairr-backend/.  PyInstaller does not
+cross-compile: a non-dry-run target must exactly match the current host.
 """
 
 from __future__ import annotations
@@ -97,12 +97,17 @@ def detect_target_triple() -> str:
     machine = _platform.machine().lower()
     system = _platform.system().lower()
 
-    arch = "x86_64" if machine in ("amd64", "x86_64", "x64") else "aarch64"
+    if machine in ("amd64", "x86_64", "x64"):
+        arch = "x86_64"
+    elif machine in ("aarch64", "arm64"):
+        arch = "aarch64"
+    else:
+        arch = machine or "unknown"
 
     if system == "darwin":
         return f"{arch}-apple-darwin"
     elif system == "windows":
-        return "x86_64-pc-windows-msvc"
+        return f"{arch}-pc-windows-msvc"
     else:
         return f"{arch}-unknown-linux-gnu"
 
@@ -111,20 +116,8 @@ def sidecar_basename() -> str:
     return "dairr-backend"
 
 
-def sidecar_filename(target_triple: str) -> str:
-    """Return the full sidecar filename for a target triple."""
-    base = sidecar_basename()
-    if target_triple.startswith("x86_64-pc-windows") or target_triple.endswith("-msvc"):
-        return f"{base}-{target_triple}.exe"
-    return f"{base}-{target_triple}"
-
-
-def sidecar_output_path(target_triple: str) -> Path:
-    """Full absolute path where the sidecar binary should land."""
-    return SIDECAR_BINARIES_DIR / sidecar_filename(target_triple)
-
-
 def sidecar_runtime_path(target_triple: str) -> Path:
+    """Return the executable entry inside the target-native onedir runtime."""
     suffix = ".exe" if target_triple.startswith("x86_64-pc-windows") else ""
     return SIDECAR_RUNTIME_DIR / f"{sidecar_basename()}{suffix}"
 
@@ -180,31 +173,33 @@ def build_pyinstaller_command(
     return command
 
 
-def is_placeholder(binary_path: Path) -> bool:
-    """Check whether a file at binary_path is a placeholder shell script.
-
-    Placeholders are small shell scripts (shebang or echo) that exit 70.
-    A real PyInstaller binary is much larger and contains compiled code.
-    """
+def validate_runtime_entry(binary_path: Path) -> str | None:
+    """Return a release-blocking problem for an invalid onedir entry, if any."""
     if not binary_path.is_file():
-        return True
+        return "runtime entry is missing"
     try:
         with open(binary_path, "rb") as f:
             header = f.read(128)
     except OSError:
-        return True
-    # Placeholder is a short shell script (< 512 bytes) starting with #!
+        return "runtime entry cannot be read"
     if binary_path.stat().st_size < 512:
-        if header.startswith(b"#!"):
-            return True
-        # The Windows placeholder is a text file
-        try:
-            text = header.decode("utf-8", errors="replace")
-            if "placeholder" in text.lower():
-                return True
-        except UnicodeDecodeError:
-            pass
-    return False
+        return "runtime entry is too small to be a PyInstaller executable"
+    if header.startswith(b"#!"):
+        return "runtime entry is a script rather than a PyInstaller executable"
+    return None
+
+
+def target_mismatch(target_triple: str, native_target_triple: str | None = None) -> str | None:
+    """Describe why a real build target cannot run on this host."""
+    native = native_target_triple or detect_target_triple()
+    if target_triple not in TARGET_TRIPLES:
+        return f"unsupported release target {target_triple!r}"
+    if native != target_triple:
+        return (
+            f"requested target {target_triple!r} does not match native host {native!r}; "
+            "PyInstaller cross-compilation is not supported"
+        )
+    return None
 
 
 def build_parser() -> argparse.ArgumentParser:
@@ -214,7 +209,7 @@ def build_parser() -> argparse.ArgumentParser:
     parser.add_argument(
         "--target-triple",
         default=detect_target_triple(),
-        help="Target triple for sidecar naming (default: auto-detect current platform).",
+        help="Native release target (default: auto-detect current platform).",
     )
     parser.add_argument(
         "--dry-run",
@@ -227,9 +222,9 @@ def build_parser() -> argparse.ArgumentParser:
         help="Pass --clean --noconfirm to PyInstaller.",
     )
     parser.add_argument(
-        "--check-placeholder",
+        "--check-runtime",
         action="store_true",
-        help="Check whether the current sidecar at the output path is still a placeholder.",
+        help="Validate the target-native onedir runtime entry.",
     )
     return parser
 
@@ -245,6 +240,7 @@ def run_packager(
     subprocess_run: Callable[..., subprocess.CompletedProcess] | None = None,
     stdout: TextIO | None = None,
     stderr: TextIO | None = None,
+    native_target_triple: str | None = None,
 ) -> int:
     args = parse_args(argv)
     out = stdout or sys.stdout
@@ -253,21 +249,27 @@ def run_packager(
     target_triple = args.target_triple
     output_path = sidecar_runtime_path(target_triple)
 
-    if args.check_placeholder:
-        if is_placeholder(output_path):
-            print(
-                f"WARNING: {output_path} is still a placeholder "
-                f"- build the real sidecar.",
-                file=out,
-            )
+    if target_triple not in TARGET_TRIPLES:
+        print(f"ERROR: unsupported release target {target_triple!r}", file=err)
+        return 1
+
+    if not args.dry_run:
+        mismatch = target_mismatch(target_triple, native_target_triple)
+        if mismatch is not None:
+            print(f"ERROR: {mismatch}", file=err)
             return 1
-        else:
-            print(
-                f"OK: {output_path} is a real binary "
-                f"({output_path.stat().st_size} bytes).",
-                file=out,
-            )
-            return 0
+
+    if args.check_runtime:
+        problem = validate_runtime_entry(output_path)
+        if problem is not None:
+            print(f"ERROR: {problem}: {output_path}", file=err)
+            return 1
+        print(
+            f"OK: onedir runtime entry {output_path} "
+            f"({output_path.stat().st_size} bytes).",
+            file=out,
+        )
+        return 0
 
     command = build_pyinstaller_command(
         target_triple=target_triple,
@@ -275,6 +277,13 @@ def run_packager(
     )
 
     if args.dry_run:
+        native = native_target_triple or detect_target_triple()
+        if target_triple != native:
+            print(
+                f"PORTABLE DRY RUN ONLY: command targets {target_triple}; "
+                f"native host is {native}. No artifact will be produced.",
+                file=out,
+            )
         print(shlex.join(command), file=out)
         return 0
 
@@ -303,8 +312,9 @@ def run_packager(
         print(f"ERROR: sidecar was not created at {output_path}", file=err)
         return 1
 
-    if is_placeholder(output_path):
-        print(f"ERROR: sidecar at {output_path} is still a placeholder", file=err)
+    problem = validate_runtime_entry(output_path)
+    if problem is not None:
+        print(f"ERROR: {problem}: {output_path}", file=err)
         return 1
 
     size_mb = output_path.stat().st_size / (1024 * 1024)

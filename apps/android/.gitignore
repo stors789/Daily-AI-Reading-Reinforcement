@@ -1,4 +1,8 @@
 .gradle/
+jvm-tests/.gradle-user-home/
+jvm-tests/.gradle/
+jvm-tests/.kotlin/
+jvm-tests/build/
 build/
 app/build/
 local.properties

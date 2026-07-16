@@ -45,6 +45,7 @@ SEMVER_RE = re.compile(
 REQUIRED_TARGETS = ("darwin-aarch64", "darwin-x86_64", "windows-x86_64")
 WEB_APP_PATH = ROOT / "addon" / "daily_ai_reading_reinforcement" / "web" / "app.js"
 ANDROID_VALIDATOR_PATH = ROOT / "apps" / "android" / "tests" / "validate_scaffold.py"
+ANDROID_JVM_TEST_RUNNER_PATH = ROOT / "apps" / "android" / "tests" / "run_jvm_tests.py"
 SIDECAR_SCRIPT_PATH = ROOT / "package_tauri_sidecar.py"
 DESKTOP_PACKAGE_SCRIPT_PATH = ROOT / "package_desktop.py"
 
@@ -265,6 +266,12 @@ def pre_publish_checks() -> list[tuple[str, list[str], Path, str | None]]:
         ("Web JavaScript syntax", ["node", "--check", str(WEB_APP_PATH)], ROOT, "node"),
         ("Android static validator", [python, str(ANDROID_VALIDATOR_PATH)], ROOT, None),
         (
+            "Android SDK-free JVM tests",
+            [python, str(ANDROID_JVM_TEST_RUNNER_PATH)],
+            ROOT,
+            "gradle",
+        ),
+        (
             "Browser desktop package dry-run",
             [python, str(DESKTOP_PACKAGE_SCRIPT_PATH), "--entry", "browser", "--windowed", "--clean", "--dry-run"],
             ROOT,
@@ -381,11 +388,42 @@ def prepare_config(
 
 
 def find_single_artifact(bundle_dir: Path, pattern: str) -> Path:
-    candidates = sorted(bundle_dir.glob(pattern))
+    candidates = sorted(path for path in bundle_dir.glob(pattern) if path.is_file())
     if len(candidates) != 1:
         rendered = ", ".join(str(path) for path in candidates) or "none"
         raise ValueError(f"expected one {pattern!r} in {bundle_dir}, found {rendered}")
     return candidates[0]
+
+
+def require_nonempty_artifact(path: Path, label: str) -> Path:
+    if not path.is_file():
+        raise ValueError(f"missing {label}: {path}")
+    if path.stat().st_size <= 0:
+        raise ValueError(f"{label} is empty: {path}")
+    return path
+
+
+def read_updater_signature(path: Path) -> str:
+    require_nonempty_artifact(path, "updater signature")
+    try:
+        signature = path.read_text(encoding="utf-8").strip()
+    except UnicodeError as exc:
+        raise ValueError(f"updater signature is not UTF-8 text: {path}") from exc
+    if not signature:
+        raise ValueError(f"updater signature is blank: {path}")
+    return signature
+
+
+def validate_staged_release_assets(input_dir: Path) -> None:
+    """Require every publishable installer and signed updater artifact."""
+    for target in REQUIRED_TARGETS:
+        if target.startswith("darwin-"):
+            updater = input_dir / f"dairr-{target}.app.tar.gz"
+            require_nonempty_artifact(input_dir / f"dairr-{target}.dmg", f"{target} installer")
+        else:
+            updater = input_dir / f"dairr-{target}-setup.exe"
+        require_nonempty_artifact(updater, f"{target} updater artifact")
+        read_updater_signature(updater.with_name(f"{updater.name}.sig"))
 
 
 def collect_artifacts(target: str, bundle_dir: Path, output_dir: Path) -> None:
@@ -402,8 +440,10 @@ def collect_artifacts(target: str, bundle_dir: Path, output_dir: Path) -> None:
         installer = None
         installer_name = None
     signature = artifact.with_name(f"{artifact.name}.sig")
-    if not signature.is_file():
-        raise ValueError(f"missing updater signature {signature}")
+    require_nonempty_artifact(artifact, "updater artifact")
+    read_updater_signature(signature)
+    if installer is not None:
+        require_nonempty_artifact(installer, "macOS installer")
     output_dir.mkdir(parents=True, exist_ok=True)
     shutil.copy2(artifact, output_dir / staged_name)
     shutil.copy2(signature, output_dir / f"{staged_name}.sig")
@@ -415,6 +455,7 @@ def latest_json(version: str, base_url: str, input_dir: Path, output: Path, note
     version = validate_version(version)
     if not base_url.startswith("https://"):
         raise ValueError("release asset base URL must use HTTPS")
+    validate_staged_release_assets(input_dir)
     platforms: dict[str, dict[str, str]] = {}
     for target in REQUIRED_TARGETS:
         if target.startswith("darwin-"):
@@ -422,11 +463,9 @@ def latest_json(version: str, base_url: str, input_dir: Path, output: Path, note
         else:
             artifact = input_dir / f"dairr-{target}-setup.exe"
         signature = artifact.with_name(f"{artifact.name}.sig")
-        if not artifact.is_file() or not signature.is_file():
-            raise ValueError(f"missing staged updater artifact or signature for {target}")
         platforms[target] = {
             "url": f"{base_url.rstrip('/')}/{artifact.name}",
-            "signature": signature.read_text(encoding="utf-8").strip(),
+            "signature": read_updater_signature(signature),
         }
     write_json(
         output,

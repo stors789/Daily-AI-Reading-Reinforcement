@@ -90,12 +90,51 @@ class DesktopReleaseGateTests(unittest.TestCase):
             "Portable web UI static tests",
             "Web JavaScript syntax",
             "Android static validator",
+            "Android SDK-free JVM tests",
             "Browser desktop package dry-run",
             "Native desktop package dry-run",
             "Tauri sidecar package dry-run",
             "Tauri npm metadata",
             "Tauri Cargo check",
         } <= labels)
+
+    def test_android_sdk_free_harness_compiles_production_sources_and_counts_seven(self) -> None:
+        build = (ROOT / "apps/android/jvm-tests/build.gradle.kts").read_text(encoding="utf-8")
+        for source in (
+            "BridgeContract.kt",
+            "BridgeDispatcher.kt",
+            "AndroidPracticeRepository.kt",
+        ):
+            self.assertIn(source, build)
+        self.assertIn('"../app/src/test/java"', build)
+
+        runner_path = ROOT / "apps/android/tests/run_jvm_tests.py"
+        spec = importlib.util.spec_from_file_location("dairr_android_jvm_runner_test", runner_path)
+        self.assertIsNotNone(spec)
+        self.assertIsNotNone(spec.loader)
+        runner = importlib.util.module_from_spec(spec)
+        spec.loader.exec_module(runner)
+        self.assertEqual(runner.EXPECTED_TESTS, 7)
+        self.assertEqual(runner.java_major('openjdk version "17.0.19" 2026-04-21'), 17)
+        self.assertEqual(runner.java_major('openjdk version "21.0.2"'), 21)
+        self.assertEqual(runner.gradle_version("\nGradle 8.10.2\n"), (8, 10, 2))
+        self.assertEqual(runner.gradle_version("Gradle 9.6.1\n"), (9, 6, 1))
+        self.assertIsNone(runner.gradle_version("not Gradle output"))
+        self.assertEqual(runner.SUPPORTED_GRADLE, {(8, 10, 2), (9, 6, 1)})
+        candidates = runner.java17_candidates(None, {})
+        self.assertIn(
+            Path("/opt/homebrew/opt/openjdk@17/libexec/openjdk.jdk/Contents/Home"),
+            candidates,
+        )
+        with tempfile.TemporaryDirectory() as directory:
+            reports = Path(directory)
+            (reports / "TEST-one.xml").write_text(
+                '<testsuite tests="4" failures="0" errors="0"/>', encoding="utf-8"
+            )
+            (reports / "TEST-two.xml").write_text(
+                '<testsuite tests="3" failures="0" errors="0"/>', encoding="utf-8"
+            )
+            self.assertEqual(runner.count_results(reports), (7, 0, 0))
 
     def test_semver_validation_accepts_real_releases_and_rejects_invalid_versions(self) -> None:
         script = ROOT / "scripts" / "desktop_release.py"
@@ -185,6 +224,32 @@ class DesktopReleaseGateTests(unittest.TestCase):
                 },
             )
 
+    def test_artifact_staging_rejects_empty_assets_and_blank_signatures(self) -> None:
+        mod = _release_module()
+        with tempfile.TemporaryDirectory() as directory:
+            root = Path(directory)
+            bundle = root / "bundle"
+            output = root / "output"
+            updater = bundle / "macos" / "DAIRR.app.tar.gz"
+            updater.parent.mkdir(parents=True)
+            updater.write_bytes(b"")
+            updater.with_name(f"{updater.name}.sig").write_text("signature\n", encoding="utf-8")
+            dmg = bundle / "dmg" / "DAIRR.dmg"
+            dmg.parent.mkdir(parents=True)
+            dmg.write_bytes(b"installer")
+            with self.assertRaisesRegex(ValueError, "updater artifact is empty"):
+                mod.collect_artifacts("darwin-aarch64", bundle, output)
+
+            updater.write_bytes(b"updater")
+            updater.with_name(f"{updater.name}.sig").write_text("  \n", encoding="utf-8")
+            with self.assertRaisesRegex(ValueError, "signature is blank"):
+                mod.collect_artifacts("darwin-aarch64", bundle, output)
+
+            updater.with_name(f"{updater.name}.sig").write_text("signature\n", encoding="utf-8")
+            dmg.write_bytes(b"")
+            with self.assertRaisesRegex(ValueError, "macOS installer is empty"):
+                mod.collect_artifacts("darwin-aarch64", bundle, output)
+
     def test_latest_json_uses_updater_archives_not_mac_installers(self) -> None:
         mod = _release_module()
         with tempfile.TemporaryDirectory() as directory:
@@ -208,6 +273,28 @@ class DesktopReleaseGateTests(unittest.TestCase):
             urls = [entry["url"] for entry in manifest["platforms"].values()]
             self.assertFalse(any(url.endswith(".dmg") for url in urls))
             self.assertTrue(any(url.endswith(".app.tar.gz") for url in urls))
+
+    def test_latest_json_requires_nonempty_publishable_dmgs_and_signatures(self) -> None:
+        mod = _release_module()
+        with tempfile.TemporaryDirectory() as directory:
+            root = Path(directory)
+            for target in mod.REQUIRED_TARGETS:
+                if target.startswith("darwin-"):
+                    artifact = root / f"dairr-{target}.app.tar.gz"
+                    (root / f"dairr-{target}.dmg").write_bytes(b"installer")
+                else:
+                    artifact = root / f"dairr-{target}-setup.exe"
+                artifact.write_bytes(b"updater")
+                artifact.with_name(f"{artifact.name}.sig").write_text("signature\n", encoding="utf-8")
+
+            (root / "dairr-darwin-x86_64.dmg").write_bytes(b"")
+            with self.assertRaisesRegex(ValueError, "darwin-x86_64 installer is empty"):
+                mod.latest_json("1.2.3", "https://example.test/v1.2.3", root, root / "latest.json", "notes")
+
+            (root / "dairr-darwin-x86_64.dmg").write_bytes(b"installer")
+            (root / "dairr-windows-x86_64-setup.exe.sig").write_text("\n", encoding="utf-8")
+            with self.assertRaisesRegex(ValueError, "signature is blank"):
+                mod.latest_json("1.2.3", "https://example.test/v1.2.3", root, root / "latest.json", "notes")
 
     def test_release_gate_rejects_tracked_generated_outputs(self) -> None:
         mod = _release_module()
@@ -260,6 +347,11 @@ class DesktopReleaseGateTests(unittest.TestCase):
         self.assertIn("runner: macos-15-intel", workflow)
         self.assertNotIn("runner: macos-13", workflow)
         self.assertIn('python package_tauri_sidecar.py --target-triple', workflow)
+        self.assertIn('--check-runtime', workflow)
+        self.assertIn('uses: actions/setup-java@v4', workflow)
+        self.assertIn('uses: gradle/actions/setup-gradle@v4', workflow)
+        self.assertIn('gradle-version: "8.10.2"', workflow)
+        self.assertIn("files: release-assets/*", workflow)
         self.assertIn(
             'VERSION="$(python3 scripts/desktop_release.py validate-version --version "$VERSION")"',
             workflow,
@@ -291,6 +383,13 @@ class DesktopReleaseGateTests(unittest.TestCase):
         self.assertIn("Origin: http://127.0.0.1:8755", readme)
         self.assertNotIn("dairr-backend-aarch64-apple-darwin", readme)
         self.assertNotIn("dairr-backend-x86_64-pc-windows-msvc.exe", readme)
+
+    def test_apple_release_docs_match_the_implemented_notarization_inputs(self) -> None:
+        documentation = (ROOT / "docs/desktop_auto_updates.md").read_text(encoding="utf-8")
+        self.assertIn("workflow derives\n  `APPLE_SIGNING_IDENTITY`", documentation)
+        self.assertIn("it is not a separate repository secret", documentation)
+        self.assertIn("Apple-ID/app-specific\n  password notarization method currently implemented", documentation)
+        self.assertIn("API-key\n  notarization is not claimed", documentation)
 
 
 if __name__ == "__main__":

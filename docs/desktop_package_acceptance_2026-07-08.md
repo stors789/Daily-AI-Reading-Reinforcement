@@ -1,5 +1,11 @@
 # Desktop Package Acceptance - 2026-07-08
 
+> Historical record, superseded for current release/security claims. This
+> acceptance covered the legacy browser PyInstaller path before the authenticated
+> bridge, production Tauri onedir runtime, and current release gate. Do not use
+> it as evidence that the next major release is signed, notarized, secure, or
+> installable; use the current packaging and manual-verification documents.
+
 ## Environment
 
 - OS: macOS 27.0 (Build 26A5368g), arm64

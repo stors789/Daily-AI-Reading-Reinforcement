@@ -20,14 +20,15 @@ loading the window.
 
 The production build is an onedir PyInstaller runtime at
 `binaries/dairr-backend/dairr-backend` (`.exe` on Windows). Tauri bundles this
-directory as an application resource, avoiding onefile extraction on every
-launch.
+directory as an application resource and launches that runtime entry directly.
 
-There are no checked-in executable placeholders. Every release job builds the
-onedir runtime natively for its target and then fails the build if the runtime
-entry is absent or still looks like a placeholder. The `--target-triple`
+There is no checked-in executable. Every release job builds the onedir runtime
+natively for its target and then fails if the runtime entry is absent,
+unreadable, or too small to be a PyInstaller executable. The `--target-triple`
 argument selects the target's runtime-entry convention (not an alternate
-output name); PyInstaller itself does not cross-compile.
+output name), and every real build/check must match the current host exactly.
+Only `--dry-run` may describe another supported target, and it produces no
+artifact.
 
 ## Building the Sidecar
 
@@ -49,8 +50,8 @@ python3 package_tauri_sidecar.py --dry-run
 # Clean rebuild
 python3 package_tauri_sidecar.py --clean
 
-# Check if the sidecar is a placeholder
-python3 package_tauri_sidecar.py --check-placeholder
+# Validate the target-native onedir runtime entry
+python3 package_tauri_sidecar.py --check-runtime
 ```
 
 The build script uses PyInstaller (`pip install pyinstaller`) to produce a
@@ -63,10 +64,10 @@ target-native onedir runtime at the resource path above. It bundles:
 
 ## Verifying the Sidecar
 
-After building, verify the sidecar is not a placeholder:
+After building, verify the onedir runtime entry:
 
 ```bash
-python3 package_tauri_sidecar.py --check-placeholder
+python3 package_tauri_sidecar.py --check-runtime
 ```
 
 Start the sidecar and smoke-test the endpoints. Bridge POSTs require both the

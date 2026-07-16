@@ -40,7 +40,7 @@ binaries/
 `apps/desktop/src-tauri/tauri.conf.json` includes
 `binaries/dairr-backend` as a resource. The repository tracks only the empty
 runtime directory marker and documentation. It does **not** contain an
-executable or target-triple placeholder. Each macOS ARM64, macOS Intel, or
+executable. Each macOS ARM64, macOS Intel, or
 Windows x64 release job must generate its own target-native onedir runtime;
 PyInstaller does not cross-compile. The `--target-triple` option selects the
 expected runtime-entry convention and validates the requested target, but it
@@ -173,12 +173,13 @@ python3 package_tauri_sidecar.py --target-triple x86_64-pc-windows-msvc --clean
 
 # Inspect the command or verify the generated runtime entry.
 python3 package_tauri_sidecar.py --dry-run
-python3 package_tauri_sidecar.py --check-placeholder
+python3 package_tauri_sidecar.py --check-runtime
 ```
 
-Despite the legacy option name, `--check-placeholder` now serves as a release
-guard: because no placeholder executable is checked in, it fails until a real
-generated runtime entry exists and rejects a small placeholder-like file.
+`--check-runtime` is a release guard: it fails until the native onedir runtime
+entry exists and is large enough to be a readable PyInstaller executable. A
+real build or check also fails when the requested target triple differs from
+the native host; cross-target `--dry-run` is command inspection only.
 
 Start and verify a generated sidecar:
 

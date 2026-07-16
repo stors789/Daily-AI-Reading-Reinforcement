@@ -89,12 +89,12 @@ See [Local data, migration, backup, and recovery](user-guide.md#10-local-data-mi
 ## Distribution status and remaining risk
 
 - The credential-free `python3 scripts/desktop_release.py pre-publish` gate covers release metadata/secrets, production compile/import, the full unit suite, add-on package privacy, portable UI/JavaScript, Android static validation, desktop packaging dry-runs, Tauri environment reporting, and locked Rust compilation.
-- A real macOS ARM sidecar has passed placeholder detection and command-line smoke testing, and its manifest includes the shared core, web assets, and normalized AnkiConnect adapter without private/cache/output/log/database content. A Tauri `--no-bundle` build has also passed in that environment.
+- A real macOS ARM onedir sidecar has passed runtime-entry validation and command-line smoke testing, and its manifest includes the shared core, web assets, and normalized AnkiConnect adapter without private/cache/output/log/database content. A Tauri `--no-bundle` build has also passed in that environment.
 - Release packaging and source-level updater checks do not prove public signing/notarization.
 - macOS and Windows artifacts must be built and smoke-tested on their target platforms, signed with release credentials, and verified after installation before they are described as production releases.
 - The current local environment did not have Xcode, macOS Intel/Windows hosts, or signing credentials. Full DMG/NSIS signing, Apple notarization, and installed updater tests therefore remain unverified locally and belong to the native CI/release-credential pass.
 - Live Anki, AnkiConnect, MoMo, and third-party AI behavior depends on installed versions, credentials, network access, and provider contracts. Mocked automated coverage is not a substitute for final credentialed smoke tests.
 - Android static validation covers its bridge/assets/repository boundary, but no public production APK or complete device acceptance is claimed. It is intentionally limited to offline pasted-text persistence; shared UI assets do not prove parity.
-- Seven SDK-free Android production-edge tests and the static validator passed in the current environment. Android Gradle/SDK assembly and device testing remain unverified because that environment has no Android SDK.
+- The committed JDK 17 SDK-free harness compiles the actual Android bridge, dispatcher, and repository production sources; it validates and reports the local Gradle version, while CI pins the canonical Gradle 8.10.2 toolchain. All seven JVM tests and the static validator passed in the current environment. A clean first run resolves pinned build/test dependencies from public repositories. Android SDK assembly and device testing remain unverified because that environment has no Android SDK.
 
 Use the [manual verification guide](manual-verification.md) for the release-candidate acceptance pass.
