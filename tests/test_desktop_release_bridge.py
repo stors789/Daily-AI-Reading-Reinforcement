@@ -18,6 +18,7 @@ if str(CORE_SRC) not in sys.path:
 
 from dairr_core.operations import ModelRequestSettings, ModelResponse, OperationContext
 from dairr_core.provider_capabilities import known_provider_capabilities
+from dairr_core.study_signals import CardIdentity, CardStudySignals
 
 
 MOCK_DIR = Path(__file__).resolve().parent.parent / "desktop_mock"
@@ -53,6 +54,7 @@ class DesktopReleaseBridgeTests(unittest.TestCase):
         with main._PRACTICE_LOCK:
             main._PRACTICE_DRAFTS.clear()
             main._PRACTICE_REVISIONS.clear()
+            main._PRACTICE_MUTATIONS.clear()
 
     def test_pasted_practice_is_available_without_anki_and_round_trips(self) -> None:
         with patch.object(main, "get_deck_provider", side_effect=AssertionError("Anki must not be contacted")):
@@ -135,6 +137,26 @@ class DesktopReleaseBridgeTests(unittest.TestCase):
         self.assertEqual(rejected["event"], "operationFailed")
         self.assertNotIn("user:secret", json.dumps(rejected))
 
+    def test_save_api_settings_exception_path_never_falls_back_to_raw_config(self) -> None:
+        credential = "credential-must-never-cross-bridge"
+        with patch.object(
+            main,
+            "_safe_api_settings_payload",
+            side_effect=RuntimeError(f"formatter failed near {credential}"),
+        ):
+            result = request("saveApiSettings", {
+                "settings": {
+                    "providerId": "custom",
+                    "baseUrl": "https://example.test/v1",
+                    "model": "model",
+                    "apiKey": credential,
+                }
+            })
+        serialized = json.dumps(result)
+        self.assertEqual(result["event"], "operationFailed")
+        self.assertNotIn(credential, serialized)
+        self.assertNotIn('"api_key"', serialized)
+
     def test_capabilities_are_keyed_states_and_pasted_practice_stays_available(self) -> None:
         result = request("getCapabilities")
         capabilities = result["payload"]["capabilities"]
@@ -172,6 +194,36 @@ class DesktopReleaseBridgeTests(unittest.TestCase):
         self.assertEqual(signals, [])
         self.assertEqual(seen["bounds"], (None, None))
         self.assertFalse(seen["authoritative"])
+
+    def test_desktop_study_signals_include_local_article_reuse_evidence(self) -> None:
+        import ankiconnect_data_adapter
+
+        main.DesktopDeckAdapter().save_article(
+            "Deck", [], "[ARTICLE_TITLE]\nT\n[MAIN_ARTICLE]\nAlpha.",
+            generation_metadata={
+                "targets": [{"id": "ankiconnect:7", "card_id": "7", "target": "Alpha"}],
+                "target_usage": [{"target_id": "ankiconnect:7", "used": True}],
+            },
+        )
+
+        class Adapter:
+            issues = ()
+
+            def __init__(self, _provider):
+                pass
+
+            def collect_today_signals(self, **_kwargs):
+                return [CardStudySignals(CardIdentity("ankiconnect", "7", "n7"), "Alpha")]
+
+            def capabilities(self, **_kwargs):
+                return main.CapabilitySet(())
+
+        with patch.object(main, "get_deck_provider", return_value=object()), patch.object(
+            ankiconnect_data_adapter, "AnkiConnectDataAdapter", Adapter
+        ):
+            signals, _capabilities, _issues = main._load_study_signals({})
+        self.assertEqual(signals[0].recent_article_inclusions.value, 1)
+        self.assertEqual(signals[0].recent_article_inclusions.provenance.value, "local_history")
 
     def test_prompt_edit_preview_reset_and_export(self) -> None:
         loaded = request("getPromptTemplate", {"task": "preprocessing", "scope": "task"})
@@ -222,6 +274,39 @@ class DesktopReleaseBridgeTests(unittest.TestCase):
         self.assertEqual(budget["payload"]["reasoning"]["budgetTokens"], 2048)
         self.assertNotIn("budget_tokens", budget["payload"]["reasoning"])
 
+        with patch.object(main, "_load_generation_config", return_value={
+            "selected_provider_profile": "openai", "model": "gpt",
+            "max_tokens": 4000, "temperature": 0.2,
+            "reasoning": {"mode": "provider_default"},
+        }), patch.object(main, "_save_desktop_config") as save:
+            conflict = request("saveReasoningSettings", {
+                "reasoning": {"mode": "explicit", "control": "effort", "effort": "low"}
+            })
+        self.assertEqual(conflict["event"], "operationFailed")
+        self.assertEqual(conflict["payload"]["error"]["code"], "reasoning_temperature_conflict")
+        save.assert_not_called()
+
+        for config_override, expected_code, reasoning_payload in (
+            (
+                {"selected_provider_profile": "openai", "model": "gpt", "max_tokens": 4000,
+                 "temperature": None, "top_p": 0.9},
+                "reasoning_top_p_conflict",
+                {"mode": "explicit", "control": "effort", "effort": "low"},
+            ),
+            (
+                {"selected_provider_profile": "custom", "model": "model", "max_tokens": 4000,
+                 "temperature": None, "top_p": None, "use_native_structured_output": True},
+                "unsupported_response_format",
+                {"mode": "disabled"},
+            ),
+        ):
+            with self.subTest(expected_code=expected_code), patch.object(
+                main, "_load_generation_config", return_value=config_override
+            ), patch.object(main, "_save_desktop_config") as save:
+                rejected = request("saveReasoningSettings", {"reasoning": reasoning_payload})
+            self.assertEqual(rejected["payload"]["error"]["code"], expected_code)
+            save.assert_not_called()
+
     def test_async_registry_retains_request_id_and_returns_terminal_result(self) -> None:
         with patch.object(main, "_run_release_operation", return_value={"candidateCount": 0}):
             accepted = request("loadStudySignals", request_id="request-signals")
@@ -251,7 +336,7 @@ class DesktopReleaseBridgeTests(unittest.TestCase):
                 }))
 
         provider = known_provider_capabilities("custom")
-        settings = ModelRequestSettings(model="test-model", use_native_structured_output=True)
+        settings = ModelRequestSettings(model="test-model")
         with patch.object(main, "_provider_context", return_value=("custom", provider, settings, Transport())):
             result = main._run_release_operation("submitPracticeReview", {
                 "sessionId": created["id"], "revision": 0, "translation": "家へ帰った。", "persist": False,
@@ -260,6 +345,57 @@ class DesktopReleaseBridgeTests(unittest.TestCase):
         self.assertEqual(result["review"]["suggestedRevision"], "家に帰りました。")
         self.assertEqual(len(result["session"]["attempts"]), 1)
         self.assertEqual(result["session"]["revision"], 1)
+
+    def test_autosave_wins_while_review_provider_is_blocked(self) -> None:
+        created = request("createPastedPractice", {
+            "sourceText": "I went home.", "sourceLanguage": "en", "targetLanguage": "ja",
+        })["payload"]["session"]
+        entered = threading.Event()
+        release = threading.Event()
+        outcome = {}
+
+        class BlockingTransport:
+            def complete(self, _request, *, cancellation):
+                entered.set()
+                self.assert_not_cancelled = cancellation
+                if not release.wait(2):
+                    raise TimeoutError
+                cancellation.raise_if_cancelled()
+                return ModelResponse('{"overall":"review","meaning":[]}')
+
+        def review_worker():
+            try:
+                with patch.object(
+                    main,
+                    "_provider_context",
+                    return_value=(
+                        "custom", known_provider_capabilities("custom"),
+                        ModelRequestSettings(model="test-model"), BlockingTransport(),
+                    ),
+                ):
+                    main._run_release_operation("submitPracticeReview", {
+                        "sessionId": created["id"], "revision": 0,
+                        "translation": "家に帰った。", "persist": False,
+                    }, OperationContext("blocked-review"))
+            except Exception as exc:  # assertion inspects the safe domain error
+                outcome["error"] = exc
+
+        worker = threading.Thread(target=review_worker)
+        worker.start()
+        self.assertTrue(entered.wait(1))
+        saved = request("savePracticeDraft", {
+            "sessionId": created["id"], "revision": 0,
+            "translation": "newer autosave", "persist": False,
+        })
+        self.assertEqual(saved["event"], "practiceDraftSaved")
+        self.assertEqual(saved["payload"]["session"]["revision"], 1)
+        release.set()
+        worker.join(2)
+        self.assertFalse(worker.is_alive())
+        self.assertEqual(getattr(outcome.get("error"), "code", ""), "stale_practice_revision")
+        loaded = request("loadPracticeSession", {"sessionId": created["id"]})
+        self.assertEqual(loaded["payload"]["session"]["completeTextDraft"], "newer autosave")
+        self.assertEqual(loaded["payload"]["session"]["attempts"], [])
 
     def test_target_aware_generation_service_boundary_preserves_categories(self) -> None:
         class Transport:
@@ -277,7 +413,7 @@ class DesktopReleaseBridgeTests(unittest.TestCase):
                 }))
 
         provider = known_provider_capabilities("custom")
-        settings = ModelRequestSettings(model="test-model", use_native_structured_output=True)
+        settings = ModelRequestSettings(model="test-model")
         with patch.object(main, "_provider_context", return_value=("custom", provider, settings, Transport())):
             result = main._run_release_operation("generateTargetAware", {
                 "targetLanguage": "English",

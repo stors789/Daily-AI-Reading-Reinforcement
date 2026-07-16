@@ -45,6 +45,7 @@ from dairr_core.article_generation import (
     GenerationTarget,
     generate_target_aware_article,
 )
+from dairr_core.article import apply_article_history_evidence
 from dairr_core.bridge_contract import (
     ASYNC_ACTIONS,
     BRIDGE_VERSION,
@@ -142,6 +143,7 @@ _OPERATIONS = OperationRegistry(max_workers=4, max_records=128, terminal_ttl_sec
 _PRACTICE_LOCK = threading.RLock()
 _PRACTICE_DRAFTS: dict[str, PracticeSession] = {}
 _PRACTICE_REVISIONS: dict[str, int] = {}
+_PRACTICE_MUTATIONS: dict[str, str] = {}
 _LAST_ANKI_CAPABILITIES: CapabilitySet | None = None
 
 
@@ -802,7 +804,8 @@ def _practice_service() -> PracticeService:
 
 
 def _session_payload(session: PracticeSession) -> dict[str, Any]:
-    revision = _PRACTICE_REVISIONS.get(session.id, 0)
+    with _PRACTICE_LOCK:
+        revision = _PRACTICE_REVISIONS.get(session.id, 0)
     return {
         "id": session.id,
         "kind": session.kind.value,
@@ -886,6 +889,11 @@ def _load_practice_session(session_id: str) -> PracticeSession:
 
 
 def _check_practice_revision(session_id: str, payload: Mapping[str, Any]) -> None:
+    with _PRACTICE_LOCK:
+        _check_practice_revision_locked(session_id, payload)
+
+
+def _check_practice_revision_locked(session_id: str, payload: Mapping[str, Any]) -> None:
     if payload.get("revision") is None:
         return
     try:
@@ -900,6 +908,87 @@ def _check_practice_revision(session_id: str, payload: Mapping[str, Any]) -> Non
             retryable=True,
             safe_details={"currentRevision": current},
         )
+
+
+def _claim_practice_mutation(
+    session_id: str, payload: Mapping[str, Any]
+) -> tuple[PracticeSession, str]:
+    _load_practice_session(session_id)
+    with _PRACTICE_LOCK:
+        if session_id in _PRACTICE_MUTATIONS:
+            raise OperationError(
+                "practice_session_busy",
+                "This practice session is being updated. Wait for that operation and reload before saving.",
+                retryable=True,
+            )
+        _check_practice_revision_locked(session_id, payload)
+        session = _PRACTICE_DRAFTS.get(session_id)
+        if session is None:
+            raise OperationError("practice_not_found", "The practice session is unavailable.")
+        token = secrets.token_hex(16)
+        _PRACTICE_MUTATIONS[session_id] = token
+        return session, token
+
+
+def _commit_practice_mutation(
+    session: PracticeSession, token: str
+) -> PracticeSession:
+    with _PRACTICE_LOCK:
+        if _PRACTICE_MUTATIONS.get(session.id) != token:
+            raise OperationError(
+                "stale_practice_revision",
+                "This practice session changed in another request. Reload it before saving.",
+                retryable=True,
+            )
+        _PRACTICE_DRAFTS[session.id] = session
+        _PRACTICE_REVISIONS[session.id] = _PRACTICE_REVISIONS.get(session.id, 0) + 1
+        _PRACTICE_MUTATIONS.pop(session.id, None)
+    return session
+
+
+def _abort_practice_mutation(session_id: str, token: str) -> None:
+    with _PRACTICE_LOCK:
+        if _PRACTICE_MUTATIONS.get(session_id) == token:
+            _PRACTICE_MUTATIONS.pop(session_id, None)
+
+
+def _practice_review_snapshot(
+    session_id: str, payload: Mapping[str, Any]
+) -> tuple[PracticeSession, int]:
+    _load_practice_session(session_id)
+    with _PRACTICE_LOCK:
+        _check_practice_revision_locked(session_id, payload)
+        session = _PRACTICE_DRAFTS.get(session_id)
+        if session is None:
+            raise OperationError("practice_not_found", "The practice session is unavailable.")
+        return session, _PRACTICE_REVISIONS.get(session_id, 0)
+
+
+def _commit_practice_review(
+    session: PracticeSession,
+    expected_revision: int,
+    *,
+    expected_session: PracticeSession,
+    persist: bool,
+) -> PracticeSession:
+    """CAS a provider result without blocking concurrent draft autosaves."""
+    with _PRACTICE_LOCK:
+        current = _PRACTICE_REVISIONS.get(session.id, 0)
+        if (
+            current != expected_revision
+            or _PRACTICE_DRAFTS.get(session.id) is not expected_session
+        ):
+            raise OperationError(
+                "stale_practice_revision",
+                "This practice session changed while the review was running. Your newer draft was preserved; submit it again when ready.",
+                retryable=True,
+                safe_details={"currentRevision": current},
+            )
+        if persist:
+            _practice_service().save_session(session)
+        _PRACTICE_DRAFTS[session.id] = session
+        _PRACTICE_REVISIONS[session.id] = current + 1
+    return session
 
 
 def _safe_config_payload(config: Mapping[str, Any]) -> dict[str, Any]:
@@ -986,7 +1075,7 @@ def _provider_context(config: Mapping[str, Any]) -> tuple[str, Any, ModelRequest
         temperature=(float(config["temperature"]) if config.get("temperature") is not None else None),
         top_p=(float(config["top_p"]) if config.get("top_p") is not None else None),
         reasoning=reasoning_intent_from_config(config.get("reasoning")),
-        use_native_structured_output=True,
+        use_native_structured_output=bool(config.get("use_native_structured_output", False)),
         extra_body=(config.get("extra_body") if isinstance(config.get("extra_body"), Mapping) else {}),
     )
     return provider_id, capabilities, settings, OpenAICompatibleTransport(dict(config), timeout=90)
@@ -1017,6 +1106,34 @@ def _reasoning_bridge_payload(intent: ReasoningIntent) -> dict[str, Any]:
         else:
             result["budgetTokens"] = intent.budget_tokens
     return result
+
+
+def _build_reasoning_settings(
+    config: Mapping[str, Any], intent: ReasoningIntent
+):
+    capabilities = known_provider_capabilities(
+        str(config.get("selected_provider_profile") or "custom")
+    )
+    settings = ModelRequestSettings(
+        model=str(config.get("model") or ""),
+        max_output_tokens=int(config.get("max_tokens") or 30000),
+        temperature=(float(config["temperature"]) if config.get("temperature") is not None else None),
+        top_p=(float(config["top_p"]) if config.get("top_p") is not None else None),
+        reasoning=intent,
+        use_native_structured_output=bool(config.get("use_native_structured_output", False)),
+        extra_body=(dict(config.get("extra_body") or {}) if isinstance(config.get("extra_body"), Mapping) else {}),
+    )
+    from dairr_core.prompt_templates import RenderedPrompt
+    preview = RenderedPrompt(
+        PromptTask.PREPROCESSING,
+        "",
+        "Preview request settings only. Response contract: {}",
+        ResponseMode.STRUCTURED,
+        "{}",
+        1,
+        (),
+    )
+    return settings.build(capabilities, preview), capabilities
 
 
 def _strict_prompt_registry_import(imported: Mapping[str, Any]) -> Any:
@@ -1237,6 +1354,10 @@ def _load_study_signals(payload: Mapping[str, Any]) -> tuple[list[Any], Capabili
             safe_details={"failure": exc.failure.value},
         ) from exc
     _LAST_ANKI_CAPABILITIES = adapter.capabilities(authoritative_day_bounds=authoritative_bounds)
+    signals = apply_article_history_evidence(
+        signals,
+        articles_dir=DesktopDeckAdapter()._articles_dir,
+    )
     issues = [
         {"reason": issue.reason.value, "action": issue.action, "detail": issue.detail}
         for issue in adapter.issues
@@ -1290,8 +1411,7 @@ def _run_release_operation(action: str, payload: dict[str, Any], context: Operat
         }
     if action == "submitPracticeReview":
         session_id = str(payload.get("sessionId") or "")
-        session = _load_practice_session(session_id)
-        _check_practice_revision(session_id, payload)
+        session, expected_revision = _practice_review_snapshot(session_id, payload)
         config = _load_generation_config()
         provider_id, capabilities, settings, transport = _provider_context(config)
         completed = _practice_service().review(
@@ -1306,9 +1426,15 @@ def _run_release_operation(action: str, payload: dict[str, Any], context: Operat
             revision_of=(str(payload.get("revisionOf")) if payload.get("revisionOf") else None),
             provider_id=provider_id,
             profile_id=str(config.get("selected_llm_api_profile_id") or ""),
+            # Persistence happens only after the revision compare-and-swap.
+            persist=False,
+        )
+        _commit_practice_review(
+            completed.session,
+            expected_revision,
+            expected_session=session,
             persist=bool(payload.get("persist", True)),
         )
-        _remember_session(completed.session, increment_revision=True)
         result = completed.result
         return {
             "session": _session_payload(completed.session),
@@ -1359,13 +1485,15 @@ def _run_release_operation(action: str, payload: dict[str, Any], context: Operat
         response = result.to_dict()
         if payload.get("saveArticle"):
             legacy_article = "[ARTICLE_TITLE]\n" + result.title + "\n[MAIN_ARTICLE]\n" + result.article
+            outcomes = [item.to_dict() for item in result.target_outcomes]
             saved = DesktopDeckAdapter().save_article(
                 str(payload.get("deckName") or "DAIRR"),
                 [],
                 legacy_article,
                 generation_metadata={
                     "targets": [item.prompt_dict() for item in targets],
-                    "targetOutcomes": [item.to_dict() for item in result.target_outcomes],
+                    "target_usage": [item for item in outcomes if item["used"]],
+                    "unused_targets": [item for item in outcomes if not item["used"]],
                 },
             )
             response["savedArticle"] = {key: str(value) for key, value in saved.items()}
@@ -1446,46 +1574,59 @@ def _handle_release_action(action: str, payload: dict[str, Any]) -> tuple[str, d
         return "practiceSessionLoaded", {"session": _session_payload(session)}
     if action == "savePracticeDraft":
         session_id = str(payload.get("sessionId") or "")
-        session = _load_practice_session(session_id)
-        _check_practice_revision(session_id, payload)
-        updated = _practice_service().save_draft(
-            session,
-            str(payload.get("translation") or ""),
-            segment_id=(str(payload.get("segmentId")) if payload.get("segmentId") else None),
-            persist=bool(payload.get("persist", True)),
-        )
-        _remember_session(updated, increment_revision=True)
+        session, claim = _claim_practice_mutation(session_id, payload)
+        try:
+            updated = _practice_service().save_draft(
+                session,
+                str(payload.get("translation") or ""),
+                segment_id=(str(payload.get("segmentId")) if payload.get("segmentId") else None),
+                persist=bool(payload.get("persist", True)),
+            )
+            _commit_practice_mutation(updated, claim)
+        except BaseException:
+            _abort_practice_mutation(session_id, claim)
+            raise
         return "practiceDraftSaved", {"session": _session_payload(updated), "persisted": bool(payload.get("persist", True))}
     if action == "updatePracticeSegments":
         session_id = str(payload.get("sessionId") or "")
-        session = _load_practice_session(session_id)
-        _check_practice_revision(session_id, payload)
-        if session.attempts:
-            raise OperationError("segmentation_locked", "Source segmentation cannot change after review attempts exist.")
-        raw_segments = payload.get("segments")
-        if not isinstance(raw_segments, list) or not raw_segments:
-            raise OperationError("invalid_segments", "Provide at least one ordered practice segment.")
-        segments = tuple(
-            PracticeSegment(
-                str(item.get("id") or ""), index,
-                str(item.get("sourceText") or ""),
-                (str(item.get("referenceText")) if item.get("referenceText") is not None else None),
+        session, claim = _claim_practice_mutation(session_id, payload)
+        try:
+            if session.attempts:
+                raise OperationError("segmentation_locked", "Source segmentation cannot change after review attempts exist.")
+            raw_segments = payload.get("segments")
+            if not isinstance(raw_segments, list) or not raw_segments:
+                raise OperationError("invalid_segments", "Provide at least one ordered practice segment.")
+            segments = tuple(
+                PracticeSegment(
+                    str(item.get("id") or ""), index,
+                    str(item.get("sourceText") or ""),
+                    (str(item.get("referenceText")) if item.get("referenceText") is not None else None),
+                )
+                for index, item in enumerate(raw_segments) if isinstance(item, Mapping)
             )
-            for index, item in enumerate(raw_segments) if isinstance(item, Mapping)
-        )
-        if len(segments) != len(raw_segments):
-            raise OperationError("invalid_segments", "Each practice segment must be an object.")
-        updated = session.with_segments(segments)
-        if payload.get("persist", True):
-            _practice_service().save_session(updated)
-        _remember_session(updated, increment_revision=True)
+            if len(segments) != len(raw_segments):
+                raise OperationError("invalid_segments", "Each practice segment must be an object.")
+            updated = session.with_segments(segments)
+            if payload.get("persist", True):
+                _practice_service().save_session(updated)
+            _commit_practice_mutation(updated, claim)
+        except BaseException:
+            _abort_practice_mutation(session_id, claim)
+            raise
         return "practiceSegmentsUpdated", {"session": _session_payload(updated)}
     if action == "deletePracticeSession":
         session_id = str(payload.get("sessionId") or "")
         deleted = _practice_repository().delete(session_id)
         with _PRACTICE_LOCK:
+            if session_id in _PRACTICE_MUTATIONS:
+                raise OperationError(
+                    "practice_session_busy",
+                    "This practice session is being updated. Wait for that operation before deleting it.",
+                    retryable=True,
+                )
             _PRACTICE_DRAFTS.pop(session_id, None)
             _PRACTICE_REVISIONS.pop(session_id, None)
+            _PRACTICE_MUTATIONS.pop(session_id, None)
         return "practiceSessionDeleted", {"sessionId": session_id, "deleted": deleted}
     if action in {"getScoringConfig", "resetScoringConfig", "saveScoringConfig", "importScoringConfig", "exportScoringConfig"}:
         presets = list(config.get("scoring_presets") or [recommended_preset().to_dict()])
@@ -1584,22 +1725,14 @@ def _handle_release_action(action: str, payload: dict[str, Any]) -> tuple[str, d
     if action in {"getReasoningSettings", "saveReasoningSettings", "previewReasoningSettings"}:
         if action == "saveReasoningSettings":
             intent = _strict_reasoning_intent(payload.get("reasoning"))
-            # Validate explicit values against the selected provider now.
-            known_provider_capabilities(str(config.get("selected_provider_profile") or "custom")).validate_reasoning(intent)
+            # Validate the proposed intent against every currently effective
+            # request setting before persisting it.
+            _build_reasoning_settings(config, intent)
             config["reasoning"] = reasoning_intent_to_dict(intent)
             _save_desktop_config(config)
         elif action == "previewReasoningSettings":
             intent = _strict_reasoning_intent(payload.get("reasoning") if payload.get("reasoning") is not None else config.get("reasoning"))
-            capabilities = known_provider_capabilities(str(config.get("selected_provider_profile") or "custom"))
-            capabilities.validate_reasoning(intent)
-            from dairr_core.prompt_templates import RenderedPrompt
-            preview = RenderedPrompt(PromptTask.PREPROCESSING, "", "Preview", ResponseMode.PLAIN_TEXT, "", 1, ())
-            settings = ModelRequestSettings(
-                model=str(config.get("model") or ""), max_output_tokens=int(config.get("max_tokens") or 30000),
-                temperature=(float(config["temperature"]) if config.get("temperature") is not None else None),
-                reasoning=intent,
-            )
-            built = settings.build(capabilities, preview)
+            built, capabilities = _build_reasoning_settings(config, intent)
             return "reasoningSettingsPreview", {
                 "reasoning": _reasoning_bridge_payload(intent),
                 "capabilities": {
@@ -1893,26 +2026,17 @@ def handle_action(action: str, payload: dict[str, Any]) -> dict[str, Any]:
             }
         if action == "saveApiSettings":
             settings = payload.get("settings") or {}
-            try:
-                from desktop_adapters import _import_core
-                _utils = _import_core("utils")
-                provider_id = _utils.clean_provider_id(settings.get("providerId"))
-                base_url = _safe_public_base_url(_utils.clean_base_url(settings.get("baseUrl")))
-                model = _utils.clean_text(settings.get("model"))
-                temperature = _utils.clean_temperature(settings.get("temperature"))
-                max_tokens = _utils.clean_max_tokens(settings.get("maxTokens"))
-            except Exception:
-                provider_id = str(settings.get("providerId") or "").strip()
-                base_url = _safe_public_base_url(settings.get("baseUrl"))
-                model = str(settings.get("model") or "").strip()
-                try:
-                    temperature = float(settings.get("temperature"))
-                except (TypeError, ValueError):
-                    temperature = 0.7
-                try:
-                    max_tokens = int(settings.get("maxTokens"))
-                except (TypeError, ValueError):
-                    max_tokens = 0
+            # This validation path is mandatory.  Falling back to a raw
+            # mapping after an import/validation failure can turn the entire
+            # credential-bearing config into a bridge response on a later
+            # exception path.
+            from desktop_adapters import _import_core
+            _utils = _import_core("utils")
+            provider_id = _utils.clean_provider_id(settings.get("providerId"))
+            base_url = _safe_public_base_url(_utils.clean_base_url(settings.get("baseUrl")))
+            model = _utils.clean_text(settings.get("model"))
+            temperature = _utils.clean_temperature(settings.get("temperature"))
+            max_tokens = _utils.clean_max_tokens(settings.get("maxTokens"))
 
             if not base_url:
                 return {"event": "error", "payload": {"message": "Enter an API base URL."}}
@@ -1944,10 +2068,10 @@ def handle_action(action: str, payload: dict[str, Any]) -> dict[str, Any]:
 
             config_adapter.save(config)
 
-            try:
-                api_settings_resp = _safe_api_settings_payload(config)
-            except Exception:
-                api_settings_resp = config
+            # Never substitute raw config here: it contains API keys in both
+            # the active profile and the profile list. Unknown failures are
+            # redacted by the outer bridge boundary.
+            api_settings_resp = _safe_api_settings_payload(config)
 
             return {"event": "apiSettingsSaved", "payload": {"apiSettings": api_settings_resp, "message": "API settings saved."}}
         if action == "selectApiProfile":

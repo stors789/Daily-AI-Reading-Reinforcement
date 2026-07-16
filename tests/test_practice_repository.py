@@ -95,6 +95,27 @@ class PracticeRepositoryTests(unittest.TestCase):
         reserialized = session_document(restored)
         self.assertEqual(len(reserialized["session"]["attempts"]), 2)
 
+    def test_semantically_rejected_attempts_survive_migration_round_trip(self) -> None:
+        session = create_pasted_session("Keep attempts", "en", "ja")
+        document = session_document(session)
+        segment_id = session.segments[0].id
+        accepted = {
+            "id": "attempt-1", "scope": "segment", "translation": "訳",
+            "created_at": "2026-07-16T00:00:00+00:00", "segment_ids": [segment_id],
+            "revision_of": None, "review": None,
+        }
+        duplicate = {**accepted, "translation": "重複"}
+        missing_segment = {
+            **accepted, "id": "attempt-2", "translation": "孤立",
+            "segment_ids": ["missing-segment"],
+        }
+        document["session"]["attempts"] = [accepted, duplicate, missing_segment]
+
+        restored = session_from_document(document)
+        self.assertEqual([item.id for item in restored.attempts], ["attempt-1"])
+        round_tripped = session_document(restored)["session"]["attempts"]
+        self.assertEqual(round_tripped, [accepted, duplicate, missing_segment])
+
     def test_required_corruption_and_newer_schema_fail_safely(self) -> None:
         with self.assertRaises(CorruptPracticeRecord):
             session_from_document({"schema_version": 2, "session": {"id": "only-id"}})

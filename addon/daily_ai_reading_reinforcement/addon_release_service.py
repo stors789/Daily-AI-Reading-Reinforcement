@@ -13,7 +13,9 @@ try:
     from .dairr_core.article_generation import (  # type: ignore[import-not-found]
         ArticleGenerationRequest, GenerationTarget, generate_target_aware_article,
     )
-    from .dairr_core.article import load_saved_article  # type: ignore[import-not-found]
+    from .dairr_core.article import (  # type: ignore[import-not-found]
+        apply_article_history_evidence, list_saved_articles, load_saved_article, save_article,
+    )
     from .dairr_core.capabilities import (  # type: ignore[import-not-found]
         Capability, CapabilityId, CapabilityReason, CapabilitySet, CapabilityStatus, Provenance,
     )
@@ -33,7 +35,7 @@ try:
     )
     from .dairr_core.practice_service import PracticeService  # type: ignore[import-not-found]
     from .dairr_core.prompt_templates import (  # type: ignore[import-not-found]
-        PromptTask, PromptTemplate, default_prompt_registry,
+        PromptTask, PromptTemplate, RenderedPrompt, ResponseMode, default_prompt_registry,
     )
     from .dairr_core.provider_capabilities import (  # type: ignore[import-not-found]
         ProviderConfigurationError, ReasoningControl, ReasoningIntent, ReasoningMode,
@@ -53,7 +55,9 @@ except ImportError:
     from dairr_core.article_generation import (
         ArticleGenerationRequest, GenerationTarget, generate_target_aware_article,
     )
-    from dairr_core.article import load_saved_article
+    from dairr_core.article import (
+        apply_article_history_evidence, list_saved_articles, load_saved_article, save_article,
+    )
     from dairr_core.capabilities import (
         Capability, CapabilityId, CapabilityReason, CapabilitySet, CapabilityStatus, Provenance,
     )
@@ -66,7 +70,9 @@ except ImportError:
     from dairr_core.practice import ArticleReference, PracticeSegment, TranslationDirection
     from dairr_core.practice_repository import PracticeRepository, session_document
     from dairr_core.practice_service import PracticeService
-    from dairr_core.prompt_templates import PromptTask, PromptTemplate, default_prompt_registry
+    from dairr_core.prompt_templates import (
+        PromptTask, PromptTemplate, RenderedPrompt, ResponseMode, default_prompt_registry,
+    )
     from dairr_core.provider_capabilities import (
         ProviderConfigurationError, ReasoningControl, ReasoningIntent, ReasoningMode,
         known_provider_capabilities,
@@ -217,43 +223,56 @@ class AddonReleaseService:
         return {"session": self._session_payload(session)}
 
     def save_practice_draft(self, payload: Mapping[str, Any]) -> dict[str, Any]:
-        session = self._load_session(_required_id(payload, "sessionId"))
-        self._check_revision(session.id, payload)
+        session_id = _required_id(payload, "sessionId")
+        self._load_session(session_id)
         persist = bool(payload.get("persist", payload.get("save", True)))
-        session = self.practice.save_draft(
-            session,
-            str(payload.get("translation") or ""),
-            segment_id=_optional_text(payload.get("segmentId")),
-            persist=persist,
-        )
-        self._remember_session(session, increment_revision=True)
+        # Revision validation, transformation, persistence, and in-memory
+        # commit are one short critical section. This prevents two autosaves
+        # that both read N from committing competing N+1 snapshots.
+        with self._session_lock:
+            self._check_revision(session_id, payload)
+            session = self._sessions[session_id]
+            session = self.practice.save_draft(
+                session,
+                str(payload.get("translation") or ""),
+                segment_id=_optional_text(payload.get("segmentId")),
+                persist=persist,
+            )
+            self._sessions[session_id] = session
+            self._revisions[session_id] = self._revisions.get(session_id, 0) + 1
         return {"session": self._session_payload(session), "persisted": persist}
 
     def update_practice_segments(self, payload: Mapping[str, Any]) -> dict[str, Any]:
-        session = self._load_session(_required_id(payload, "sessionId"))
-        self._check_revision(session.id, payload)
-        if session.attempts:
-            raise OperationError(
-                "segmentation_locked",
-                "Start a new session to edit segmentation after submitting an attempt.",
+        session_id = _required_id(payload, "sessionId")
+        self._load_session(session_id)
+        with self._session_lock:
+            self._check_revision(session_id, payload)
+            session = self._sessions[session_id]
+            if session.attempts:
+                raise OperationError(
+                    "segmentation_locked",
+                    "Start a new session to edit segmentation after submitting an attempt.",
+                )
+            rows = payload.get("segments")
+            if not isinstance(rows, list) or not rows:
+                raise OperationError("invalid_segments", "At least one practice segment is required.")
+            segments = tuple(
+                PracticeSegment(
+                    str(row.get("id") or f"segment-{index + 1}"),
+                    index,
+                    str(row.get("sourceText") or ""),
+                    _optional_text(row.get("referenceText")),
+                )
+                for index, row in enumerate(rows)
+                if isinstance(row, Mapping)
             )
-        rows = payload.get("segments")
-        if not isinstance(rows, list) or not rows:
-            raise OperationError("invalid_segments", "At least one practice segment is required.")
-        segments = tuple(
-            PracticeSegment(
-                str(row.get("id") or f"segment-{index + 1}"),
-                index,
-                str(row.get("sourceText") or ""),
-                _optional_text(row.get("referenceText")),
-            )
-            for index, row in enumerate(rows)
-            if isinstance(row, Mapping)
-        )
-        updated = session.with_segments(segments)
-        self._remember_session(updated, increment_revision=True)
-        if bool(payload.get("persist", payload.get("save", True))):
-            self.practice.save_session(updated)
+            if len(segments) != len(rows):
+                raise OperationError("invalid_segments", "Each practice segment must be an object.")
+            updated = session.with_segments(segments)
+            if bool(payload.get("persist", payload.get("save", True))):
+                self.practice.save_session(updated)
+            self._sessions[session_id] = updated
+            self._revisions[session_id] = self._revisions.get(session_id, 0) + 1
         return {"session": self._session_payload(updated)}
 
     def delete_practice_session(self, payload: Mapping[str, Any]) -> dict[str, Any]:
@@ -269,8 +288,12 @@ class AddonReleaseService:
         context: OperationContext,
     ) -> dict[str, Any]:
         config = self.config()
-        session = self._load_session(_required_id(payload, "sessionId"))
-        self._check_revision(session.id, payload)
+        session_id = _required_id(payload, "sessionId")
+        self._load_session(session_id)
+        with self._session_lock:
+            self._check_revision(session_id, payload)
+            session = self._sessions[session_id]
+            expected_revision = self._revisions.get(session_id, 0)
         completed = self.practice.review(
             session,
             str(payload.get("translation") or ""),
@@ -283,9 +306,25 @@ class AddonReleaseService:
             revision_of=_optional_text(payload.get("revisionOf")),
             provider_id=str(config.get("selected_provider_profile") or ""),
             profile_id=str(config.get("selected_llm_api_profile_id") or ""),
-            persist=bool(payload.get("persist", payload.get("save", True))),
+            # Commit persistence only after the post-provider revision CAS.
+            persist=False,
         )
-        self._remember_session(completed.session, increment_revision=True)
+        with self._session_lock:
+            current = self._revisions.get(session_id, 0)
+            if (
+                current != expected_revision
+                or self._sessions.get(session_id) is not session
+            ):
+                raise OperationError(
+                    "stale_practice_revision",
+                    "This practice session changed while the review was running. Your newer draft was preserved; submit it again when ready.",
+                    retryable=True,
+                    safe_details={"currentRevision": current},
+                )
+            if bool(payload.get("persist", payload.get("save", True))):
+                self.practice.save_session(completed.session)
+            self._sessions[session_id] = completed.session
+            self._revisions[session_id] = current + 1
         return {
             "session": self._session_payload(completed.session),
             "attemptId": completed.attempt_id,
@@ -353,7 +392,10 @@ class AddonReleaseService:
             if isinstance(raw_preset, Mapping)
             else self._selected_preset(_optional_text(payload.get("presetId")))
         )
-        scores = score_cards(signals, preset)
+        enriched = apply_article_history_evidence(
+            signals, articles_dir=self.history_root / "articles"
+        )
+        scores = score_cards(enriched, preset)
         overrides = tuple(
             ManualOverride.from_dict(item)
             for item in (payload.get("manualOverrides") or [])
@@ -367,9 +409,11 @@ class AddonReleaseService:
         )
         return {"preset": preset.to_dict(), "selection": selection.to_dict()}
 
-    @staticmethod
-    def study_signals_payload(signals: Iterable[CardStudySignals]) -> list[dict[str, Any]]:
-        return [_json_value(signal) for signal in signals]
+    def study_signals_payload(self, signals: Iterable[CardStudySignals]) -> list[dict[str, Any]]:
+        enriched = apply_article_history_evidence(
+            signals, articles_dir=self.history_root / "articles"
+        )
+        return [_json_value(signal) for signal in enriched]
 
     # Prompt/reasoning -------------------------------------------------
 
@@ -520,9 +564,11 @@ class AddonReleaseService:
         if not isinstance(raw, Mapping):
             raise OperationError("invalid_reasoning", "Reasoning settings must be an object.")
         intent = _strict_reasoning_intent(raw)
-        capabilities = self.provider_capabilities(self.config())
-        capabilities.validate_reasoning(intent)
         config = self.config()
+        # Building the effective request validates the new intent together
+        # with the currently saved temperature, top-p, native response-format
+        # choice, token limits, and protected advanced fields.
+        self._build_reasoning_settings(config, intent)
         config["reasoning"] = reasoning_intent_to_dict(intent)
         self._save(config)
         return self.get_reasoning_settings()
@@ -531,28 +577,9 @@ class AddonReleaseService:
         raw = payload.get("reasoning")
         selected = raw if isinstance(raw, Mapping) else self.config().get("reasoning")
         intent = _strict_reasoning_intent(selected if isinstance(selected, Mapping) else {})
-        capabilities = self.provider_capabilities(self.config())
-        capabilities.validate_reasoning(intent)
         config = self.config()
-        rendered = default_prompt_registry().render(
-            PromptTask.PREPROCESSING,
-            {
-                "source_text": "Preview",
-                "source_language": "",
-                "custom_instructions": "Preview request settings only.",
-            },
-        )
-        current = self.request_settings(config)
-        settings = ModelRequestSettings(
-            model=current.model,
-            max_output_tokens=current.max_output_tokens,
-            temperature=current.temperature,
-            top_p=current.top_p,
-            reasoning=intent,
-            use_native_structured_output=current.use_native_structured_output,
-            extra_body=current.extra_body,
-        )
-        built = settings.build(capabilities, rendered)
+        capabilities = self.provider_capabilities(config)
+        built = self._build_reasoning_settings(config, intent)
         return {
             "reasoning": _camelize_mapping(reasoning_intent_to_dict(intent)),
             "capabilities": _provider_capability_payload(capabilities),
@@ -598,7 +625,28 @@ class AddonReleaseService:
             provider_id=str(config.get("selected_provider_profile") or ""),
             profile_id=str(config.get("selected_llm_api_profile_id") or ""),
         )
-        return result.to_dict()
+        response = result.to_dict()
+        if bool(payload.get("saveArticle")):
+            article_text = _legacy_article_text(
+                result.title, result.article, result.paragraph_translations
+            )
+            outcomes = [item.to_dict() for item in result.target_outcomes]
+            saved = save_article(
+                str(payload.get("deckName") or "DAIRR"),
+                [],
+                article_text,
+                articles_dir=self.history_root / "articles",
+                generation_metadata={
+                    "targets": [item.prompt_dict() for item in targets],
+                    "target_usage": [item for item in outcomes if item["used"]],
+                    "unused_targets": [item for item in outcomes if not item["used"]],
+                },
+            )
+            response["savedArticle"] = {key: str(value) for key, value in saved.items()}
+            response["history"] = list_saved_articles(
+                articles_dir=self.history_root / "articles"
+            )
+        return response
 
     # Shared settings helpers ----------------------------------------
 
@@ -618,6 +666,33 @@ class AddonReleaseService:
             use_native_structured_output=bool(config.get("use_native_structured_output", False)),
             extra_body=dict(config.get("extra_body") or {}) if isinstance(config.get("extra_body"), Mapping) else {},
         )
+
+    def _build_reasoning_settings(
+        self, config: Mapping[str, Any], intent: ReasoningIntent
+    ):
+        current = self.request_settings(config)
+        settings = ModelRequestSettings(
+            model=current.model,
+            max_output_tokens=current.max_output_tokens,
+            temperature=current.temperature,
+            top_p=current.top_p,
+            reasoning=intent,
+            use_native_structured_output=current.use_native_structured_output,
+            extra_body=current.extra_body,
+        )
+        # A structured preview exercises response_format when enabled. The
+        # contract remains visible in the prompt even when native format is
+        # conservatively omitted for custom providers.
+        preview = RenderedPrompt(
+            PromptTask.PREPROCESSING,
+            "",
+            "Preview request settings only. Response contract: {}",
+            ResponseMode.STRUCTURED,
+            "{}",
+            1,
+            (),
+        )
+        return settings.build(self.provider_capabilities(config), preview)
 
     def _selected_preset(self, preset_id: str | None) -> ScoringPreset:
         config = self.config()
@@ -646,9 +721,13 @@ class AddonReleaseService:
             session = self._sessions.get(session_id)
         if session is not None:
             return session
-        session = self.practice.load_session(session_id)
-        self._remember_session(session)
-        return session
+        loaded = self.practice.load_session(session_id)
+        with self._session_lock:
+            # Another worker may have populated or changed the session while
+            # disk I/O was in progress. Never overwrite that newer snapshot.
+            session = self._sessions.setdefault(session_id, loaded)
+            self._revisions.setdefault(session_id, 0)
+            return session
 
     def _remember_session(self, session: Any, *, increment_revision: bool = False) -> None:
         with self._session_lock:
@@ -731,6 +810,29 @@ def _article_practice_material(
         sources = [source for source, _reference in pairs]
         references = [reference for _source, reference in pairs]
     return "\n\n".join(sources), references, str(parsed.get("title") or "")
+
+
+def _legacy_article_text(
+    title: str,
+    article: str,
+    translations: Iterable[str],
+) -> str:
+    """Build the existing Markdown-authoritative article body format."""
+    paragraphs = [item.strip() for item in re.split(r"\n\s*\n", article) if item.strip()]
+    translated = list(translations)
+    body_parts: list[str] = []
+    for index, paragraph in enumerate(paragraphs):
+        body_parts.append(paragraph)
+        if index < len(translated) and translated[index].strip():
+            body_parts.append(f"[T] {translated[index].strip()}")
+    if not paragraphs:
+        body_parts.append(article.strip())
+    body = "\n\n".join(body_parts)
+    return (
+        f"[ARTICLE_TITLE]\n{title.strip()}\n"
+        f"[MAIN_ARTICLE]\n{body}\n"
+        "[REVIEW_NOTES]\n"
+    )
 
 
 def _direction(value: Any, *, article: bool = False) -> TranslationDirection:

@@ -2,8 +2,10 @@ from __future__ import annotations
 
 import sys
 import tempfile
+import threading
 import unittest
 from pathlib import Path
+from unittest.mock import patch
 
 
 ROOT = Path(__file__).resolve().parent.parent
@@ -16,8 +18,10 @@ for path in (
 
 from addon_release_service import AddonReleaseService  # noqa: E402
 from dairr_core.capabilities import CapabilitySet  # noqa: E402
+from dairr_core.operations import ModelResponse, OperationContext  # noqa: E402
 from dairr_core.prompt_templates import PromptTask  # noqa: E402
 from dairr_core.scoring import recommended_preset  # noqa: E402
+from dairr_core.study_signals import CardIdentity, CardStudySignals  # noqa: E402
 
 
 class AddonReleaseServiceTests(unittest.TestCase):
@@ -105,6 +109,26 @@ class AddonReleaseServiceTests(unittest.TestCase):
         self.assertEqual(preview["effectiveSettings"]["reasoningMode"], "disabled")
         self.assertIsNone(preview["effectiveSettings"]["reasoningControl"])
 
+        self.config["temperature"] = 0.2
+        with self.assertRaisesRegex(Exception, "does not support temperature"):
+            self.service.save_reasoning_settings({
+                "reasoning": {"mode": "explicit", "control": "effort", "effort": "low"}
+            })
+        self.assertEqual(self.config["reasoning"], {"mode": "disabled"})
+
+        self.config.update({"temperature": None, "top_p": 0.9})
+        with self.assertRaisesRegex(Exception, "top-p"):
+            self.service.save_reasoning_settings({
+                "reasoning": {"mode": "explicit", "control": "effort", "effort": "low"}
+            })
+        self.config.update({
+            "selected_provider_profile": "custom",
+            "top_p": None,
+            "use_native_structured_output": True,
+        })
+        with self.assertRaisesRegex(Exception, "response_format"):
+            self.service.save_reasoning_settings({"reasoning": {"mode": "disabled"}})
+
     def test_capabilities_add_offline_practice_and_local_history(self) -> None:
         payload = self.service.capabilities(CapabilitySet())["capabilities"]
         self.assertEqual(payload["pasted_text_practice"]["status"], "available")
@@ -176,6 +200,73 @@ class AddonReleaseServiceTests(unittest.TestCase):
         self.assertEqual(created["sourceText"], "English.")
         self.assertEqual(created["segments"][0]["referenceText"], "日本語。")
         self.assertEqual(created["articleReference"]["relativePath"], "article.md")
+
+    def test_autosave_wins_while_review_provider_is_blocked(self) -> None:
+        created = self.service.create_pasted_practice({
+            "sourceText": "source", "sourceLanguage": "en", "targetLanguage": "ja",
+        })["session"]
+        entered = threading.Event()
+        release = threading.Event()
+        outcome = {}
+
+        class BlockingTransport:
+            def complete(self, _request, *, cancellation):
+                entered.set()
+                if not release.wait(2):
+                    raise TimeoutError
+                return ModelResponse('{"overall":"review","meaning":[]}')
+
+        def review_worker():
+            try:
+                with patch("addon_release_service.OpenAICompatibleTransport", return_value=BlockingTransport()):
+                    self.service.submit_practice_review({
+                        "sessionId": created["id"], "revision": 0,
+                        "translation": "submitted", "persist": False,
+                    }, OperationContext("addon-blocked-review"))
+            except Exception as exc:
+                outcome["error"] = exc
+
+        worker = threading.Thread(target=review_worker)
+        worker.start()
+        self.assertTrue(entered.wait(1))
+        saved = self.service.save_practice_draft({
+            "sessionId": created["id"], "revision": 0,
+            "translation": "newer autosave", "persist": False,
+        })
+        self.assertEqual(saved["session"]["revision"], 1)
+        release.set()
+        worker.join(2)
+        self.assertFalse(worker.is_alive())
+        self.assertEqual(getattr(outcome.get("error"), "code", ""), "stale_practice_revision")
+        loaded = self.service.load_practice_session({"sessionId": created["id"]})["session"]
+        self.assertEqual(loaded["completeTextDraft"], "newer autosave")
+        self.assertEqual(loaded["attempts"], [])
+
+    def test_target_generation_save_article_returns_paths_history_and_reuse_evidence(self) -> None:
+        class Transport:
+            def complete(self, _request, *, cancellation):
+                return ModelResponse(
+                    '{"title":"Saved","article":"Alpha appears naturally.",'
+                    '"target_usage":[{"target_id":"anki-addon:1","actual":"Alpha"}]}'
+                )
+
+        with patch("addon_release_service.OpenAICompatibleTransport", return_value=Transport()):
+            result = self.service.generate_target_aware({
+                "targetLanguage": "English",
+                "deckName": "Study",
+                "saveArticle": True,
+                "targets": [{
+                    "id": "anki-addon:1", "text": "Alpha", "category": "required",
+                }],
+            }, OperationContext("save-target-article"))
+        self.assertTrue(Path(result["savedArticle"]["markdown"]).is_file())
+        self.assertTrue(Path(result["savedArticle"]["html"]).is_file())
+        self.assertEqual(len(result["history"]), 1)
+
+        payload = self.service.study_signals_payload([
+            CardStudySignals(CardIdentity("anki-addon", "1", "n1"), "Alpha")
+        ])[0]
+        self.assertEqual(payload["recentArticleInclusions"]["value"], 1)
 
 
 if __name__ == "__main__":

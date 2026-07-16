@@ -6,8 +6,10 @@ import time
 import uuid
 import json
 from copy import deepcopy
+from dataclasses import replace
+from datetime import datetime, timezone
 from pathlib import Path
-from typing import Any, Mapping
+from typing import Any, Iterable, Mapping
 
 from .atomic_persistence import atomic_write_json, atomic_write_text, path_lock
 from .rendering import parse_article_response, render_article_html
@@ -264,6 +266,169 @@ def update_article_manifest(
         manifest.setdefault("schema_version", 2)
         atomic_write_json(manifest_path, manifest, private=True)
     return deepcopy(manifest)
+
+
+def apply_article_history_evidence(
+    signals: Iterable[Any],
+    *,
+    articles_dir: Path | None = None,
+    now: datetime | None = None,
+) -> list[Any]:
+    """Attach manifest-backed reuse observations to normalized study signals.
+
+    Article history is a local source independent of Anki. Every readable
+    manifest contributes at most once per candidate, even when it contains
+    both a target declaration and a usage mapping. A zero inclusion count is
+    real evidence when history is readable; ``days_since_last_article_use``
+    remains unavailable when the candidate has never appeared or only has an
+    unparseable historical timestamp.
+
+    ``Any`` keeps this persistence module usable by the legacy add-on import
+    shim, while the returned values are ordinary ``CardStudySignals`` objects.
+    """
+    from .capabilities import CapabilityReason, Provenance
+    from .study_signals import Observation
+
+    candidates = list(signals)
+    destination = articles_dir or ARTICLES_DIR
+    records: list[tuple[datetime | None, set[str], set[str]]] = []
+    if destination.is_dir():
+        for md_file in destination.glob("*.md"):
+            try:
+                text = md_file.read_text(encoding="utf-8")
+                frontmatter = parse_article_frontmatter(text)
+                manifest = _load_manifest(md_file, frontmatter)
+            except (OSError, UnicodeError):
+                continue
+            if not manifest:
+                continue
+            identifiers, terms = _manifest_target_keys(manifest)
+            if not identifiers and not terms:
+                continue
+            generated = _manifest_datetime(manifest, frontmatter)
+            records.append((generated, identifiers, terms))
+
+    reference_time = now or datetime.now()
+    enriched: list[Any] = []
+    for signal in candidates:
+        identity = signal.identity
+        identifiers = {
+            _reuse_key(identity.stable_id),
+            _reuse_key(identity.card_id),
+            _reuse_key(f"{identity.source_id}:{identity.card_id}"),
+        }
+        terms = {_reuse_key(signal.term), _reuse_key(signal.normalized_target)} - {""}
+        matched_dates: list[datetime | None] = []
+        for generated, record_ids, record_terms in records:
+            if identifiers.intersection(record_ids) or terms.intersection(record_terms):
+                matched_dates.append(generated)
+        inclusion_count = len(matched_dates)
+        inclusions = Observation.available(inclusion_count, Provenance.LOCAL_HISTORY)
+        valid_dates = [value for value in matched_dates if value is not None]
+        if valid_dates:
+            comparable_dates = [
+                value.astimezone(timezone.utc).replace(tzinfo=None)
+                if value.tzinfo is not None else value
+                for value in valid_dates
+            ]
+            latest = max(comparable_dates)
+            comparable_now = reference_time
+            if comparable_now.tzinfo is not None:
+                comparable_now = comparable_now.astimezone(timezone.utc).replace(tzinfo=None)
+            # Historical timestamps are local-naive in existing Markdown.
+            # Clamp clock skew rather than fabricating a negative duration.
+            days = max(0.0, (comparable_now - latest).total_seconds() / 86_400)
+            last_use = Observation.available(days, Provenance.LOCAL_HISTORY)
+        else:
+            reason = (
+                CapabilityReason.PARTIAL_RESPONSE
+                if inclusion_count
+                else CapabilityReason.MISSING_FIELD
+            )
+            last_use = Observation.unavailable(reason, Provenance.LOCAL_HISTORY)
+        enriched.append(replace(
+            signal,
+            days_since_last_article_use=last_use,
+            recent_article_inclusions=inclusions,
+        ))
+    return enriched
+
+
+def _manifest_target_keys(manifest: Mapping[str, Any]) -> tuple[set[str], set[str]]:
+    declarations: dict[str, tuple[set[str], set[str]]] = {}
+    identifiers: set[str] = set()
+    terms: set[str] = set()
+    declared_rows = manifest.get("targets")
+    if isinstance(declared_rows, list):
+        for row in declared_rows:
+            if not isinstance(row, Mapping):
+                continue
+            row_ids = {
+                _reuse_key(row.get(key))
+                for key in ("id", "target_id", "targetId", "card_id", "cardId")
+                if row.get(key) is not None and str(row.get(key)).strip()
+            }
+            row_terms = {
+                _reuse_key(row.get(key))
+                for key in ("term", "target", "text", "expression")
+                if isinstance(row.get(key), str) and str(row.get(key)).strip()
+            }
+            for alias in row_ids | row_terms:
+                declarations[alias] = (row_ids, row_terms)
+
+    usage_rows = manifest.get("target_usage")
+    if isinstance(usage_rows, list):
+        for row in usage_rows:
+            if isinstance(row, str):
+                terms.add(_reuse_key(row))
+                continue
+            if not isinstance(row, Mapping) or row.get("used") is False:
+                continue
+            row_ids = {
+                _reuse_key(row.get(key))
+                for key in ("id", "target_id", "targetId", "card_id", "cardId")
+                if row.get(key) is not None and str(row.get(key)).strip()
+            }
+            row_terms = {
+                _reuse_key(row.get(key))
+                for key in ("term", "target", "text", "expression")
+                if isinstance(row.get(key), str) and str(row.get(key)).strip()
+            }
+            identifiers.update(row_ids)
+            terms.update(row_terms)
+            # Declarations are identity aliases only. They never establish use
+            # without a matching target_usage entry.
+            for alias in row_ids | row_terms:
+                declared = declarations.get(alias)
+                if declared:
+                    identifiers.update(declared[0])
+                    terms.update(declared[1])
+    reuse = manifest.get("target_reuse")
+    if isinstance(reuse, Mapping):
+        terms.update(
+            _reuse_key(key)
+            for key, value in reuse.items()
+            if str(key).strip() and isinstance(value, (int, float)) and not isinstance(value, bool) and value > 0
+        )
+    return identifiers - {""}, terms - {""}
+
+
+def _manifest_datetime(
+    manifest: Mapping[str, Any], frontmatter: Mapping[str, str]
+) -> datetime | None:
+    value = str(manifest.get("generated_at") or frontmatter.get("generated_at") or "").strip()
+    try:
+        return datetime.fromisoformat(value)
+    except (TypeError, ValueError):
+        day = str(manifest.get("generated_day") or frontmatter.get("generated_day") or "").strip()
+        try:
+            return datetime.fromisoformat(day)
+        except (TypeError, ValueError):
+            return None
+
+
+def _reuse_key(value: Any) -> str:
+    return " ".join(str(value or "").casefold().split())
 
 
 def _contained_article_path(path: Path, destination: Path) -> Path:

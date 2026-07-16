@@ -77,7 +77,11 @@ class ProviderCapabilities:
     default_reasoning_marker: Mapping[str, Any] | None = None
     supports_temperature_with_reasoning: bool = True
     supports_top_p_with_reasoning: bool = True
-    supports_response_format: bool = True
+    # Native ``response_format`` is not part of the lowest-common-denominator
+    # OpenAI-compatible contract.  Unknown/custom endpoints therefore default
+    # to textual, prompt-visible response contracts unless a reviewed provider
+    # profile explicitly declares support.
+    supports_response_format: bool = False
     supports_streaming: bool = True
 
     @property
@@ -116,12 +120,14 @@ def known_provider_capabilities(provider_id: str) -> ProviderCapabilities:
             ("minimal", "low", "medium", "high"),
             supports_temperature_with_reasoning=False,
             supports_top_p_with_reasoning=False,
+            supports_response_format=True,
         ),
         "openrouter": ProviderCapabilities(
             "openrouter",
             ReasoningDialect.OPENROUTER_REASONING,
             frozenset({ReasoningControl.EFFORT}),
             ("minimal", "low", "medium", "high"),
+            supports_response_format=True,
         ),
         "anthropic": ProviderCapabilities(
             "anthropic",
@@ -130,12 +136,14 @@ def known_provider_capabilities(provider_id: str) -> ProviderCapabilities:
             minimum_budget_tokens=1024,
             supports_temperature_with_reasoning=False,
             supports_top_p_with_reasoning=False,
+            supports_response_format=True,
         ),
         "gemini": ProviderCapabilities(
             "gemini",
             ReasoningDialect.GEMINI_THINKING,
             frozenset({ReasoningControl.BUDGET}),
             minimum_budget_tokens=0,
+            supports_response_format=True,
         ),
         "deepseek": ProviderCapabilities("deepseek"),
         "qwen": ProviderCapabilities("qwen"),

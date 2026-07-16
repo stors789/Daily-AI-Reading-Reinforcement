@@ -80,15 +80,15 @@ class ArticleGenerationServiceTests(unittest.TestCase):
             "article": "I made a decision and then went home.",
             "paragraph_translations": ["translation"],
             "target_usage": [
-                {"target_id": "r", "actual_surface_form": "make a decision", "status": "exact"},
+                {"target_id": "r", "actual_surface_form": "made a decision", "status": "inflected"},
                 {"target_id": "p", "actual_surface_form": "went", "status": "inflected"},
             ],
             "unused_targets": [{"target_id": "o", "reason": "Would be unnatural."}],
         })
         result = parse_article_generation_response(request(), raw, mode=ResponseMode.STRUCTURED)
         outcomes = {item.target_id: item for item in result.target_outcomes}
-        self.assertIs(outcomes["r"].status, TargetOutcomeStatus.EXACT)
-        self.assertIs(outcomes["p"].status, TargetOutcomeStatus.INFLECTED)
+        self.assertIs(outcomes["r"].status, TargetOutcomeStatus.INFLECTED)
+        self.assertIs(outcomes["p"].status, TargetOutcomeStatus.EXACT)
         self.assertIs(outcomes["o"].status, TargetOutcomeStatus.UNUSABLE)
         self.assertIs(outcomes["x"].status, TargetOutcomeStatus.EXCLUDED)
         self.assertEqual(result.paragraph_translations, ("translation",))
@@ -135,7 +135,7 @@ class ArticleGenerationServiceTests(unittest.TestCase):
 
     def test_duplicate_target_mappings_merge_surface_forms(self) -> None:
         raw = json.dumps({
-            "article": "Body",
+            "article": "They made a decision, then decided to make a decision again.",
             "target_usage": [
                 {"target_id": "r", "actual_surface_form": "made a decision"},
                 {"target_id": "r", "actual_surface_form": "make a decision"},
@@ -163,11 +163,24 @@ class ArticleGenerationServiceTests(unittest.TestCase):
         self.assertNotIn("SECRET", warning_text)
 
     def test_excluded_usage_is_a_machine_readable_violation(self) -> None:
-        raw = '{"article":"Body","target_usage":[{"target_id":"x","actual":"forbidden phrase"}]}'
+        raw = '{"article":"This contains a forbidden phrase.","target_usage":[{"target_id":"x","actual":"forbidden phrase"}]}'
         result = parse_article_generation_response(request(), raw, mode=ResponseMode.STRUCTURED)
         outcome = next(item for item in result.target_outcomes if item.target_id == "x")
         self.assertIs(outcome.status, TargetOutcomeStatus.EXCLUDED_VIOLATION)
         self.assertTrue(any("violation" in warning for warning in result.warnings))
+
+    def test_model_declared_surface_absent_from_article_is_not_trusted(self) -> None:
+        raw = json.dumps({
+            "article": "A coherent article without the claimed expression.",
+            "target_usage": [{
+                "target_id": "r", "actual_surface_form": "make a decision", "status": "exact",
+            }],
+        })
+        result = parse_article_generation_response(request(), raw, mode=ResponseMode.STRUCTURED)
+        outcome = next(item for item in result.target_outcomes if item.target_id == "r")
+        self.assertIs(outcome.status, TargetOutcomeStatus.UNREPORTED)
+        self.assertFalse(outcome.used)
+        self.assertTrue(any("surface form was absent" in item for item in result.warnings))
 
     def test_plain_text_mode_returns_article_and_honest_unreported_usage(self) -> None:
         result = parse_article_generation_response(

@@ -95,6 +95,32 @@ class ProviderReasoningTests(unittest.TestCase):
             build_chat_completion_request(caps, options(), explicit)
         self.assertEqual(raised.exception.code, "unsupported_reasoning")
 
+    def test_unknown_provider_conservatively_rejects_native_response_format(self) -> None:
+        caps = known_provider_capabilities("custom-private-gateway")
+        self.assertFalse(caps.supports_response_format)
+        with self.assertRaises(ProviderConfigurationError) as raised:
+            build_chat_completion_request(
+                caps,
+                options(
+                    messages=[{
+                        "role": "user",
+                        "content": "Visible textual response contract: return one JSON object.",
+                    }],
+                    response_format={"type": "json_object"},
+                ),
+            )
+        self.assertEqual(raised.exception.code, "unsupported_response_format")
+
+        textual = build_chat_completion_request(
+            caps,
+            options(messages=[{
+                "role": "user",
+                "content": "Visible textual response contract: return one JSON object.",
+            }]),
+        )
+        self.assertNotIn("response_format", textual.body)
+        self.assertIn("textual response contract", textual.body["messages"][0]["content"])
+
     def test_provider_default_marker_is_applied_only_when_declared(self) -> None:
         caps = ProviderCapabilities(
             "special",

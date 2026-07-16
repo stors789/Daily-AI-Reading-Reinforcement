@@ -324,7 +324,7 @@ def _structured_result(
 
     usage_value = _first_value(data, ("target_usage", "usage", "targetUsage"))
     unused_value = _first_value(data, ("unused_targets", "unusable_targets", "unusedTargets"))
-    outcomes, outcome_warnings = _target_outcomes(request, usage_value, unused_value)
+    outcomes, outcome_warnings = _target_outcomes(request, usage_value, unused_value, article)
     warnings.extend(outcome_warnings)
     known = {
         "title", "article_title", "article", "content", "text",
@@ -350,6 +350,7 @@ def _target_outcomes(
     request: ArticleGenerationRequest,
     usage_value: Any,
     unused_value: Any,
+    article: str,
 ) -> tuple[tuple[TargetOutcome, ...], tuple[str, ...]]:
     targets = {item.id: item for item in request.targets}
     normalized: dict[str, list[GenerationTarget]] = {}
@@ -360,7 +361,7 @@ def _target_outcomes(
     warnings: list[str] = []
     usage_entries = _usage_entries(usage_value)
     used: dict[str, TargetOutcome] = {}
-    unexpected = duplicate = invalid = 0
+    unexpected = duplicate = invalid = unverified = 0
     for entry in usage_entries:
         if not isinstance(entry, Mapping):
             invalid += 1
@@ -378,12 +379,25 @@ def _target_outcomes(
         if not forms:
             value = _first_string(dict(entry), ("usage",))
             forms = (value,) if value else ()
+        if forms:
+            verified_forms = tuple(
+                form for form in forms if _surface_occurs(form, article)
+            )
+        else:
+            verified_forms = tuple(
+                value
+                for value in (target.text, *target.equivalent_forms)
+                if _surface_occurs(value, article)
+            )
+        if not verified_forms:
+            unverified += 1
+            continue
         reason = _first_string(dict(entry), ("reason", "explanation"))
-        status = _usage_status(target, dict(entry), forms)
+        status = _usage_status(target, verified_forms)
         if target.id in used:
             duplicate += 1
             prior = used[target.id]
-            merged_forms = tuple(dict.fromkeys((*prior.actual_surface_forms, *forms)))
+            merged_forms = tuple(dict.fromkeys((*prior.actual_surface_forms, *verified_forms)))
             used[target.id] = TargetOutcome(
                 target.id,
                 target.category,
@@ -392,7 +406,7 @@ def _target_outcomes(
                 prior.reason or reason,
             )
         else:
-            used[target.id] = TargetOutcome(target.id, target.category, status, forms, reason)
+            used[target.id] = TargetOutcome(target.id, target.category, status, verified_forms, reason)
 
     unusable: dict[str, str] = {}
     for entry in _unused_entries(unused_value):
@@ -417,6 +431,19 @@ def _target_outcomes(
     missing_priority = 0
     excluded_violations = 0
     for target in request.targets:
+        directly_verified = tuple(
+            value
+            for value in (target.text, *target.equivalent_forms)
+            if _surface_occurs(value, article)
+        )
+        if target.id not in used and directly_verified:
+            used[target.id] = TargetOutcome(
+                target.id,
+                target.category,
+                _usage_status(target, directly_verified),
+                directly_verified,
+                "Usage was verified against the generated article text.",
+            )
         if target.id in used:
             outcome = used[target.id]
             if target.category is TargetCategory.EXCLUDED:
@@ -453,6 +480,10 @@ def _target_outcomes(
         warnings.append(f"Recovered {duplicate} duplicate or conflicting target mapping(s).")
     if invalid:
         warnings.append(f"Ignored {invalid} malformed target mapping(s).")
+    if unverified:
+        warnings.append(
+            f"Rejected {unverified} target usage mapping(s) because the declared surface form was absent from the article."
+        )
     if missing_priority:
         warnings.append(f"Usage was unreported for {missing_priority} required or preferred target(s).")
     if excluded_violations:
@@ -511,26 +542,28 @@ def _match_surface(
 
 def _usage_status(
     target: GenerationTarget,
-    entry: dict[str, Any],
     forms: tuple[str, ...],
 ) -> TargetOutcomeStatus:
-    declared = _first_string(entry, ("status", "usage_type", "match_type")).lower()
-    aliases = {
-        "exact": TargetOutcomeStatus.EXACT,
-        "inflected": TargetOutcomeStatus.INFLECTED,
-        "inflection": TargetOutcomeStatus.INFLECTED,
-        "morphological": TargetOutcomeStatus.INFLECTED,
-        "equivalent": TargetOutcomeStatus.EQUIVALENT,
-        "used": TargetOutcomeStatus.USED,
-    }
-    if declared in aliases:
-        return aliases[declared]
     keys = {_surface_key(value) for value in forms}
     if _surface_key(target.text) in keys:
         return TargetOutcomeStatus.EXACT
     if keys.intersection(_surface_key(value) for value in target.equivalent_forms):
         return TargetOutcomeStatus.EQUIVALENT
     return TargetOutcomeStatus.INFLECTED if forms else TargetOutcomeStatus.USED
+
+
+def _surface_occurs(surface: str, article: str) -> bool:
+    needle = _surface_key(surface)
+    haystack = _surface_key(article)
+    if not needle:
+        return False
+    # Whitespace-normalized Unicode substring matching is language-agnostic
+    # and supports CJK text. For short ASCII word-like targets, require token
+    # boundaries to avoid counting incidental substrings such as "go" in
+    # "ongoing".
+    if needle.isascii() and re.fullmatch(r"[\w'-]+", needle):
+        return re.search(rf"(?<!\w){re.escape(needle)}(?!\w)", haystack) is not None
+    return needle in haystack
 
 
 def _unreported_outcomes(request: ArticleGenerationRequest) -> tuple[TargetOutcome, ...]:

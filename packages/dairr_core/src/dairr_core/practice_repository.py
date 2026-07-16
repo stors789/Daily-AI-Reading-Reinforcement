@@ -191,19 +191,29 @@ def _session_from_json(data: Mapping[str, Any], envelope_unknown: dict[str, Any]
         for index, item in enumerate(parsed_segments)
     )
     raw_attempts = raw.get("attempts")
-    candidate_attempts = tuple(
-        attempt for value in raw_attempts
-        if (attempt := _attempt_from_json(value)) is not None
-    ) if isinstance(raw_attempts, list) else ()
+    parsed_attempts: list[tuple[Any, PracticeAttempt]] = []
+    rejected_attempts: list[Any] = []
+    if isinstance(raw_attempts, list):
+        for value in raw_attempts:
+            attempt = _attempt_from_json(value)
+            if attempt is None:
+                rejected_attempts.append(value)
+            else:
+                parsed_attempts.append((value, attempt))
     attempts_list: list[PracticeAttempt] = []
     known_attempt_ids: set[str] = set()
     known_segment_ids = {segment.id for segment in segments}
-    for attempt in candidate_attempts:
+    for raw_attempt, attempt in parsed_attempts:
         if (
             attempt.id in known_attempt_ids
             or not set(attempt.segment_ids).issubset(known_segment_ids)
             or (attempt.revision_of and attempt.revision_of not in known_attempt_ids)
         ):
+            # Parsing is not the only rejection stage. Preserve attempts that
+            # are individually well-formed but semantically invalid in this
+            # session (duplicate IDs, missing segments, or broken revision
+            # chains) so a migration round trip is non-destructive.
+            rejected_attempts.append(raw_attempt)
             continue
         attempts_list.append(attempt)
         known_attempt_ids.add(attempt.id)
@@ -223,10 +233,8 @@ def _session_from_json(data: Mapping[str, Any], envelope_unknown: dict[str, Any]
         "complete_text_draft", "last_autosaved_at",
     }
     unknown = _unknown(raw, known)
-    if isinstance(raw_attempts, list):
-        rejected = [value for value in raw_attempts if _attempt_from_json(value) is None]
-        if rejected:
-            unknown["_unparsed_attempts"] = rejected
+    if rejected_attempts:
+        unknown["_unparsed_attempts"] = rejected_attempts
     now = utc_now()
     session = PracticeSession(
         id=_safe_id(_string(raw.get("id"))), kind=kind,
