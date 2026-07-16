@@ -1,7 +1,8 @@
 # DAIRR Backend Sidecar Binaries
 
-This directory holds the platform-specific sidecar binaries for the DAIRR
-Tauri desktop application.
+This directory is the build destination for the target-native DAIRR Python
+sidecar used by the Tauri desktop application. Generated runtimes are ignored
+and must never be committed.
 
 ## Sidecar Purpose
 
@@ -22,18 +23,11 @@ The production build is an onedir PyInstaller runtime at
 directory as an application resource, avoiding onefile extraction on every
 launch.
 
-The target-triple files below are legacy compatibility fallbacks:
-
-| Platform                  | Filename in this directory                             |
-|---------------------------|--------------------------------------------------------|
-| macOS ARM64 (Apple Silicon) | `dairr-backend-aarch64-apple-darwin`                 |
-| macOS Intel               | `dairr-backend-x86_64-apple-darwin`                   |
-| Windows MSVC              | `dairr-backend-x86_64-pc-windows-msvc.exe`            |
-
-The checked-in target-triple files are **placeholders** (small shell scripts
-that exit 70). They exist so `cargo check` and Tauri config validation can
-run before a real backend is packaged. Before publishing a distributable
-build, replace each placeholder with a real PyInstaller sidecar binary.
+There are no checked-in executable placeholders. Every release job builds the
+onedir runtime natively for its target and then fails the build if the runtime
+entry is absent or still looks like a placeholder. The `--target-triple`
+argument selects the target's runtime-entry convention (not an alternate
+output name); PyInstaller itself does not cross-compile.
 
 ## Building the Sidecar
 
@@ -43,7 +37,7 @@ From the repository root:
 # Build for the current platform (auto-detected)
 python3 package_tauri_sidecar.py
 
-# macOS Intel (cross-compile from ARM not supported — build on Intel machine)
+# macOS Intel (run on Intel macOS; cross-compilation is not supported)
 python3 package_tauri_sidecar.py --target-triple x86_64-apple-darwin
 
 # Windows (from a Windows machine)
@@ -59,12 +53,12 @@ python3 package_tauri_sidecar.py --clean
 python3 package_tauri_sidecar.py --check-placeholder
 ```
 
-The build script uses PyInstaller (`pip install pyinstaller`) to produce an
-onedir runtime. It bundles:
+The build script uses PyInstaller (`pip install pyinstaller`) to produce a
+target-native onedir runtime at the resource path above. It bundles:
 
 - `desktop_app.py` as the entry point
 - `desktop_mock/` (all provider and server logic)
-- `addon/daily_ai_reading_reinforcement/core/` (shared learning logic)
+- `packages/dairr_core/src/dairr_core/` (shared learning logic)
 - `addon/daily_ai_reading_reinforcement/web/` (shared HTML/CSS/JS UI)
 
 ## Verifying the Sidecar
@@ -75,7 +69,9 @@ After building, verify the sidecar is not a placeholder:
 python3 package_tauri_sidecar.py --check-placeholder
 ```
 
-Start the sidecar and smoke-test the endpoints:
+Start the sidecar and smoke-test the endpoints. Bridge POSTs require both the
+per-process token injected into the served page and an allowed loopback
+`Origin`; an unauthenticated curl example is expected to receive HTTP 403.
 
 ```bash
 ./apps/desktop/src-tauri/binaries/dairr-backend/dairr-backend \
@@ -85,10 +81,14 @@ Start the sidecar and smoke-test the endpoints:
 curl http://127.0.0.1:8755/api/health
 # {"app":"DAIRR","name":"Daily AI Reading Reinforcement",...,"bridge":{"available":true,...}}
 
+BRIDGE_TOKEN="$(curl -fsS http://127.0.0.1:8755/ | python3 -c 'import re,sys; page=sys.stdin.read(); match=re.search(r"window\.__DAIRR_BRIDGE_TOKEN__ = \"([0-9A-Za-z_-]+)\"", page); print(match.group(1) if match else "")')"
+test -n "$BRIDGE_TOKEN"
 curl -X POST http://127.0.0.1:8755/api/bridge \
+  -H 'Origin: http://127.0.0.1:8755' \
   -H 'Content-Type: application/json' \
-  -d '{"action":"load","payload":{}}'
-# {"event":"state","payload":{...}}
+  -H "X-DAIRR-Bridge-Token: $BRIDGE_TOKEN" \
+  -d '{"version":2,"requestId":"manual-smoke-1","action":"load","payload":{}}'
+# {"version":2,"requestId":"manual-smoke-1","event":"state","payload":{...}}
 ```
 
 ## Running Tauri with Sidecar Mode
@@ -100,8 +100,8 @@ development:
 cd apps/desktop
 DAIRR_BACKEND_MODE=sidecar npm run dev
 
-# Or point at a specific sidecar build:
-DAIRR_BACKEND_SIDECAR=$(pwd)/src-tauri/binaries/dairr-backend-aarch64-apple-darwin \
+# Or point at the current target-native onedir entry:
+DAIRR_BACKEND_SIDECAR=$(pwd)/src-tauri/binaries/dairr-backend/dairr-backend \
   DAIRR_BACKEND_MODE=sidecar npm run dev
 ```
 
@@ -111,8 +111,10 @@ DAIRR_BACKEND_SIDECAR=$(pwd)/src-tauri/binaries/dairr-backend-aarch64-apple-darw
 PyInstaller work files and `.spec` files that are not needed after the binary
 is produced.
 
-## Current Status
+## Release Status
 
-- **macOS ARM64**: real sidecar built and smoke-tested (2026-07-08)
-- **macOS Intel**: placeholder — build on Intel hardware
-- **Windows MSVC**: placeholder — build on Windows
+No executable is represented by repository state alone. The release workflow
+builds and checks a fresh sidecar on macOS ARM64, macOS Intel, and Windows x64.
+Signed/notarized installability and installed-app behavior remain properties of
+the corresponding release job and its smoke/manual verification evidence; the
+checked-in `.gitkeep` makes no such claim.

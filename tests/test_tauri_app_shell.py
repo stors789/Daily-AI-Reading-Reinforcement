@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import importlib.util
 import json
+import subprocess
 import sys
 import tempfile
 import unittest
@@ -220,16 +221,23 @@ class TauriAppShellTests(unittest.TestCase):
                 self.assertTrue((WEB_DIR / asset).exists(), f"missing asset {asset}")
 
 class TauriSidecarTests(unittest.TestCase):
-    def test_sidecar_placeholder_files_exist_with_target_triple_names(self) -> None:
-        expected_placeholders = [
-            "dairr-backend-aarch64-apple-darwin",
-            "dairr-backend-x86_64-apple-darwin",
-            "dairr-backend-x86_64-pc-windows-msvc.exe",
-        ]
-        for name in expected_placeholders:
-            with self.subTest(name=name):
-                path = BINARIES_DIR / name
-                self.assertTrue(path.exists(), f"missing {{path}}")
+    def test_sidecar_uses_onedir_contract_without_checked_in_executables(self) -> None:
+        runtime_keepfile = BINARIES_DIR / "dairr-backend" / ".gitkeep"
+        self.assertTrue(runtime_keepfile.is_file(), f"missing {runtime_keepfile}")
+        result = subprocess.run(
+            ["git", "ls-files", "--", str(BINARIES_DIR.relative_to(ROOT))],
+            cwd=ROOT,
+            check=True,
+            capture_output=True,
+            text=True,
+        )
+        self.assertEqual(
+            set(result.stdout.splitlines()),
+            {
+                "apps/desktop/src-tauri/binaries/README.md",
+                "apps/desktop/src-tauri/binaries/dairr-backend/.gitkeep",
+            },
+        )
 
     def test_sidecar_build_script_exists_and_is_runnable(self) -> None:
         script = ROOT / "package_tauri_sidecar.py"

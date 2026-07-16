@@ -1,3 +1,0 @@
-#!/bin/sh
-echo "DAIRR backend sidecar placeholder: build the packaged Python backend before production bundling." >&2
-exit 70

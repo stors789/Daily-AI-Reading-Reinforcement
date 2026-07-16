@@ -29,7 +29,19 @@ CARGO_TOML_PATH = DESKTOP_DIR / "src-tauri" / "Cargo.toml"
 CARGO_LOCK_PATH = DESKTOP_DIR / "src-tauri" / "Cargo.lock"
 PACKAGE_JSON_PATH = DESKTOP_DIR / "package.json"
 PACKAGE_LOCK_PATH = DESKTOP_DIR / "package-lock.json"
-SEMVER_RE = re.compile(r"^(?:0|[1-9]\d*)\.(?:0|[1-9]\d*)\.(?:0|[1-9]\d*)(?:-[0-9A-Za-z.-]+)?(?:\+[0-9A-Za-z.-]+)?$")
+# SemVer 2.0.0, including the rule that numeric prerelease identifiers may not
+# contain leading zeroes.  Keep validation here so the local CLI and release
+# workflow cannot drift apart.
+SEMVER_RE = re.compile(
+    r"^(?:0|[1-9]\d*)\."
+    r"(?:0|[1-9]\d*)\."
+    r"(?:0|[1-9]\d*)"
+    r"(?:-(?:"
+    r"(?:0|[1-9]\d*|[0-9A-Za-z-]*[A-Za-z-][0-9A-Za-z-]*)"
+    r"(?:\.(?:0|[1-9]\d*|[0-9A-Za-z-]*[A-Za-z-][0-9A-Za-z-]*))*"
+    r"))?"
+    r"(?:\+[0-9A-Za-z-]+(?:\.[0-9A-Za-z-]+)*)?$"
+)
 REQUIRED_TARGETS = ("darwin-aarch64", "darwin-x86_64", "windows-x86_64")
 WEB_APP_PATH = ROOT / "addon" / "daily_ai_reading_reinforcement" / "web" / "app.js"
 ANDROID_VALIDATOR_PATH = ROOT / "apps" / "android" / "tests" / "validate_scaffold.py"
@@ -57,6 +69,51 @@ def validate_version(version: str) -> str:
 
 def version_from_tag(tag: str) -> str:
     return validate_version(tag)
+
+
+def generated_output_paths(paths: Sequence[str]) -> list[str]:
+    """Filter tracked paths down to generated release/build outputs."""
+    allowed_sidecar_paths = {
+        "apps/desktop/src-tauri/binaries/README.md",
+        "apps/desktop/src-tauri/binaries/dairr-backend/.gitkeep",
+    }
+    forbidden: list[str] = []
+    for raw_path in paths:
+        if not raw_path:
+            continue
+        path = Path(raw_path)
+        generated_root = path.parts and path.parts[0] in {"build", "dist", "release-assets"}
+        tauri_target = raw_path.startswith("apps/desktop/src-tauri/target/")
+        generated_sidecar = (
+            raw_path.startswith("apps/desktop/src-tauri/binaries/")
+            and raw_path not in allowed_sidecar_paths
+        )
+        if generated_root or tauri_target or generated_sidecar:
+            forbidden.append(raw_path)
+    return sorted(forbidden)
+
+
+def tracked_generated_outputs() -> list[str]:
+    """Return generated release/build paths currently tracked by Git."""
+    result = subprocess.run(
+        ["git", "ls-files", "-z"],
+        cwd=ROOT,
+        check=False,
+        capture_output=True,
+    )
+    if result.returncode != 0:
+        detail = result.stderr.decode("utf-8", errors="replace").strip()
+        raise ValueError(f"could not inspect tracked release outputs: {detail or 'git ls-files failed'}")
+    paths = result.stdout.decode("utf-8", errors="strict").split("\0")
+    return generated_output_paths(paths)
+
+
+def assert_no_tracked_generated_outputs() -> None:
+    forbidden = tracked_generated_outputs()
+    if forbidden:
+        raise ValueError(
+            "generated build/release outputs must not be tracked: " + ", ".join(forbidden)
+        )
 
 
 def metadata() -> dict[str, Any]:
@@ -231,6 +288,7 @@ def pre_publish_checks() -> list[tuple[str, list[str], Path, str | None]]:
 
 
 def run_pre_publish_gate(*, allow_missing_tooling: bool = False) -> None:
+    assert_no_tracked_generated_outputs()
     version = assert_checked_in_release_config_safe()
     print(f"Verified credential-free desktop release metadata for {version}.")
     for label, command, cwd, tool in pre_publish_checks():
@@ -336,15 +394,21 @@ def collect_artifacts(target: str, bundle_dir: Path, output_dir: Path) -> None:
     if target.startswith("darwin-"):
         artifact = find_single_artifact(bundle_dir / "macos", "*.app.tar.gz")
         staged_name = f"dairr-{target}.app.tar.gz"
+        installer = find_single_artifact(bundle_dir / "dmg", "*.dmg")
+        installer_name = f"dairr-{target}.dmg"
     else:
         artifact = find_single_artifact(bundle_dir / "nsis", "*-setup.exe")
         staged_name = f"dairr-{target}-setup.exe"
+        installer = None
+        installer_name = None
     signature = artifact.with_name(f"{artifact.name}.sig")
     if not signature.is_file():
         raise ValueError(f"missing updater signature {signature}")
     output_dir.mkdir(parents=True, exist_ok=True)
     shutil.copy2(artifact, output_dir / staged_name)
     shutil.copy2(signature, output_dir / f"{staged_name}.sig")
+    if installer is not None and installer_name is not None:
+        shutil.copy2(installer, output_dir / installer_name)
 
 
 def latest_json(version: str, base_url: str, input_dir: Path, output: Path, notes: str) -> None:
@@ -380,6 +444,12 @@ def build_parser() -> argparse.ArgumentParser:
     subparsers = parser.add_subparsers(dest="command", required=True)
 
     subparsers.add_parser("verify", help="validate checked-in desktop release metadata")
+
+    validate = subparsers.add_parser(
+        "validate-version",
+        help="validate a SemVer release version without changing repository files",
+    )
+    validate.add_argument("--version", required=True)
 
     pre_publish = subparsers.add_parser(
         "pre-publish",
@@ -420,6 +490,8 @@ def main(argv: Sequence[str] | None = None) -> int:
     try:
         if args.command == "verify":
             print(assert_checked_in_release_config_safe())
+        elif args.command == "validate-version":
+            print(validate_version(args.version))
         elif args.command == "pre-publish":
             run_pre_publish_gate(allow_missing_tooling=args.allow_missing_tooling)
         elif args.command == "sync-version":

@@ -24,13 +24,15 @@ jobs:
       - uses: actions/checkout@v4
       - id: version
         shell: bash
+        env:
+          DISPATCH_VERSION: ${{ inputs.version }}
         run: |
           if [[ "${{ github.event_name }}" == "workflow_dispatch" ]]; then
-            VERSION="${{ inputs.version }}"
+            VERSION="$DISPATCH_VERSION"
           else
             VERSION="${GITHUB_REF_NAME#v}"
           fi
-          python3 -c 'import re, sys; sys.exit(0 if re.fullmatch(r"(?:0|[1-9]\\d*)\\.(?:0|[1-9]\\d*)\\.(?:0|[1-9]\\d*)(?:-[0-9A-Za-z.-]+)?(?:\\+[0-9A-Za-z.-]+)?", sys.argv[1]) else 1)' "$VERSION"
+          VERSION="$(python3 scripts/desktop_release.py validate-version --version "$VERSION")"
           echo "value=$VERSION" >> "$GITHUB_OUTPUT"
           echo "tag=v$VERSION" >> "$GITHUB_OUTPUT"
 
