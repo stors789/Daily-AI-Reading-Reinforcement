@@ -71,7 +71,7 @@ class ReleaseWorkbenchTests(unittest.TestCase):
 
     def test_practice_drafts_have_explicit_limit_recovery_and_revision_guard(self) -> None:
         self.assertIn("MAX_PASTED_CHARACTERS = 50000", self.js)
-        self.assertIn("Text exceeds the ${limit.toLocaleString()} character limit and was not sent.", self.js)
+        self.assertIn('wb("sourceLimitRejected", { limit: limit.toLocaleString() })', self.js)
         self.assertIn("practiceStorageKey", self.js)
         self.assertIn('window.addEventListener("beforeunload"', self.js)
         self.assertIn("revision: session.revision", self.js)
@@ -130,6 +130,13 @@ class ReleaseWorkbenchTests(unittest.TestCase):
         self.assertIn("if (!operationIsCurrent(operationId))", self.js)
         self.assertIn("revisionOfSessionId", self.js)
         self.assertIn("releaseState.revisionOfSessionId === session.id", self.js)
+        is_current = self.js[self.js.index("function isCurrent(message)") : self.js.index("function operationIsCurrent(operationId)")]
+        self.assertIn("releaseState.latestRequests.get(meta.channel) !== message.requestId", is_current)
+        self.assertIn('meta.sessionId !== (releaseState.practiceSession || {}).id', is_current)
+        self.assertIn("meta.sessionEpoch !== releaseState.practiceSessionEpoch", is_current)
+        accepted = self.js[self.js.index('if (event === "operationAccepted")') : self.js.index('if (event === "operationProgress")')]
+        self.assertIn("releaseState.operationActions.set", accepted)
+        self.assertLess(self.js.index("if (!isCurrent(message)"), self.js.index('if (event === "operationAccepted")'))
 
     def test_scoring_ui_exposes_transparency_and_manual_categories(self) -> None:
         for text in (
@@ -161,6 +168,9 @@ class ReleaseWorkbenchTests(unittest.TestCase):
             self.assertIn(f'rule.{role}' if role not in {"decayEnabled", "halfLifeDays"} else "rule.decay", self.js)
         self.assertIn("scoringSortDescending", self.js)
         self.assertIn('sortCandidatesButton").addEventListener', self.js)
+        self.assertIn('releaseState.scoringOverrides.get(String(assignment.cardId))', self.js)
+        self.assertIn('category !== "excluded" ? "checked" : ""', self.js)
+        self.assertIn('overrides.get(String(assignment.cardId))', self.js)
 
     def test_prompt_ui_shows_editable_contract_and_exact_preview(self) -> None:
         for element_id in (
@@ -193,6 +203,11 @@ class ReleaseWorkbenchTests(unittest.TestCase):
         self.assertIn("maximumBudgetTokens", self.js)
         self.assertIn("validateReasoning", self.js)
         self.assertIn('(caps.controls || []).includes(intent.control)', self.js)
+        self.assertIn('explicitMode.disabled = reasoning.status !== "available"', self.js)
+        self.assertIn('$("previewReasoningButton").disabled = false', self.js)
+        self.assertIn('$("saveReasoningButton").disabled = false', self.js)
+        self.assertNotIn('setCapabilityAction("previewReasoningButton", "provider_reasoning"', self.js)
+        self.assertNotIn('setCapabilityAction("saveReasoningButton", "provider_reasoning"', self.js)
 
     def test_review_history_complete_reference_and_capability_failures_are_visible(self) -> None:
         self.assertIn('class="attempt-review"', self.js)
@@ -226,6 +241,26 @@ class ReleaseWorkbenchTests(unittest.TestCase):
         self.assertIn('zh: {', self.js)
         self.assertIn('ja: {', self.js)
         self.assertIn("MutationObserver", self.js)
+        self.assertIn("const WORKBENCH_STATE_COPY", self.js)
+        self.assertIn("function workbenchTr(key, params = {})", self.js)
+        self.assertIn('window.addEventListener("dairr-language-changed", refreshDynamicWorkbenchCopy)', self.js)
+        for key in (
+            "charactersCount", "translationReviewed", "operationCancelled",
+            "staleDraft", "sourceLimitRejected", "targetPlanReady",
+            "explicitUnavailableReason", "practiceDeleted",
+        ):
+            self.assertEqual(self.js.count(f'{key}: "'), 3, key)
+
+    def test_prompt_preview_privacy_label_is_truthful_in_all_languages(self) -> None:
+        self.assertIn("API key excluded; private text shown locally", self.html)
+        self.assertNotIn("Non-secret content only", self.html + self.js)
+        self.assertIn("不含 API 密钥；私密文本仅在本地显示", self.js)
+        self.assertIn("API key を除外し、非公開テキストはローカルでのみ表示", self.js)
+
+    def test_practice_delete_uses_the_freshest_visible_revision(self) -> None:
+        self.assertIn('data-session-revision="${Number(session.revision || 0)}"', self.js)
+        self.assertIn("function currentPracticeRevision(sessionId, fallback = 0)", self.js)
+        self.assertIn("revision: currentPracticeRevision(sessionId", self.js)
 
     def test_new_javascript_id_references_exist_in_shared_markup(self) -> None:
         parser = _IdParser()

@@ -779,7 +779,7 @@
       "Import": "导入", "Export": "导出", "Reset": "重置", "Reset task": "重置任务", "Refresh": "刷新", "Working…": "处理中…", "Priority ↓": "优先级 ↓", "Priority ↑": "优先级 ↑",
       "Bring any piece of writing.": "带来任何一段文字。", "Create a pasted-text session, or choose a saved article. Practice continues even when Anki is unavailable.": "创建粘贴文本练习，或选择已保存文章。即使 Anki 不可用，练习仍可继续。", "The article reference is a comparison point, not a single canonical answer.": "文章参考译文用于对照，不是唯一标准答案。",
       "Rank today’s candidates without pretending to measure intrinsic difficulty.": "对今日候选卡排序，不把启发式分数冒充为内在难度。", "Preview scoring to inspect candidates and contributions.": "预览评分以检查候选卡和各项贡献。", "Candidate min–max": "候选集最小–最大", "Clamp 0–100": "限制在 0–100",
-      "Edit the wording and inspect the exact rendered messages and response contract.": "编辑文案，并检查完整渲染消息与响应约定。", "Article generation": "文章生成", "Translation review": "翻译点评", "Back-translation review": "回译点评", "Target usage validation": "目标词使用验证", "Text segmentation": "文本分段", "Preprocessing": "预处理", "Non-secret content only": "不含密钥；私密文本仅在本地显示",
+      "Edit the wording and inspect the exact rendered messages and response contract.": "编辑文案，并检查完整渲染消息与响应约定。", "Article generation": "文章生成", "Translation review": "翻译点评", "Back-translation review": "回译点评", "Target usage validation": "目标词使用验证", "Text segmentation": "文本分段", "Preprocessing": "预处理", "API key excluded; private text shown locally": "不含 API 密钥；私密文本仅在本地显示",
       "Reasoning controls follow the selected provider’s declared capabilities.": "推理控件严格遵循所选提供商声明的能力。", "Send no reasoning or thinking parameter.": "不发送推理或思考参数。", "Do not send an override.": "不发送覆盖值。", "Use a provider-supported effort or budget.": "使用提供商支持的强度或预算。", "API keys and private prompt content never appear here.": "API 密钥和私密提示词内容不会出现在此处。"
     },
     ja: {
@@ -795,7 +795,7 @@
       "Import": "インポート", "Export": "エクスポート", "Reset": "リセット", "Reset task": "タスクをリセット", "Refresh": "更新", "Working…": "処理中…", "Priority ↓": "優先度 ↓", "Priority ↑": "優先度 ↑",
       "Bring any piece of writing.": "どんな文章でも練習できます。", "Create a pasted-text session, or choose a saved article. Practice continues even when Anki is unavailable.": "貼り付けテキストを使うか、保存済み記事を選びます。Anki が利用できなくても練習できます。", "The article reference is a comparison point, not a single canonical answer.": "参考訳は比較対象であり、唯一の正解ではありません。",
       "Rank today’s candidates without pretending to measure intrinsic difficulty.": "ヒューリスティックを本質的な難度とみなさず、今日の候補を並べます。", "Preview scoring to inspect candidates and contributions.": "スコアをプレビューし、候補と寄与を確認します。", "Candidate min–max": "候補の最小–最大", "Clamp 0–100": "0–100 に制限",
-      "Edit the wording and inspect the exact rendered messages and response contract.": "文言を編集し、実際のメッセージと応答契約を確認します。", "Article generation": "記事生成", "Translation review": "翻訳添削", "Back-translation review": "逆翻訳添削", "Target usage validation": "対象語の使用検証", "Text segmentation": "テキスト分割", "Preprocessing": "前処理", "Non-secret content only": "API key を除き、非公開テキストはローカルのみで表示",
+      "Edit the wording and inspect the exact rendered messages and response contract.": "文言を編集し、実際のメッセージと応答契約を確認します。", "Article generation": "記事生成", "Translation review": "翻訳添削", "Back-translation review": "逆翻訳添削", "Target usage validation": "対象語の使用検証", "Text segmentation": "テキスト分割", "Preprocessing": "前処理", "API key excluded; private text shown locally": "API key を除外し、非公開テキストはローカルでのみ表示",
       "Reasoning controls follow the selected provider’s declared capabilities.": "推論制御は選択したプロバイダーの宣言済み機能に従います。", "Send no reasoning or thinking parameter.": "推論または thinking パラメーターを送信しません。", "Do not send an override.": "上書きを送信しません。", "Use a provider-supported effort or budget.": "プロバイダー対応の強度または予算を使います。", "API keys and private prompt content never appear here.": "API key と非公開プロンプトはここに表示されません。"
     }
   };
@@ -828,6 +828,63 @@
     });
   }
   window.__DAIRR_APPLY_WORKBENCH_I18N__ = applyWorkbenchCopy;
+
+  // Dynamic workbench state uses semantic keys rather than English fragments.
+  // This keeps async status, validation, and confirmation copy in sync when a
+  // learner changes language after the DOM has already been rendered.
+  const WORKBENCH_STATE_COPY = {
+    en: {
+      charactersCount: "{count} / {limit} characters", capabilitySummary: "{available} of {total} workspace capabilities available · Pasted-text practice stays local and independent of Anki.", unavailableRuntime: "Unavailable in this runtime.",
+      article: "Article", pastedText: "Pasted text", savedAt: "Saved {time}", notSavedYet: "Not saved yet", unsavedChanges: "Unsaved changes", recoveredDraft: "Recovered a local unsaved draft", unsavedSegmentation: "Unsaved segmentation edit", revisionDraft: "Revision draft", splitHint: "Place the cursor between two non-empty parts of the segment.", justNow: "just now", minutesAgo: "{count}m ago", locally: "locally", segmentAttempt: "Segment attempt", completeAttempt: "Complete-text attempt",
+      completePosition: "Complete text · {count} segments", segmentPosition: "Segment {current} of {total}", revealReference: "Reveal reference", hideReference: "Hide reference", noAttempts: "No reviewed attempts yet.",
+      saveQueued: "Save queued…", changesQueued: "Newer changes queued…", savingSession: "Saving session…", autosaving: "Autosaving…", savingSegments: "Saving segmentation…", reviewingTranslation: "Reviewing translation…", cancelKeepsDraft: "You can cancel without losing the draft.",
+      noSessions: "No saved practice sessions yet. Save one from Practice to reopen it here.", attemptsCount: "{status} · {count} attempts · {time}", promptValue: "Prompt value", insertVariable: "Insert variable", missingVariables: "Missing variables: {variables}", noResponseContract: "No structured response contract (plain-text mode).",
+      providerRange: "Provider range: {minimum}–{maximum} tokens.", budgetsUnavailable: "Token budgets are unavailable for this provider.", supported: "Supported", explicitUnavailable: "Explicit control unavailable", explicitSupportedReason: "Explicit controls are supported by this provider.", explicitUnavailableReason: "This provider declares no safe explicit reasoning controls. Disabled and provider default remain available.",
+      explicitReasoningUnavailable: "Explicit reasoning is unavailable for this provider.", chooseReasoningControl: "Choose a reasoning control supported by this provider.", chooseEffort: "Choose a supported effort level.", budgetRangeError: "Enter a whole-token budget from {minimum} to {maximum}.",
+      localNotSaved: "Local changes not saved", newerNotSaved: "Newer changes not saved yet", autosavedLocally: "Autosaved locally", sessionSaved: "Session saved", staleDraft: "This session changed elsewhere. Your local draft is safe; reopen the session before saving again.", draftSaveFailed: "The draft could not be saved. Your local copy is still safe.",
+      translationReviewed: "Translation reviewed. You can revise and resubmit.", operationCancelled: "Operation cancelled. Your draft is still here.", operationFailed: "The operation failed.", requestFailed: "The request failed.", practiceDeleted: "Practice session deleted.", promptsImported: "Prompt presets imported.",
+      overLimit: "This text is {count} characters over the explicit limit. Split it into separate sessions.", targetLanguageRequired: "Choose a target language.", sourceTextRequired: "Paste or write source text first.", sourceLimitRejected: "Text exceeds the {limit} character limit and was not sent.", articleRequired: "Choose a saved DAIRR article.", translationRequired: "Write a translation before requesting review.", sessionRequired: "Create or open a practice session first.",
+      confirmDelete: "Confirm delete", delete: "Delete", targetPlanActive: "Target plan active", targetPlanReady: "Target plan ready. Generate will preserve your required, preferred, optional, and excluded choices.", confirmReset: "Confirm reset", reset: "Reset", updatedTargetPlan: "Use updated target plan", allTargetsExcluded: "The target plan excludes every candidate. Include at least one target.", generating: "Generating…", confirmResetTask: "Confirm reset", resetTask: "Reset task",
+      priorityDown: "Priority ↓", priorityUp: "Priority ↑", includeCandidate: "Include {candidate}", contributionsSummary: "{applied} contributions · {unavailable} unavailable", noCandidates: "No candidates were returned. Check the Anki capability reason above.", generatedWarnings: "Article generated with {count} warning(s).", generatedTargetPlan: "Article generated from the target plan."
+    },
+    zh: {
+      charactersCount: "{count} / {limit} 字符", capabilitySummary: "工作区 {total} 项能力中有 {available} 项可用 · 粘贴文本练习保存在本地且不依赖 Anki。", unavailableRuntime: "当前运行环境不可用。",
+      article: "文章", pastedText: "粘贴文本", savedAt: "已保存于 {time}", notSavedYet: "尚未保存", unsavedChanges: "有未保存更改", recoveredDraft: "已恢复本地未保存草稿", unsavedSegmentation: "分段修改尚未保存", revisionDraft: "修订草稿", splitHint: "请将光标放在分段内两个非空部分之间。", justNow: "刚刚", minutesAgo: "{count} 分钟前", locally: "本地", segmentAttempt: "分段尝试", completeAttempt: "全文尝试",
+      completePosition: "完整文本 · {count} 段", segmentPosition: "第 {current} 段，共 {total} 段", revealReference: "显示参考译文", hideReference: "隐藏参考译文", noAttempts: "尚无已点评的尝试。",
+      saveQueued: "已排队保存…", changesQueued: "较新的更改已排队…", savingSession: "正在保存练习…", autosaving: "正在自动保存…", savingSegments: "正在保存分段…", reviewingTranslation: "正在点评翻译…", cancelKeepsDraft: "可以取消，草稿不会丢失。",
+      noSessions: "尚无已保存的练习。请先在翻译练习中保存。", attemptsCount: "{status} · {count} 次尝试 · {time}", promptValue: "提示词变量值", insertVariable: "插入变量", missingVariables: "缺少变量：{variables}", noResponseContract: "纯文本模式没有结构化响应约定。",
+      providerRange: "提供商范围：{minimum}–{maximum} tokens。", budgetsUnavailable: "该提供商不支持 Token 预算。", supported: "支持", explicitUnavailable: "不支持显式控制", explicitSupportedReason: "该提供商支持显式推理控制。", explicitUnavailableReason: "该提供商未声明安全的显式推理控制；禁用和提供商默认仍可使用。",
+      explicitReasoningUnavailable: "该提供商不支持显式推理。", chooseReasoningControl: "请选择该提供商支持的推理控制。", chooseEffort: "请选择支持的推理强度。", budgetRangeError: "请输入 {minimum} 到 {maximum} 之间的整数 Token 预算。",
+      localNotSaved: "本地更改尚未保存", newerNotSaved: "较新的更改尚未保存", autosavedLocally: "已自动保存到本地", sessionSaved: "练习已保存", staleDraft: "此练习已在其他位置更改。你的本地草稿是安全的；请重新打开后再保存。", draftSaveFailed: "草稿保存失败，但本地副本仍然安全。",
+      translationReviewed: "翻译点评完成，可以修改后再次提交。", operationCancelled: "操作已取消，草稿仍然保留。", operationFailed: "操作失败。", requestFailed: "请求失败。", practiceDeleted: "练习已删除。", promptsImported: "提示词预设已导入。",
+      overLimit: "文本超出明确限制 {count} 个字符，请拆成多个练习。", targetLanguageRequired: "请选择目标语言。", sourceTextRequired: "请先粘贴或输入原文。", sourceLimitRejected: "文本超过 {limit} 字符限制，未发送。", articleRequired: "请选择已保存的 DAIRR 文章。", translationRequired: "请先写下译文再请求点评。", sessionRequired: "请先创建或打开一个练习。",
+      confirmDelete: "确认删除", delete: "删除", targetPlanActive: "目标方案已启用", targetPlanReady: "目标方案已就绪；生成文章时会保留必需、优先、可选和排除选择。", confirmReset: "确认重置", reset: "重置", updatedTargetPlan: "使用更新后的目标方案", allTargetsExcluded: "目标方案排除了所有候选卡，请至少纳入一项。", generating: "正在生成…", confirmResetTask: "确认重置", resetTask: "重置任务",
+      priorityDown: "优先级 ↓", priorityUp: "优先级 ↑", includeCandidate: "纳入 {candidate}", contributionsSummary: "{applied} 项贡献 · {unavailable} 项不可用", noCandidates: "未返回候选卡，请检查上方 Anki 能力说明。", generatedWarnings: "文章已生成，有 {count} 条警告。", generatedTargetPlan: "已根据目标方案生成文章。"
+    },
+    ja: {
+      charactersCount: "{count} / {limit} 文字", capabilitySummary: "ワークスペース機能 {total} 件中 {available} 件が利用可能 · 貼り付けテキスト練習はローカルに保存され、Anki に依存しません。", unavailableRuntime: "この実行環境では利用できません。",
+      article: "記事", pastedText: "貼り付けテキスト", savedAt: "{time} に保存", notSavedYet: "未保存", unsavedChanges: "未保存の変更", recoveredDraft: "ローカルの未保存下書きを復元しました", unsavedSegmentation: "未保存の分割編集", revisionDraft: "修正下書き", splitHint: "セグメント内の空でない 2 部分の間にカーソルを置いてください。", justNow: "たった今", minutesAgo: "{count} 分前", locally: "ローカル", segmentAttempt: "セグメント回答", completeAttempt: "全文回答",
+      completePosition: "全文 · {count} セグメント", segmentPosition: "{total} 件中 {current} 番目", revealReference: "参考訳を表示", hideReference: "参考訳を隠す", noAttempts: "添削済みの回答はまだありません。",
+      saveQueued: "保存を待機中…", changesQueued: "新しい変更を待機中…", savingSession: "練習を保存中…", autosaving: "自動保存中…", savingSegments: "分割を保存中…", reviewingTranslation: "翻訳を添削中…", cancelKeepsDraft: "キャンセルしても下書きは失われません。",
+      noSessions: "保存済みの練習はありません。翻訳練習から保存してください。", attemptsCount: "{status} · {count} 回 · {time}", promptValue: "プロンプト値", insertVariable: "変数を挿入", missingVariables: "不足している変数：{variables}", noResponseContract: "プレーンテキストモードには構造化応答契約がありません。",
+      providerRange: "プロバイダー範囲：{minimum}–{maximum} tokens。", budgetsUnavailable: "このプロバイダーでは Token 予算を利用できません。", supported: "対応", explicitUnavailable: "明示的制御は利用不可", explicitSupportedReason: "このプロバイダーは明示的推論制御に対応しています。", explicitUnavailableReason: "このプロバイダーは安全な明示的推論制御を宣言していません。無効とプロバイダー既定は使用できます。",
+      explicitReasoningUnavailable: "このプロバイダーでは明示的推論を利用できません。", chooseReasoningControl: "対応する推論制御を選択してください。", chooseEffort: "対応する推論強度を選択してください。", budgetRangeError: "{minimum} から {maximum} までの整数 Token 予算を入力してください。",
+      localNotSaved: "ローカル変更は未保存", newerNotSaved: "新しい変更は未保存", autosavedLocally: "ローカルに自動保存済み", sessionSaved: "練習を保存しました", staleDraft: "この練習は別の場所で変更されました。ローカル下書きは安全です。開き直してから保存してください。", draftSaveFailed: "下書きを保存できませんでしたが、ローカルコピーは安全です。",
+      translationReviewed: "翻訳の添削が完了しました。修正して再送信できます。", operationCancelled: "操作をキャンセルしました。下書きは保持されています。", operationFailed: "操作に失敗しました。", requestFailed: "リクエストに失敗しました。", practiceDeleted: "練習を削除しました。", promptsImported: "プロンプトプリセットをインポートしました。",
+      overLimit: "明示的な上限を {count} 文字超えています。複数の練習に分けてください。", targetLanguageRequired: "翻訳先の言語を選択してください。", sourceTextRequired: "先に原文を貼り付けるか入力してください。", sourceLimitRejected: "{limit} 文字の上限を超えたため送信しませんでした。", articleRequired: "保存済み DAIRR 記事を選択してください。", translationRequired: "添削を依頼する前に翻訳を入力してください。", sessionRequired: "先に練習を作成するか開いてください。",
+      confirmDelete: "削除を確認", delete: "削除", targetPlanActive: "対象プランを有効化", targetPlanReady: "対象プランを準備しました。生成時に必須・優先・任意・除外の選択を保持します。", confirmReset: "リセットを確認", reset: "リセット", updatedTargetPlan: "更新した対象プランを使用", allTargetsExcluded: "対象プランですべての候補が除外されています。1 件以上を含めてください。", generating: "生成中…", confirmResetTask: "リセットを確認", resetTask: "タスクをリセット",
+      priorityDown: "優先度 ↓", priorityUp: "優先度 ↑", includeCandidate: "{candidate} を含める", contributionsSummary: "寄与 {applied} 件 · 利用不可 {unavailable} 件", noCandidates: "候補が返されませんでした。上の Anki 機能理由を確認してください。", generatedWarnings: "記事を生成しました（警告 {count} 件）。", generatedTargetPlan: "対象プランから記事を生成しました。"
+    }
+  };
+
+  function workbenchTr(key, params = {}) {
+    const language = WORKBENCH_STATE_COPY[state.uiLanguage] || WORKBENCH_STATE_COPY.en;
+    const template = language[key] || WORKBENCH_STATE_COPY.en[key] || key;
+    return String(template).replace(/\{([A-Za-z0-9_]+)\}/g, (_match, name) => (
+      Object.prototype.hasOwnProperty.call(params, name) ? String(params[name]) : `{${name}}`
+    ));
+  }
+  window.__DAIRR_WORKBENCH_TR__ = workbenchTr;
 
   const MESSAGE_KEYS = {
     "Enter or save an API key before fetching models.": "apiMissingKeyForModels",
@@ -869,6 +926,7 @@
   }
 
   function applyI18n() {
+    document.documentElement.lang = state.uiLanguage === "zh" ? "zh-CN" : state.uiLanguage;
     el.eyebrowText.textContent = tr("eyebrow");
     el.titleText.textContent = tr("title");
     if (el.sourcesHeading) el.sourcesHeading.textContent = tr("sources");
@@ -954,6 +1012,9 @@
       }
     });
     applyWorkbenchCopy();
+    if (typeof window.CustomEvent === "function") {
+      window.dispatchEvent(new CustomEvent("dairr-language-changed", { detail: { language: state.uiLanguage } }));
+    }
    renderModelOptions();
     renderDesktopSettings();
     updateCardSelectionControls();
@@ -2598,6 +2659,33 @@
   const $ = (id) => document.getElementById(id);
   const qa = (selector, root = document) => Array.from(root.querySelectorAll(selector));
   const reducedMotion = () => window.matchMedia && window.matchMedia("(prefers-reduced-motion: reduce)").matches;
+  const wb = (key, params = {}) => typeof window.__DAIRR_WORKBENCH_TR__ === "function"
+    ? window.__DAIRR_WORKBENCH_TR__(key, params) : key;
+
+  function setWbText(target, key, params = {}) {
+    const element = typeof target === "string" ? $(target) : target;
+    if (!element) return;
+    element.dataset.wbKey = key;
+    element.dataset.wbParams = JSON.stringify(params);
+    element.textContent = wb(key, params);
+  }
+
+  function refreshDynamicWorkbenchCopy() {
+    qa("[data-wb-key]").forEach((element) => {
+      let params = {};
+      try { params = JSON.parse(element.dataset.wbParams || "{}"); } catch (_error) { /* use no parameters */ }
+      element.textContent = wb(element.dataset.wbKey, params);
+    });
+    if (releaseState.practiceSession) {
+      renderPracticeEditor();
+      renderPracticeAttempts();
+    }
+    if (releaseState.practiceSessions.length) renderPracticeHistory(releaseState.practiceSessions);
+    if (releaseState.scoringCandidates.length) renderScoringCandidates(
+      { selection: { assignments: releaseState.scoringCandidates } },
+      { preservePlanState: true },
+    );
+  }
 
   function requestId() {
     if (window.crypto && typeof window.crypto.randomUUID === "function") return window.crypto.randomUUID();
@@ -2628,7 +2716,12 @@
   function isCurrent(message) {
     const meta = releaseState.requestActions.get(message.requestId);
     if (!meta) return true; // Legacy bridge may have generated the request ID.
-    return releaseState.latestRequests.get(meta.channel) === message.requestId;
+    if (releaseState.latestRequests.get(meta.channel) !== message.requestId) return false;
+    if (meta.sessionId && (
+      meta.sessionId !== (releaseState.practiceSession || {}).id
+      || meta.sessionEpoch !== releaseState.practiceSessionEpoch
+    )) return false;
+    return true;
   }
 
   function operationIsCurrent(operationId) {
@@ -2709,16 +2802,16 @@
     releaseState.capabilities = payload.capabilities || {};
     releaseState.practiceLimits = payload.practiceLimits || releaseState.practiceLimits;
     const practiceLimit = effectivePracticeCharacterLimit();
-    $("practiceTextCount").textContent = `${$("practiceSourceText").value.length.toLocaleString()} / ${practiceLimit.toLocaleString()} characters`;
+    setWbText("practiceTextCount", "charactersCount", { count: $("practiceSourceText").value.length.toLocaleString(), limit: practiceLimit.toLocaleString() });
     const values = Object.values(releaseState.capabilities);
     const available = values.filter((item) => item.status === "available").length;
     const summary = $("capabilitySummary");
-    if (summary) summary.textContent = `${available} of ${values.length} workspace capabilities available · Pasted-text practice stays local and independent of Anki.`;
+    if (summary) setWbText(summary, "capabilitySummary", { available, total: values.length });
     const details = $("capabilityDetails");
     const unavailable = Object.entries(releaseState.capabilities).filter(([, item]) => item.status !== "available");
     if (details) {
       details.hidden = !unavailable.length;
-      details.innerHTML = unavailable.map(([id, item]) => `<p><strong>${escapeText(id.replace(/_/g, " "))}</strong><span>${escapeText(item.message || item.detail || item.reason || "Unavailable in this runtime.")}</span></p>`).join("");
+      details.innerHTML = unavailable.map(([id, item]) => `<p><strong>${escapeText(id.replace(/_/g, " "))}</strong><span>${escapeText(item.message || item.detail || item.reason || wb("unavailableRuntime"))}</span></p>`).join("");
     }
     const dot = document.querySelector(".capability-dot");
     if (dot) {
@@ -2732,9 +2825,16 @@
     setCapabilityAction("savePromptButton", "custom_prompts", "Prompt customization is unavailable.");
     setCapabilityAction("previewPracticePromptButton", "custom_prompts", "AI prompt preview is unavailable in this runtime.");
     setCapabilityAction("submitPracticeButton", "custom_prompts", "AI review is unavailable in this runtime. Your local draft remains editable.");
-    setCapabilityAction("previewReasoningButton", "provider_reasoning", "Reasoning controls are unavailable for this provider.");
-    setCapabilityAction("saveReasoningButton", "provider_reasoning", "Reasoning controls are unavailable for this provider.");
+    // `provider_reasoning` describes explicit provider knobs, not whether a
+    // learner may save/preview the safe "disabled" or "provider default"
+    // intents.  Those two modes remain usable for every provider.
+    $("previewReasoningButton").disabled = false;
+    $("previewReasoningButton").setAttribute("aria-disabled", "false");
+    $("saveReasoningButton").disabled = false;
+    $("saveReasoningButton").setAttribute("aria-disabled", "false");
     const reasoning = releaseState.capabilities.provider_reasoning;
+    const explicitMode = document.querySelector('input[name="reasoningMode"][value="explicit"]');
+    if (explicitMode && reasoning) explicitMode.disabled = reasoning.status !== "available";
     if (reasoning) renderReasoningCapabilityReason(reasoning.message || reasoning.detail, reasoning.status === "available");
   }
 
@@ -2819,8 +2919,8 @@
     $("practiceEmpty").hidden = true;
     $("practiceEditor").hidden = false;
     $("savePracticeButton").disabled = false;
-    $("practiceSessionLabel").textContent = `${session.kind === "article" ? "Article" : "Pasted text"} · ${session.sourceLanguage} → ${session.targetLanguage}`;
-    setDraftState(session.lastAutosavedAt ? `Saved ${formatRelativeTime(session.lastAutosavedAt)}` : "Not saved yet", false);
+    $("practiceSessionLabel").textContent = `${wb(session.kind === "article" ? "article" : "pastedText")} · ${session.sourceLanguage} → ${session.targetLanguage}`;
+    setDraftState(session.lastAutosavedAt ? wb("savedAt", { time: formatRelativeTime(session.lastAutosavedAt) }) : wb("notSavedYet"), false);
     renderPracticeEditor();
     renderPracticeAttempts();
     const reviewed = (session.attempts || []).filter((attempt) => attempt.review).slice(-1)[0];
@@ -2836,17 +2936,17 @@
       }
       renderPracticeEditor();
       $("practiceTranslation").value = recovered.translation;
-      markPracticeDirty("Recovered a local unsaved draft");
+      markPracticeDirty(wb("recoveredDraft"));
     }
   }
 
   function formatRelativeTime(value) {
     const time = Date.parse(value || "");
-    if (!Number.isFinite(time)) return "locally";
+    if (!Number.isFinite(time)) return wb("locally");
     const seconds = Math.max(0, Math.round((Date.now() - time) / 1000));
-    if (seconds < 60) return "just now";
-    if (seconds < 3600) return `${Math.floor(seconds / 60)}m ago`;
-    return new Date(time).toLocaleString();
+    if (seconds < 60) return wb("justNow");
+    if (seconds < 3600) return wb("minutesAgo", { count: Math.floor(seconds / 60) });
+    return new Date(time).toLocaleString(document.documentElement.lang || undefined);
   }
 
   function setDraftState(text, dirty) {
@@ -2856,7 +2956,7 @@
     state.classList.toggle("unsaved", Boolean(dirty));
   }
 
-  function markPracticeDirty(message = "Unsaved changes") {
+  function markPracticeDirty(message = wb("unsavedChanges")) {
     // Capture the DOM value synchronously. A concurrent segmentation response
     // may arrive before the debounce fires and must merge this newest draft.
     saveDraftInMemory();
@@ -2925,7 +3025,9 @@
       return `<button type="button" class="${classes.join(" ")}" data-segment-index="${index}" aria-label="Open segment ${index + 1}" aria-pressed="${active}">${index + 1}</button>`;
     }).join("");
     const complete = releaseState.practiceScope === "complete_text";
-    $("segmentPosition").textContent = complete ? `Complete text · ${session.segments.length} segments` : `Segment ${releaseState.selectedSegmentIndex + 1} of ${session.segments.length}`;
+    $("segmentPosition").textContent = complete
+      ? wb("completePosition", { count: session.segments.length })
+      : wb("segmentPosition", { current: releaseState.selectedSegmentIndex + 1, total: session.segments.length });
     $("segmentLanguagePair").textContent = `${session.sourceLanguage} → ${session.targetLanguage}`;
     $("segmentSourceEditor").value = complete ? session.sourceText : (segment ? segment.sourceText : "");
     $("segmentSourceEditor").readOnly = complete || Boolean((session.attempts || []).length);
@@ -2937,7 +3039,7 @@
     $("practiceReferenceText").textContent = reference || "";
     $("practiceReferenceText").hidden = true;
     $("revealReferenceButton").setAttribute("aria-expanded", "false");
-    $("revealReferenceButton").textContent = "Reveal reference";
+    setWbText("revealReferenceButton", "revealReference");
     ["splitSegmentButton", "mergeSegmentButton", "moveSegmentUpButton", "moveSegmentDownButton"].forEach((id) => { $(id).disabled = complete || Boolean((session.attempts || []).length); });
     $("moveSegmentUpButton").disabled = complete || releaseState.selectedSegmentIndex === 0 || Boolean((session.attempts || []).length);
     $("moveSegmentDownButton").disabled = complete || releaseState.selectedSegmentIndex >= session.segments.length - 1 || Boolean((session.attempts || []).length);
@@ -2947,7 +3049,7 @@
     const session = releaseState.practiceSession;
     const container = $("practiceAttempts");
     if (!session || !(session.attempts || []).length) {
-      container.innerHTML = '<p class="empty-state">No reviewed attempts yet.</p>';
+      container.innerHTML = `<p class="empty-state">${escapeText(wb("noAttempts"))}</p>`;
       return;
     }
     container.innerHTML = session.attempts.slice().reverse().map((attempt, index) => {
@@ -2956,7 +3058,7 @@
       return `
       <article class="attempt-row">
         <strong>${session.attempts.length - index}</strong>
-        <span>${escapeText(attempt.scope === "segment" ? "Segment attempt" : "Complete-text attempt")} · ${escapeText(formatRelativeTime(attempt.createdAt))}</span>
+        <span>${escapeText(wb(attempt.scope === "segment" ? "segmentAttempt" : "completeAttempt"))} · ${escapeText(formatRelativeTime(attempt.createdAt))}</span>
         <button class="text-button" type="button" data-revise-attempt="${escapeText(attempt.id)}">Revise</button>
         <p>${escapeText(attempt.translation)}</p>
         ${review ? `<div class="attempt-review"><strong>${escapeText(review.overall || "Review feedback")}</strong>${review.score != null ? `<span>${escapeText(review.score)}</span>` : ""}${categories ? `<ul>${categories}</ul>` : ""}${review.suggestedRevision || review.suggestedTranslation ? `<p>${escapeText(review.suggestedRevision || review.suggestedTranslation)}</p>` : ""}</div>` : ""}
@@ -2970,7 +3072,7 @@
     saveDraftInMemory();
     if (releaseState.draftSaveInFlight || releaseState.segmentSaveInFlight) {
       releaseState.queuedDraftSave = { persist: Boolean(persist || (releaseState.queuedDraftSave && releaseState.queuedDraftSave.persist)) };
-      setDraftState(persist ? "Save queued…" : "Newer changes queued…", true);
+      setDraftState(wb(persist ? "saveQueued" : "changesQueued"), true);
       return;
     }
     const segment = releaseState.practiceScope === "segment" ? currentSegment() : null;
@@ -2989,7 +3091,7 @@
     }, { channel: `practiceDraft:${session.id}`, sessionId: session.id, sessionEpoch: releaseState.practiceSessionEpoch });
     releaseState.draftSaveInFlight = id;
     releaseState.pendingDraftSaves.set(id, meta);
-    setDraftState(persist ? "Saving session…" : "Autosaving…", true);
+    setDraftState(wb(persist ? "savingSession" : "autosaving"), true);
   }
 
   function commitSegments(segments) {
@@ -3001,7 +3103,7 @@
     releaseState.draftDirty = true;
     rememberLocalDraft();
     renderPracticeEditor();
-    setDraftState("Saving segmentation…", true);
+    setDraftState(wb("savingSegments"), true);
     releaseState.queuedSegments = session.segments.map((segment) => ({ ...segment }));
     flushPracticeMutationQueue();
   }
@@ -3037,7 +3139,7 @@
     const cursor = editor.selectionStart;
     const before = editor.value.slice(0, cursor).trim();
     const after = editor.value.slice(cursor).trim();
-    if (!before || !after) return setError("practiceEditorError", "Place the cursor between two non-empty parts of the segment.");
+    if (!before || !after) return setError("practiceEditorError", wb("splitHint"));
     const segments = releaseState.practiceSession.segments.slice();
     segments.splice(releaseState.selectedSegmentIndex, 1,
       { ...segment, sourceText: before, referenceText: null },
@@ -3065,11 +3167,11 @@
     commitSegments(segments);
   }
 
-  function showPracticeOperation(operationId, title = "Reviewing translation…") {
+  function showPracticeOperation(operationId, title = wb("reviewingTranslation")) {
     releaseState.activeOperations.set("practice", operationId);
     $("practiceOperation").hidden = false;
     $("practiceOperationTitle").textContent = title;
-    $("practiceOperationDetail").textContent = "You can cancel without losing the draft.";
+    setWbText("practiceOperationDetail", "cancelKeepsDraft");
     $("practiceOperationProgress").style.width = "8%";
     $("cancelPracticeOperationButton").hidden = false;
     $("submitPracticeButton").disabled = true;
@@ -3107,18 +3209,25 @@
     releaseState.practiceSessions = sessions || [];
     const container = $("practiceHistoryList");
     if (!releaseState.practiceSessions.length) {
-      container.innerHTML = '<div class="empty-state">No saved practice sessions yet. Save one from Practice to reopen it here.</div>';
+      container.innerHTML = `<div class="empty-state">${escapeText(wb("noSessions"))}</div>`;
       return;
     }
     container.innerHTML = releaseState.practiceSessions.map((session) => `
       <article class="practice-history-card">
         <button type="button" class="practice-history-open" data-practice-session-id="${escapeText(session.id)}">
-          <span class="panel-kicker">${escapeText(session.kind === "article" ? "Article" : "Pasted text")}</span>
+          <span class="panel-kicker">${escapeText(wb(session.kind === "article" ? "article" : "pastedText"))}</span>
           <h3>${escapeText(session.articleTitle || `${session.sourceLanguage} → ${session.targetLanguage}`)}</h3>
-          <p>${escapeText(session.status)} · ${Number(session.attemptCount || 0)} attempts · ${escapeText(formatRelativeTime(session.updatedAt))}</p>
+          <p>${escapeText(wb("attemptsCount", { status: session.status, count: Number(session.attemptCount || 0), time: formatRelativeTime(session.updatedAt) }))}</p>
         </button>
-        <button class="text-button history-delete-action" type="button" data-delete-practice-session="${escapeText(session.id)}">Delete</button>
+        <button class="text-button history-delete-action" type="button" data-delete-practice-session="${escapeText(session.id)}" data-session-revision="${Number(session.revision || 0)}">${escapeText(wb("delete"))}</button>
       </article>`).join("");
+  }
+
+  function currentPracticeRevision(sessionId, fallback = 0) {
+    const active = releaseState.practiceSession;
+    if (active && active.id === sessionId) return Number(active.revision || 0);
+    const summary = releaseState.practiceSessions.find((session) => session.id === sessionId);
+    return Number(summary ? summary.revision || 0 : fallback);
   }
 
   function scoringScopePayload() {
@@ -3193,31 +3302,35 @@
     qa("[data-signal-rule]").forEach((row) => { row.querySelector('[data-role="transform"]').value = (preset.rules[row.dataset.signalRule] || {}).transform || "linear"; });
   }
 
-  function renderScoringCandidates(result) {
+  function renderScoringCandidates(result, options = {}) {
     const assignments = result.selection && result.selection.assignments ? result.selection.assignments.slice() : [];
     assignments.sort((left, right) => {
       const delta = Number((right.score || {}).total || 0) - Number((left.score || {}).total || 0);
       return releaseState.scoringSortDescending ? delta : -delta;
     });
     releaseState.scoringCandidates = assignments;
-    releaseState.targetPlanActive = false;
+    if (!options.preservePlanState) releaseState.targetPlanActive = false;
     $("useTargetPlanButton").disabled = !assignments.length || !capabilityAvailable("target_card_scoring");
-    $("sortCandidatesButton").textContent = releaseState.scoringSortDescending ? "Priority ↓" : "Priority ↑";
+    setWbText("sortCandidatesButton", releaseState.scoringSortDescending ? "priorityDown" : "priorityUp");
     $("sortCandidatesButton").setAttribute("aria-pressed", String(releaseState.scoringSortDescending));
-    if ($("useTargetPlanButton").dataset.baseLabel) $("useTargetPlanButton").textContent = $("useTargetPlanButton").dataset.baseLabel;
+    if (!options.preservePlanState && $("useTargetPlanButton").dataset.baseLabel) $("useTargetPlanButton").textContent = $("useTargetPlanButton").dataset.baseLabel;
     $("scoringCandidates").innerHTML = assignments.map((assignment) => {
       const score = assignment.score || {}, contributions = score.contributions || [];
+      const category = releaseState.scoringOverrides.get(String(assignment.cardId)) || assignment.category || "optional";
       const unavailable = contributions.filter((item) => item.status === "unavailable");
       const applied = contributions.filter((item) => item.status === "applied" && item.contribution !== 0);
       return `<tr data-card-id="${escapeText(assignment.cardId)}">
-        <td><input type="checkbox" data-target-enabled aria-label="Include ${escapeText(score.term || assignment.cardId)}" ${assignment.selected ? "checked" : ""}></td>
+        <td><input type="checkbox" data-target-enabled aria-label="${escapeText(wb("includeCandidate", { candidate: score.term || assignment.cardId }))}" ${category !== "excluded" ? "checked" : ""}></td>
         <td><strong>${escapeText(score.term || assignment.cardId)}</strong><div class="muted">${escapeText(assignment.explanation || "")}</div></td>
         <td class="score-cell">${Number(score.total || 0).toFixed(1)}</td>
         <td><select data-target-category aria-label="Target category"><option value="required">Required</option><option value="preferred">Preferred</option><option value="optional">Optional</option><option value="excluded">Excluded</option></select></td>
-        <td><details><summary>${applied.length} contributions · ${unavailable.length} unavailable</summary><div class="contribution-list">${contributions.map((item) => `<span class="${item.contribution < 0 ? "contribution-negative" : "contribution-positive"}">${escapeText(item.signal)}: ${item.status === "unavailable" ? `unavailable (${item.reason})` : Number(item.contribution || 0).toFixed(1)}</span>`).join("")}</div></details></td>
+        <td><details><summary>${escapeText(wb("contributionsSummary", { applied: applied.length, unavailable: unavailable.length }))}</summary><div class="contribution-list">${contributions.map((item) => `<span class="${item.contribution < 0 ? "contribution-negative" : "contribution-positive"}">${escapeText(item.signal)}: ${item.status === "unavailable" ? `unavailable (${item.reason})` : Number(item.contribution || 0).toFixed(1)}</span>`).join("")}</div></details></td>
       </tr>`;
-    }).join("") || '<tr><td colspan="5" class="empty-state">No candidates were returned. Check the Anki capability reason above.</td></tr>';
-    qa("#scoringCandidates tr[data-card-id]").forEach((row) => { row.querySelector("[data-target-category]").value = assignments.find((item) => item.cardId === row.dataset.cardId).category; });
+    }).join("") || `<tr><td colspan="5" class="empty-state">${escapeText(wb("noCandidates"))}</td></tr>`;
+    qa("#scoringCandidates tr[data-card-id]").forEach((row) => {
+      const assignment = assignments.find((item) => String(item.cardId) === row.dataset.cardId);
+      row.querySelector("[data-target-category]").value = releaseState.scoringOverrides.get(row.dataset.cardId) || assignment.category || "optional";
+    });
   }
 
   function promptScopePayload() {
@@ -3248,7 +3361,7 @@
     $("promptUserTemplate").value = template.userTemplate || "";
     $("promptResponseMode").value = template.responseMode || "structured";
     $("promptResponseContract").value = template.responseContract || "";
-    $("promptVariables").innerHTML = (template.variables || []).map((variable) => `<button class="variable-chip" type="button" data-prompt-variable="${escapeText(variable.name)}" title="${escapeText(variable.description || "Insert variable")}">{${escapeText(variable.name)}}</button>`).join("");
+    $("promptVariables").innerHTML = (template.variables || []).map((variable) => `<button class="variable-chip" type="button" data-prompt-variable="${escapeText(variable.name)}" title="${escapeText(variable.description || wb("insertVariable"))}">{${escapeText(variable.name)}}</button>`).join("");
     renderPromptValueFields();
     if (releaseState.pendingPromptPreviewValues) {
       releaseState.promptPreviewValues = { ...releaseState.promptPreviewValues, ...releaseState.pendingPromptPreviewValues };
@@ -3313,7 +3426,7 @@
     });
     container.innerHTML = variables.map((variable) => {
       const value = releaseState.promptPreviewValues[variable.name] ?? "";
-      const description = variable.description || "Prompt value";
+      const description = variable.description || wb("promptValue");
       const input = String(value).length > 90 || /text|translation|instructions|targets|contract/.test(variable.name)
         ? `<textarea rows="3" data-prompt-value="${escapeText(variable.name)}">${escapeText(value)}</textarea>`
         : `<input data-prompt-value="${escapeText(variable.name)}" value="${escapeText(value)}">`;
@@ -3330,14 +3443,14 @@
     $("renderedPromptPreview").hidden = false;
     const missing = payload.missingVariables || [];
     if (missing.length) {
-      setError("promptError", `Missing variables: ${missing.join(", ")}`);
+      setError("promptError", wb("missingVariables", { variables: missing.join(", ") }));
       $("renderedPromptMessages").innerHTML = "";
       return;
     }
     setError("promptError", "");
     const messages = payload.messages || [{ role: "system", content: payload.system }, { role: "user", content: payload.user }].filter((item) => item.content);
     $("renderedPromptMessages").innerHTML = messages.map((message) => `<article class="preview-message"><strong>${escapeText(message.role)}</strong><pre>${escapeText(message.content)}</pre></article>`).join("");
-    $("renderedPromptContract").textContent = payload.responseContract || "No structured response contract (plain-text mode).";
+    $("renderedPromptContract").textContent = payload.responseContract || wb("noResponseContract");
     $("promptEffectiveSettings").textContent = JSON.stringify(payload.effectiveSettings || {}, null, 2);
   }
 
@@ -3360,6 +3473,10 @@
     const caps = releaseState.reasoningCapabilities;
     const controls = Array.isArray(caps.controls) ? caps.controls : [];
     const explicitAvailable = Boolean(caps.supportsReasoning && controls.length);
+    if (!explicitAvailable && intent.mode === "explicit") {
+      const providerDefault = document.querySelector('input[name="reasoningMode"][value="provider_default"]');
+      if (providerDefault) providerDefault.checked = true;
+    }
     $("reasoningControl").innerHTML = [
       controls.includes("effort") ? '<option value="effort">Named effort</option>' : "",
       controls.includes("budget") ? '<option value="budget">Token budget</option>' : "",
@@ -3372,15 +3489,17 @@
     $("reasoningBudget").min = String(minimumBudget);
     $("reasoningBudget").max = String(maximumBudget);
     $("reasoningBudget").setAttribute("aria-describedby", "reasoningBudgetBounds");
-    $("reasoningBudgetBounds").textContent = controls.includes("budget") ? `Provider range: ${minimumBudget.toLocaleString()}–${maximumBudget.toLocaleString()} tokens.` : "Token budgets are unavailable for this provider.";
+    $("reasoningBudgetBounds").textContent = controls.includes("budget")
+      ? wb("providerRange", { minimum: minimumBudget.toLocaleString(), maximum: maximumBudget.toLocaleString() })
+      : wb("budgetsUnavailable");
     if (intent.budgetTokens != null) $("reasoningBudget").value = Math.max(minimumBudget, Math.min(maximumBudget, intent.budgetTokens));
     qa('input[name="reasoningMode"][value="explicit"]').forEach((item) => { item.disabled = !explicitAvailable; });
-    renderReasoningCapabilityReason(explicitAvailable ? "Explicit controls are supported by this provider." : "This provider declares no safe explicit reasoning controls. Disabled and provider default remain available.", explicitAvailable);
+    renderReasoningCapabilityReason(wb(explicitAvailable ? "explicitSupportedReason" : "explicitUnavailableReason"), explicitAvailable);
     updateReasoningFields();
   }
 
   function renderReasoningCapabilityReason(message, available) {
-    if ($("reasoningCapability")) $("reasoningCapability").textContent = available ? "Supported" : "Explicit control unavailable";
+    if ($("reasoningCapability")) setWbText("reasoningCapability", available ? "supported" : "explicitUnavailable");
     if ($("reasoningCapabilityReason")) $("reasoningCapabilityReason").textContent = message || "";
   }
 
@@ -3396,13 +3515,13 @@
     const intent = reasoningPayload();
     const caps = releaseState.reasoningCapabilities || {};
     if (intent.mode !== "explicit") { setError("reasoningError", ""); return intent; }
-    if (!caps.supportsReasoning) { setError("reasoningError", "Explicit reasoning is unavailable for this provider."); return null; }
-    if (!(caps.controls || []).includes(intent.control)) { setError("reasoningError", "Choose a reasoning control supported by this provider."); return null; }
-    if (intent.control === "effort" && !(caps.effortLevels || []).includes(intent.effort)) { setError("reasoningError", "Choose a supported effort level."); return null; }
+    if (!caps.supportsReasoning) { setError("reasoningError", wb("explicitReasoningUnavailable")); return null; }
+    if (!(caps.controls || []).includes(intent.control)) { setError("reasoningError", wb("chooseReasoningControl")); return null; }
+    if (intent.control === "effort" && !(caps.effortLevels || []).includes(intent.effort)) { setError("reasoningError", wb("chooseEffort")); return null; }
     if (intent.control === "budget") {
       const minimum = Number(caps.minimumBudgetTokens || 1), maximum = Number(caps.maximumBudgetTokens || Number.MAX_SAFE_INTEGER);
       if (!Number.isInteger(intent.budgetTokens) || intent.budgetTokens < minimum || intent.budgetTokens > maximum) {
-        setError("reasoningError", `Enter a whole-token budget from ${minimum.toLocaleString()} to ${maximum.toLocaleString()}.`); return null;
+        setError("reasoningError", wb("budgetRangeError", { minimum: minimum.toLocaleString(), maximum: maximum.toLocaleString() })); return null;
       }
     }
     setError("reasoningError", "");
@@ -3428,10 +3547,8 @@
     releaseState.draftDirty = true;
     rememberLocalDraft();
     const stale = error.code === "stale_revision" || error.code === "invalid_request";
-    const text = stale
-      ? "This session changed elsewhere. Your local draft is safe; reopen the session before saving again."
-      : (error.message || "The draft could not be saved. Your local copy is still safe.");
-    setDraftState("Local changes not saved", true);
+    const text = stale ? wb("staleDraft") : (error.message || wb("draftSaveFailed"));
+    setDraftState(wb("localNotSaved"), true);
     setError("practiceEditorError", text);
     showToast(text);
     return true;
@@ -3450,9 +3567,9 @@
     if (!isCurrent(message) && !["operationProgress", "operationCompleted", "operationFailed", "operationCancelled"].includes(event)) return;
     if ((event === "operationFailed" || event === "operationCancelled" || event === "error") && !operationId) {
       const requestMeta = releaseState.requestActions.get(message.requestId) || {};
-      const error = payload.error || { message: payload.message || "The request failed." };
+      const error = payload.error || { message: payload.message || wb("requestFailed") };
       if (handlePracticeMutationFailure(message, requestMeta.action || "", error)) return;
-      const text = error.message || "The request failed.";
+      const text = error.message || wb("requestFailed");
       if ((requestMeta.action || "") === "submitPracticeReview" || releaseState.view === "practice") setError("practiceEditorError", text);
       if ((requestMeta.action || "").toLowerCase().includes("scoring")) setError("scoringError", text);
       if ((requestMeta.action || "").toLowerCase().includes("prompt")) setError("promptError", text);
@@ -3492,7 +3609,7 @@
           renderReview(result);
           releaseState.revisionOf = result.attemptId || null;
           releaseState.revisionOfSessionId = result.session && result.session.id;
-          showToast("Translation reviewed. You can revise and resubmit.");
+          showToast(wb("translationReviewed"));
         } else if (action === "previewScoring") renderScoringCandidates(result);
         else if (action === "generateTargetAware") {
           const paragraphs = String(result.article || "").split(/\n\s*\n/);
@@ -3511,11 +3628,12 @@
               generationWarnings: result.warnings || [],
             }});
           }
-          showToast(result.warnings && result.warnings.length ? `Article generated with ${result.warnings.length} warning(s).` : "Article generated from the target plan.");
+          showToast(result.warnings && result.warnings.length
+            ? wb("generatedWarnings", { count: result.warnings.length }) : wb("generatedTargetPlan"));
         }
       } else {
         const error = payload.error || {};
-        const messageText = event === "operationCancelled" ? "Operation cancelled. Your draft is still here." : (error.message || "The operation failed.");
+        const messageText = event === "operationCancelled" ? wb("operationCancelled") : (error.message || wb("operationFailed"));
         if (action === "submitPracticeReview" || releaseState.view === "practice") setError("practiceEditorError", messageText);
         if (action.toLowerCase().includes("scoring")) setError("scoringError", messageText);
         if (action.toLowerCase().includes("prompt")) setError("promptError", messageText);
@@ -3562,28 +3680,28 @@
       }
       if (newerEdits || releaseState.queuedDraftSave || releaseState.queuedSegments) {
         releaseState.draftDirty = true;
-        setDraftState("Newer changes not saved yet", true);
+        setDraftState(wb("newerNotSaved"), true);
         rememberLocalDraft();
       } else {
         releaseState.draftDirty = false;
         if (payload.persisted !== false) {
           try { localStorage.removeItem(practiceStorageKey(payload.session.id)); } catch (_error) { /* optional */ }
         } else rememberLocalDraft();
-        setDraftState(payload.persisted === false ? "Autosaved locally" : "Session saved", false);
+        setDraftState(wb(payload.persisted === false ? "autosavedLocally" : "sessionSaved"), false);
       }
       flushPracticeMutationQueue();
       setError("practiceEditorError", "");
     } else if (event === "practiceSessionsLoaded") renderPracticeHistory(payload.sessions || []);
-    else if (event === "practiceSessionDeleted") { showToast("Practice session deleted."); sendV2("listPracticeSessions"); }
+    else if (event === "practiceSessionDeleted") { showToast(wb("practiceDeleted")); sendV2("listPracticeSessions"); }
     else if (event === "scoringConfigLoaded") renderScoringConfig(payload);
     else if (event === "scoringConfigExported") downloadJson("dairr-scoring-preset.json", payload.serialized || "{}");
     else if (event === "promptTemplateLoaded" || event === "promptTemplateSaved" || event === "promptTemplateReset") renderPromptTemplate(payload.template || {});
-    else if (event === "promptTemplatesLoaded") { showToast("Prompt presets imported."); loadPromptTemplate(); }
+    else if (event === "promptTemplatesLoaded") { showToast(wb("promptsImported")); loadPromptTemplate(); }
     else if (event === "promptTemplatesExported") downloadJson("dairr-prompt-presets.json", payload.serialized || "{}");
     else if (event === "promptPreview") renderPromptPreview(payload);
     else if (event === "reasoningSettingsLoaded") { renderReasoning(payload); if (payload.effectiveSettings) $("reasoningPreview").textContent = JSON.stringify(payload.effectiveSettings, null, 2); }
     else if (event === "reasoningSettingsPreview") { renderReasoning(payload); $("reasoningPreview").textContent = JSON.stringify(payload.effectiveSettings || {}, null, 2); }
-    else if (event === "operationFailed") showToast((payload.error || {}).message || "The request failed.");
+    else if (event === "operationFailed") showToast((payload.error || {}).message || wb("requestFailed"));
   }
 
   const existingReceive = window.DAIRR && window.DAIRR.receive ? window.DAIRR.receive.bind(window.DAIRR) : null;
@@ -3606,8 +3724,8 @@
   $("practiceSourceText").addEventListener("input", () => {
     const limit = effectivePracticeCharacterLimit();
     const length = $("practiceSourceText").value.length;
-    $("practiceTextCount").textContent = `${length.toLocaleString()} / ${limit.toLocaleString()} characters`;
-    setError("practiceSetupError", length > limit ? `This text is ${length - limit} characters over the explicit limit. Split it into separate sessions.` : "");
+    setWbText("practiceTextCount", "charactersCount", { count: length.toLocaleString(), limit: limit.toLocaleString() });
+    setError("practiceSetupError", length > limit ? wb("overLimit", { count: length - limit }) : "");
   });
 
   $("createPracticeButton").addEventListener("click", () => {
@@ -3619,16 +3737,16 @@
       customReviewInstructions: $("practiceInstructions").value,
       save: releaseState.practiceKind === "article",
     };
-    if (!common.targetLanguage) return setError("practiceSetupError", "Choose a target language.");
+    if (!common.targetLanguage) return setError("practiceSetupError", wb("targetLanguageRequired"));
     if (releaseState.practiceKind === "pasted_text") {
       const sourceText = $("practiceSourceText").value.trim();
       const limit = effectivePracticeCharacterLimit();
-      if (!sourceText) return setError("practiceSetupError", "Paste or write source text first.");
-      if (sourceText.length > limit) return setError("practiceSetupError", `Text exceeds the ${limit.toLocaleString()} character limit and was not sent.`);
+      if (!sourceText) return setError("practiceSetupError", wb("sourceTextRequired"));
+      if (sourceText.length > limit) return setError("practiceSetupError", wb("sourceLimitRejected", { limit: limit.toLocaleString() }));
       sendV2("createPastedPractice", { ...common, sourceText });
     } else {
       const articlePath = $("practiceArticleSelect").value;
-      if (!articlePath) return setError("practiceSetupError", "Choose a saved DAIRR article.");
+      if (!articlePath) return setError("practiceSetupError", wb("articleRequired"));
       sendV2("createArticlePractice", { ...common, articlePath });
     }
   });
@@ -3639,7 +3757,7 @@
   });
   $("practiceTranslation").addEventListener("input", () => markPracticeDirty());
   $("segmentSourceEditor").addEventListener("input", () => {
-    const segment = currentSegment(); if (segment && releaseState.practiceScope === "segment") { segment.sourceText = $("segmentSourceEditor").value; markPracticeDirty("Unsaved segmentation edit"); }
+    const segment = currentSegment(); if (segment && releaseState.practiceScope === "segment") { segment.sourceText = $("segmentSourceEditor").value; markPracticeDirty(wb("unsavedSegmentation")); }
   });
   $("segmentSourceEditor").addEventListener("change", () => {
     const session = releaseState.practiceSession;
@@ -3653,11 +3771,11 @@
   $("revealReferenceButton").addEventListener("click", () => {
     const text = $("practiceReferenceText"), reveal = text.hidden;
     text.hidden = !reveal; $("revealReferenceButton").setAttribute("aria-expanded", String(reveal));
-    $("revealReferenceButton").textContent = reveal ? "Hide reference" : "Reveal reference";
+    setWbText("revealReferenceButton", reveal ? "hideReference" : "revealReference");
   });
   $("submitPracticeButton").addEventListener("click", () => {
     const session = releaseState.practiceSession, translation = $("practiceTranslation").value.trim();
-    if (!translation) return setError("practiceEditorError", "Write a translation before requesting review.");
+    if (!translation) return setError("practiceEditorError", wb("translationRequired"));
     const segment = releaseState.practiceScope === "segment" ? currentSegment() : null;
     setError("practiceEditorError", "");
     const revisionOf = releaseState.revisionOfSessionId === session.id ? releaseState.revisionOf : null;
@@ -3667,7 +3785,7 @@
   });
   $("previewPracticePromptButton").addEventListener("click", () => {
     const session = releaseState.practiceSession;
-    if (!session) return setError("practiceEditorError", "Create or open a practice session first.");
+    if (!session) return setError("practiceEditorError", wb("sessionRequired"));
     saveDraftInMemory();
     releaseState.pendingPromptPreviewValues = currentPendingPromptValues();
     $("promptTask").value = session.direction === "back_translation" ? "back_translation_review" : "translation_review";
@@ -3681,17 +3799,21 @@
   $("practiceAttempts").addEventListener("click", (event) => {
     const button = event.target.closest("[data-revise-attempt]"); if (!button) return;
     const attempt = releaseState.practiceSession.attempts.find((item) => item.id === button.dataset.reviseAttempt);
-    if (!attempt) return; releaseState.revisionOf = attempt.id; releaseState.revisionOfSessionId = releaseState.practiceSession.id; $("practiceTranslation").value = attempt.translation; markPracticeDirty("Revision draft"); $("practiceTranslation").focus();
+    if (!attempt) return; releaseState.revisionOf = attempt.id; releaseState.revisionOfSessionId = releaseState.practiceSession.id; $("practiceTranslation").value = attempt.translation; markPracticeDirty(wb("revisionDraft")); $("practiceTranslation").focus();
   });
   $("practiceHistoryList").addEventListener("click", (event) => {
     const remove = event.target.closest("[data-delete-practice-session]");
     if (remove) {
       if (remove.dataset.confirming === "true") {
-        sendV2("deletePracticeSession", { sessionId: remove.dataset.deletePracticeSession });
+        const sessionId = remove.dataset.deletePracticeSession;
+        sendV2("deletePracticeSession", {
+          sessionId,
+          revision: currentPracticeRevision(sessionId, Number(remove.dataset.sessionRevision || 0)),
+        });
       } else {
         remove.dataset.confirming = "true";
-        remove.textContent = "Confirm delete";
-        window.setTimeout(() => { remove.dataset.confirming = ""; remove.textContent = "Delete"; }, 4000);
+        remove.textContent = wb("confirmDelete");
+        window.setTimeout(() => { remove.dataset.confirming = ""; remove.textContent = wb("delete"); }, 4000);
       }
       return;
     }
@@ -3707,11 +3829,11 @@
   $("useTargetPlanButton").addEventListener("click", () => {
     $("useTargetPlanButton").dataset.baseLabel = $("useTargetPlanButton").dataset.baseLabel || $("useTargetPlanButton").textContent;
     releaseState.targetPlanActive = true;
-    $("useTargetPlanButton").textContent = "Target plan active";
-    showToast("Target plan ready. Generate will preserve your required, preferred, optional, and excluded choices.");
+    setWbText("useTargetPlanButton", "targetPlanActive");
+    showToast(wb("targetPlanReady"));
     setView("generate");
   });
-  $("resetScoringButton").addEventListener("click", (event) => { const button = event.currentTarget; if (button.dataset.confirming === "true") { button.dataset.confirming = ""; button.textContent = "Reset"; sendV2("resetScoringConfig"); } else { button.dataset.confirming = "true"; button.textContent = "Confirm reset"; window.setTimeout(() => { button.dataset.confirming = ""; button.textContent = "Reset"; }, 4000); } });
+  $("resetScoringButton").addEventListener("click", (event) => { const button = event.currentTarget; if (button.dataset.confirming === "true") { button.dataset.confirming = ""; button.textContent = wb("reset"); sendV2("resetScoringConfig"); } else { button.dataset.confirming = "true"; button.textContent = wb("confirmReset"); window.setTimeout(() => { button.dataset.confirming = ""; button.textContent = wb("reset"); }, 4000); } });
   $("exportScoringButton").addEventListener("click", () => sendV2("exportScoringConfig", { presetId: $("scoringPreset").value }));
   $("importScoringButton").addEventListener("click", () => { releaseState.pendingImportKind = "scoring"; $("configurationFileInput").click(); });
   $("scoringCandidates").addEventListener("change", (event) => {
@@ -3721,9 +3843,9 @@
     if (event.target === enabled) category = enabled.checked ? (category === "excluded" ? "optional" : category) : "excluded";
     if (event.target === select) enabled.checked = category !== "excluded";
     select.value = category;
-    releaseState.scoringOverrides.set(row.dataset.cardId, category);
+    releaseState.scoringOverrides.set(String(row.dataset.cardId), category);
     releaseState.targetPlanActive = false;
-    $("useTargetPlanButton").textContent = "Use updated target plan";
+    setWbText("useTargetPlanButton", "updatedTargetPlan");
   });
   $("sortCandidatesButton").addEventListener("click", () => {
     releaseState.scoringSortDescending = !releaseState.scoringSortDescending;
@@ -3740,14 +3862,14 @@
     const overrides = releaseState.scoringOverrides;
     const targets = releaseState.scoringCandidates.map((assignment) => {
       const score = assignment.score || {};
-      const category = overrides.get(assignment.cardId) || assignment.category || "optional";
+      const category = overrides.get(String(assignment.cardId)) || assignment.category || "optional";
       return { id: assignment.cardId, text: score.term || assignment.cardId, category };
     });
     const included = targets.filter((target) => target.category !== "excluded");
-    if (!included.length) { showToast("The target plan excludes every candidate. Include at least one target."); return; }
+    if (!included.length) { showToast(wb("allTargetsExcluded")); return; }
     $("generateButton").disabled = true;
     $("generateButton").dataset.preTargetText = $("generateButton").textContent;
-    $("generateButton").textContent = "Generating…";
+    $("generateButton").textContent = wb("generating");
     sendV2("generateTargetAware", {
       targets,
       sourceLanguage: $("presetReaderNativeLanguage").value,
@@ -3763,7 +3885,7 @@
   $("promptVariables").addEventListener("click", (event) => { const chip = event.target.closest("[data-prompt-variable]"); if (!chip) return; const editor = $("promptUserTemplate"), insertion = `{${chip.dataset.promptVariable}}`, start = editor.selectionStart; editor.setRangeText(insertion, start, editor.selectionEnd, "end"); editor.focus(); });
   $("previewPromptButton").addEventListener("click", () => sendV2("previewPrompt", { ...promptScopePayload(), template: templatePayload(), values: promptPreviewValuePayload() }, { channel: "promptPreview" }));
   $("savePromptButton").addEventListener("click", () => sendV2("savePromptTemplate", { ...promptScopePayload(), template: templatePayload() }, { channel: "promptTemplate" }));
-  $("resetPromptButton").addEventListener("click", (event) => { const button = event.currentTarget; if (button.dataset.confirming === "true") { button.dataset.confirming = ""; button.textContent = "Reset task"; sendV2("resetPromptTemplate", promptScopePayload(), { channel: "promptTemplate" }); } else { button.dataset.confirming = "true"; button.textContent = "Confirm reset"; window.setTimeout(() => { button.dataset.confirming = ""; button.textContent = "Reset task"; }, 4000); } });
+  $("resetPromptButton").addEventListener("click", (event) => { const button = event.currentTarget; if (button.dataset.confirming === "true") { button.dataset.confirming = ""; button.textContent = wb("resetTask"); sendV2("resetPromptTemplate", promptScopePayload(), { channel: "promptTemplate" }); } else { button.dataset.confirming = "true"; button.textContent = wb("confirmResetTask"); window.setTimeout(() => { button.dataset.confirming = ""; button.textContent = wb("resetTask"); }, 4000); } });
   $("exportPromptButton").addEventListener("click", () => sendV2("exportPromptTemplates"));
   $("importPromptButton").addEventListener("click", () => { releaseState.pendingImportKind = "prompts"; $("configurationFileInput").click(); });
 
@@ -3781,6 +3903,7 @@
   });
 
   window.addEventListener("beforeunload", (event) => { if (releaseState.draftDirty) { rememberLocalDraft(); event.preventDefault(); event.returnValue = ""; } });
+  window.addEventListener("dairr-language-changed", refreshDynamicWorkbenchCopy);
 
   if (typeof MutationObserver === "function") {
     const workbenchObserver = new MutationObserver((records) => {
