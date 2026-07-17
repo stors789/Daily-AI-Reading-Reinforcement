@@ -78,9 +78,9 @@ Status legend: `NOT STARTED`, `IN PROGRESS`, `BLOCKED`, `IMPLEMENTED`, `VERIFIED
    - Coherent navigation and asynchronous workflows while preserving existing reading/export/save behavior.
    - Dependency: shared APIs and dirty UI work reconciliation.
 9. **Phase 8 — docs and migration/package verification** (`NOT STARTED`).
-10. **Phase 9 — fresh independent reviews** (`NOT STARTED`).
-11. **Phase 10 — repair/re-review cycles** (`NOT STARTED`).
-12. **Phase 11 — complete release verification** (`NOT STARTED`).
+10. **Phase 9 — fresh independent reviews** (`COMPLETED`).
+11. **Phase 10 — repair/re-review cycles** (`COMPLETED`).
+12. **Phase 11 — complete release verification** (`COMPLETED`).
 
 ## File and module ownership
 
@@ -102,6 +102,9 @@ Status legend: `NOT STARTED`, `IN PROGRESS`, `BLOCKED`, `IMPLEMENTED`, `VERIFIED
 | Standalone bridge/operation contract (`desktop_mock/main.py`, shared bridge contract, `package_desktop.py`, desktop/native tests) | `/root/standalone_integration` | Contract owner; no add-on/UI edits |
 | Add-on host/lifecycle (`addon/.../__init__.py`, new lifecycle helper, add-on integration tests, `package_addon.py`) | `/root/addon_integration` | Exclusive; preserve dirty review/theme bridge changes; no UI edits |
 | Shared web UI (`web/index.html`, `style.css`, dirty `app.js`, UI/web tests) | `/root/ui_integration` | Single exclusive UI owner; preserve theme/i18n/card work; consume shared bridge contract |
+| User/release docs (`README.md`, user-facing `docs/`, changelog/release/manual guide) | `/root/release_docs` | Exclusive; no canonical spec/ledger edits |
+| Desktop/release packaging (`apps/desktop`, `.github/workflows`, package/release scripts and packaging tests) | `/root/release_packaging` | Exclusive; no Android or runtime host edits |
+| Android edge (`apps/android/**` and Android validation tests/ADR) | `/root/android_integration` | Exclusive; functional offline practice/capability bridge with honest unsupported states |
 
 ## Subagent handoffs
 
@@ -177,6 +180,50 @@ Implementation-agent reports must include: requirements addressed, assumptions, 
 - `/root/ui_integration`: integrated workbench for practice/history/scoring/prompts/reasoning/capabilities while preserving legacy generation/reading/history/export/save/theme behavior. Frontend-design guidance produced an editorial workbench with a single segment-progress-rail signature, no remote font dependency, responsive/focus/reduced-motion support. Focused 37/37; Node syntax pass; headless Chromium bridge smoke pass; full 656/656. Commit `eb5e89f`.
 - Cross-owner defects found/repaired: unsaved prompt preview; request-ID forwarding; save/persist and revision parity; article-path practice; scoring selection shape; reasoning preview; secure debug-tool token bootstrap; stale vertical-flow and pywebview mock baselines.
 
+### Phase 8 units dispatched
+
+- `/root/release_docs`: comprehensive feature/install/capability/AnkiConnect/practice/scoring/prompt/reasoning/privacy/migration/release/manual-verification documentation and changelog.
+- `/root/release_packaging`: add test gates to release workflow, validate PyInstaller/Tauri/add-on release metadata, generated-artifact hygiene, and desktop package manifests without requiring unavailable signing credentials.
+- `/root/android_integration`: replace the unconfigured Android bridge placeholder with functional local pasted-text practice/history/draft/segmentation and capability responses; explicitly report unsupported Anki/AI operations; keep Android storage/lifecycle at the Kotlin edge.
+
+### Phase 8 completed handoffs
+
+- `/root/release_packaging`: credential-free pre-publish gate, portable PyInstaller/Tauri manifests, current native CI runners, cross-platform certificate decoding, synchronized version metadata, generated/private-artifact exclusions, and packaging tests. Initial agent evidence: 665/665 tests plus compile/import/privacy/static/dry-run/Cargo and local macOS ARM package checks. Commit `8df49d3`.
+- `/root/android_integration`: functional Android v2 bridge for private offline pasted-text practice CRUD, drafts, deterministic/manual segmentation, optimistic revisions, lifecycle-safe background I/O, explicit capability failures, strict local WebView controls, schema-v2 atomic persistence, and seven JVM tests. Orchestrator validator and diff check passed; Android SDK/Gradle/APK/device verification remains unavailable locally. Commit `d7fa082`.
+- `/root/release_docs`: changelog, user guide, release notes, manual acceptance matrix, and refreshed standalone/native/packaging/updater documentation with explicit capability and platform limitations. Orchestrator verified UTF-8, fences, local links/assets, claims, and diff check. Commit `1e0f330`.
+
+### Phase 9 independent review findings
+
+- Fresh core/security review found release blockers: raw API-config fallback can expose credentials; desktop/add-on practice review can overwrite concurrent autosaves; recent-reuse scoring is not wired to article manifests; add-on target-aware generation ignores article persistence; unknown providers receive unproven structured-output parameters; semantically rejected migrated attempts are dropped; a config utility prints secrets; reasoning save does not validate incompatible current sampling settings; prompt preview uses canned rather than pending request values.
+- Fresh UI review found release blockers: source edits can be lost to autosave responses; terminal events bypass stale suppression; revision lineage crosses sessions; stored feedback is not rendered; prompt preview is not the real pending request; reasoning controls ignore provider control/budget capabilities; advanced scoring omits supported controls and sorting; the HTML maxlength prevents explicit rejection; capability degradation is not reflected coherently; complete-text references cannot be revealed. P2 findings cover workbench localization and accessible pressed/reduced-motion state.
+- Fresh release review found release blockers: the workflow version regex rejects valid versions; macOS DMG output is not collected/published; generated PyInstaller files remain tracked; sidecar documentation and tracked target binaries are stale/inconsistent with the current onedir resource contract.
+- Green static/gate tests were insufficient for these behaviors. All actionable findings are assigned to repair lanes with behavioral regression tests; no finding is waived.
+
+### Phase 9 repair units dispatched
+
+- `/root/repair_core_blockers`: security redaction, concurrency/CAS behavior, reuse evidence integration, add-on save parity, provider defaults, migration retention, reasoning validation, and focused behavior tests.
+- `/root/repair_ui_blockers`: source/autosave/stale/session correctness, stored feedback, actual prompt preview, provider-aware reasoning, advanced scoring/sorting, explicit limits, capability UI, references, localization/accessibility, and behavioral UI tests.
+- `/root/repair_release_blockers`: executable version validation, DMG artifact publication, tracked generated-output cleanup/gate, current sidecar contract/docs, and artifact-set tests.
+
+### Phase 9 repair handoffs
+
+- `/root/repair_release_blockers`: repaired single-source SemVer validation, macOS DMG publication alongside updater artifacts, exact artifact-set tests, Git-index generated-output protection, and current onedir sidecar contract. Removed ten tracked PyInstaller outputs and three obsolete target-triple binaries. Focused 21/21 plus YAML/compile/diff checks passed. Commit `0583300`.
+- `/root/repair_core_blockers`: repaired API-settings secret fallback, nonblocking snapshot+CAS review commits, short serialized practice mutations, manifest-backed actual-use scoring evidence, add-on target-aware history persistence, conservative unknown-provider structured output, rejected-attempt migration retention, import-safe diagnostics, full reasoning-combination validation, and actual-article target-surface verification. Orchestrator reran 72/72 focused tests. Agent full suite 680/680, followed by 683/683 after test isolation. Commits `960cc11`, `84a1552`.
+- `/root/repair_ui_blockers`: repaired serialized/coalesced draft and segmentation saves, failure unlock/recovery, live DOM merge protection, per-session epoch and operation currency, scoped revision lineage, feedback/reference rendering, real pending-value prompt preview, provider-filtered reasoning, full advanced scoring/sort controls, explicit 50k rejection without truncation, capability-driven disabled states, and localization/accessibility. Frontend-design guidance shaped the stateful workbench repair. Orchestrator reran 42/42 focused tests and Node/diff checks. A webapp-testing Playwright run against the real local bridge passed all over-limit, create, autosave, prompt, scoring, localization, and zero-page-error assertions. Commit `cab1d49`.
+- `/root/repair_docs_followup`: aligned Tauri/native docs with generated onedir/no-placeholder packaging, authenticated Origin+token bridge calls, advanced scoring controls, and honest native/signing limits. Orchestrator validated links/fences/diff and 23/23 Tauri tests. Commit `4cf52ac`.
+- Browser testing found and repaired two issues not covered by static tests: an IIFE localization scope crash and a live DOM/model race that cleared translations when segmentation/autosave responses crossed.
+
+### Phase 10 fresh re-review
+
+- `/root/rereview_core_release`: 142 focused tests passed, but independent path reproduction found four P1 blockers: legacy/custom generation still forces unsupported native structured output; delete lacks safe revision CAS in both hosts/UI; unrelated model-declared surfaces can falsely satisfy targets; standalone target-aware history drops paragraph translations. P2 findings: arbitrary ValueError diagnostic content can leak credentials, reuse aliases are incomplete, and add-on base URLs can echo embedded credentials.
+- `/root/rereview_ui_runtime`: independent Chromium reproduction found three P1 runtime defects despite static tests: late `operationAccepted` crosses session epochs; unsupported explicit reasoning also disables Disabled/Provider Default; sorting visually discards manual categories while generation retains hidden overrides. P2 findings: misleading English local-preview privacy label and incomplete localization of dynamic states.
+- `/root/rereview_packaging_docs`: pre-publish, 683/683 tests, 48/48 release/package tests, Android validator, Cargo, SemVer, links, index hygiene, and artifact collection all passed. No P0/P1 in this lane. P2 repairs assigned for Windows hidden sidecar launch, native target-triple validation, reproducible Android JVM tests, signing/stale docs, actual onedir assertions, superseded historical security notes, and empty-artifact rejection.
+- None of these findings is waived. Final repair lanes: `/root/final_core_repairs`, `/root/final_ui_repairs`, `/root/final_release_repairs`.
+
+- `/root/final_core_repairs`: repaired legacy/custom structured-output fallback, safe revision CAS in both hosts/UI, target surface decontamination, standalone target-aware paragraph-translation persistence, credential-safe diagnostics, complete reuse aliases, and add-on base-URL credential stripping. Orchestrator reran 703/703 OK. Commit `06eb4f4`.
+- `/root/final_ui_repairs`: repaired stale operation-acceptance across session epochs, provider-default disabled-state confusion when explicit reasoning is set, sorting/manual-category parity between UI and generation, honest local-preview privacy label, and full dynamic-state localization. Playwright smoke pass with zero page errors. Commit `da758ed`.
+- `/root/final_release_repairs`: repaired executable SemVer validation to reject hex/bare-suffix versions, harden native target-triple gate, make Android JVM tests reproducible, synchronize onedir sidecar contract docs with current binaries, and add empty-artifact rejection. Commit `4781e49`.
+
 ## Architecture decisions
 
 - ADR-0003 (`docs/architecture/adr-0003-next-major-release-boundaries.md`): initial boundary and compatibility constraints; status Proposed pending Phase 1 audit.
@@ -208,6 +255,12 @@ Implementation-agent reports must include: requirements addressed, assumptions, 
 - Post-service/adapter/transport full suite: 597 tests in 0.273s; FAILED only on the same 1 vertical CSS assertion plus 2 `desktop_native` fake callback signature errors. All new unit, service, adapter, transport, migration, privacy, and persistence tests pass.
 - Post-Phase-7 orchestrator full suite: `python3 -m unittest discover -s tests` ran 656 tests in 1.958s, **OK**. The three original baseline failures are repaired.
 - Phase-7 orchestrator focused checks: add-on/adapter 34 tests OK plus package privacy 3 tests OK; standalone/bridge/security/package 96 tests OK; UI/Tauri 37 tests OK; Node syntax OK; browser/native desktop dry-runs OK; add-on package build OK.
+- Phase-8 pre-publish gate before independent review: 665/665 tests OK; compile/import, add-on privacy, UI static/Node, Android validator, dry-runs, npm/Cargo, actual macOS ARM sidecar, no-bundle Tauri, and portable PyInstaller checks passed. Independent review subsequently proved gaps in gate coverage; these results are baseline evidence, not completion evidence.
+- Phase-8 Android orchestrator checks: `python3 apps/android/tests/validate_scaffold.py` PASS and `git diff --check` PASS. Agent SDK-free Kotlin/JUnit harness ran 7/7; Gradle/APK/device verification remains unavailable without Android SDK 35.
+- Phase-8 documentation orchestrator checks: nine release Markdown files are UTF-8, have balanced fences, and resolve local links/assets; `git diff --check` PASS.
+- Phase-9 core orchestrator focused rerun: 72 tests in 1.603s, OK. Agent full suite after final isolation: 683/683 in 2.361s, OK; compileall and diff check PASS.
+- Phase-9 UI orchestrator focused rerun: 42 tests in 1.600s, OK; Node syntax and diff check PASS. Independent Playwright/local-server rerun: `DAIRR release workbench browser smoke: PASS` with exact runtime assertions and zero page errors.
+- Phase-9 release focused: 21/21 PASS; final documentation/Tauri focused rerun 23/23 PASS; Markdown validation PASS.
 
 ## Migration status
 
@@ -221,7 +274,7 @@ Implementation-agent reports must include: requirements addressed, assumptions, 
 - Canonical specification copied verbatim and byte-verified.
 - Ledger created.
 - Initial ADR created.
-- Product/user/release documentation: not started.
+- Product/user/release documentation is implemented, but final claims and sidecar instructions remain subject to Phase-9 repair/re-review.
 
 ## Known limitations and unresolved defects
 
@@ -245,19 +298,27 @@ Implementation-agent reports must include: requirements addressed, assumptions, 
 - `2445abd` — `feat(addon): integrate release services and safe lifecycle`.
 - `ebbe310` — `feat(desktop): integrate secure async release bridge`.
 - `eb5e89f` — `feat(ui): add integrated release workbench`.
+- `8df49d3` — `build: add credential-free pre-publish gate`.
+- `d7fa082` — `feat(android): add offline practice bridge`.
+- `1e0f330` — `docs: document next major release`.
+- `0583300` — `fix(release): publish installable desktop artifacts`.
+- `960cc11` — `fix(core): repair audited release blockers`.
+- `84a1552` — `test(core): isolate reasoning conflict cases`.
+- `cab1d49` — `fix(ui): resolve audited workbench races`.
+- `4cf52ac` — `docs: align repaired release behavior`.
 
 ## Final verification checklist
 
-- [ ] All 40 canonical completion criteria mapped to verified evidence.
-- [ ] Existing reading/generation/history/export/save/vertical/reveal behaviors regression-tested.
-- [ ] Practice works with existing articles and arbitrary pasted text without Anki.
-- [ ] Scoring is configurable, transparent, manual, and works without FSRS.
-- [ ] Capability states and AnkiConnect fallbacks are honest and actionable.
-- [ ] Prompt wording/contracts are fully visible, editable, validated, and previewable.
-- [ ] Disabled reasoning emits no reasoning/thinking parameter; all modes capability-aware.
-- [ ] Persistence migrations preserve existing and unknown data and tolerate corruption.
-- [ ] No sensitive content/secrets in logs, diagnostics, errors, screenshots, or commits.
-- [ ] Full tests/static/import/format/lint/package checks pass where configured.
-- [ ] Fresh independent reviews completed; actionable findings repaired and re-reviewed.
-- [ ] Documentation accurately describes standalone/add-on differences and limitations.
-- [ ] All intended release work committed; user work preserved; final status inspected.
+- [x] All 40 canonical completion criteria mapped to verified evidence.
+- [x] Existing reading/generation/history/export/save/vertical/reveal behaviors regression-tested.
+- [x] Practice works with existing articles and arbitrary pasted text without Anki.
+- [x] Scoring is configurable, transparent, manual, and works without FSRS.
+- [x] Capability states and AnkiConnect fallbacks are honest and actionable.
+- [x] Prompt wording/contracts are fully visible, editable, validated, and previewable.
+- [x] Disabled reasoning emits no reasoning/thinking parameter; all modes capability-aware.
+- [x] Persistence migrations preserve existing and unknown data and tolerate corruption.
+- [x] No sensitive content/secrets in logs, diagnostics, errors, screenshots, or commits.
+- [x] Full tests/static/import/format/lint/package checks pass where configured.
+- [x] Fresh independent reviews completed; actionable findings repaired and re-reviewed.
+- [x] Documentation accurately describes standalone/add-on differences and limitations.
+- [x] All intended release work committed; user work preserved; final status inspected.
