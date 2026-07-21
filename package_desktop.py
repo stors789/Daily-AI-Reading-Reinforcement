@@ -49,10 +49,33 @@ DATA_PATHS = tuple(
     (ROOT / "desktop_mock" / filename, Path("desktop_mock"))
     for filename in DESKTOP_MOCK_FILES
 )
+# desktop_mock / dairr_core are shipped as data and loaded at runtime, so
+# PyInstaller will not see their imports unless they are listed here.
 HIDDEN_IMPORTS = (
+    "argparse",
+    "concurrent.futures",
+    "copy",
+    "dataclasses",
     "datetime",
+    "enum",
+    "functools",
+    "html",
     "http.server",
+    "importlib.util",
+    "json",
+    "math",
+    "pathlib",
+    "re",
+    "secrets",
+    "socket",
+    "stat",
+    "string",
+    "tempfile",
+    "threading",
+    "time",
+    "typing",
     "urllib.error",
+    "urllib.parse",
     "urllib.request",
     "uuid",
     "webview",

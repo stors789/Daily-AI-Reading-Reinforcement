@@ -44,6 +44,8 @@ class TestPackageDesktopCommand(unittest.TestCase):
         self.assertIn("--noconfirm", output)
         self.assertIn("--hidden-import datetime", output)
         self.assertIn("--hidden-import http.server", output)
+        self.assertIn("--hidden-import secrets", output)
+        self.assertIn("--hidden-import concurrent.futures", output)
         self.assertIn("--hidden-import urllib.error", output)
         self.assertIn("--hidden-import urllib.request", output)
         self.assertIn("--hidden-import uuid", output)
