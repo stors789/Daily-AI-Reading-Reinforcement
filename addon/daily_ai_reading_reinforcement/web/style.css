@@ -895,6 +895,58 @@ h2 {
   margin: 8px 0 10px;
 }
 
+.review-words-controls {
+  align-items: center;
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px 10px;
+  margin-top: 12px;
+}
+
+.review-words-toggle {
+  min-height: 32px;
+  padding: 5px 12px;
+}
+
+.review-words-toggle[aria-pressed="true"] {
+  background: var(--accent);
+  border-color: var(--accent);
+  color: var(--btn-primary-color);
+}
+
+.review-words-list {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+}
+
+.review-words-list[hidden] {
+  display: none !important;
+}
+
+.review-word-chip {
+  background: var(--surface);
+  border: 1px solid var(--line);
+  border-radius: 999px;
+  color: var(--text);
+  font-size: 12px;
+  font-weight: 700;
+  line-height: 1.35;
+  padding: 4px 9px;
+}
+
+.review-word-highlight {
+  background: #ffe08a;
+  background: color-mix(in srgb, #ffd45a 72%, var(--surface-strong));
+  border-radius: 0.22em;
+  color: inherit;
+  padding: 0 0.08em;
+}
+
+.review-words-empty {
+  margin-top: 8px;
+}
+
 .reading-body {
   font-family: var(--font-reading);
   font-size: 18px;

@@ -52,6 +52,14 @@ def run_article_generation(
         raise RuntimeError("The AI response was empty.")
 
     saved = deck_adapter.save_article(deck_name_value, cards, article)
+    review_words: list[str] = []
+    seen_review_words: set[str] = set()
+    for card in cards:
+        word = clean_text(getattr(card, "term", ""))
+        key = word.casefold()
+        if word and key not in seen_review_words:
+            seen_review_words.add(key)
+            review_words.append(word)
     article_card: dict[str, Any] | None = None
     article_card_error = ""
     if bool(config.get("create_article_cards")):
@@ -75,6 +83,7 @@ def run_article_generation(
         "htmlPath": str(saved["html"]),
         "articleCard": article_card,
         "articleCardError": article_card_error,
+        "reviewWords": review_words,
     }
 
 

@@ -196,11 +196,14 @@ class TestArticleGenerationCardErrorPayload(unittest.TestCase):
                 )
 
         try:
+            first_card = type("Card", (), {"term": "Alpha"})()
+            duplicate_card = type("Card", (), {"term": "<b>ALPHA</b>"})()
+            second_card = type("Card", (), {"term": "Beta"})()
             result = article_generator.run_article_generation(
                 ConfigAdapter(),
                 DeckAdapter(),
                 "Deck",
-                [],
+                [first_card, duplicate_card, second_card],
                 [],
                 {},
             )
@@ -212,6 +215,7 @@ class TestArticleGenerationCardErrorPayload(unittest.TestCase):
             result["articleCardError"],
             "Failed to create article card through AnkiConnect.",
         )
+        self.assertEqual(result["reviewWords"], ["Alpha", "Beta"])
         self.assertNotIn("sk-secret", json.dumps(result))
 
 

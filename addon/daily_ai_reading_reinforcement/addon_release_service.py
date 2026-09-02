@@ -639,6 +639,11 @@ class AddonReleaseService:
             profile_id=str(config.get("selected_llm_api_profile_id") or ""),
         )
         response = result.to_dict()
+        response["reviewWords"] = [
+            target.text
+            for target in targets
+            if target.category is not TargetCategory.EXCLUDED
+        ]
         if bool(payload.get("saveArticle")):
             article_text = format_legacy_article_text(
                 result.title, result.article, result.paragraph_translations

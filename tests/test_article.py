@@ -148,7 +148,11 @@ class TestSaveListLoadArticle(unittest.TestCase):
         self.assertEqual(articles[1]["deck"], "Deck A")
 
     def test_load_saved_article(self):
-        cards = [self._make_mock_card("term1")]
+        cards = [
+            self._make_mock_card("term1"),
+            self._make_mock_card("<b>Term Two</b>"),
+            self._make_mock_card("TERM1"),
+        ]
         deck_name = "Load Test"
         article_text = (
             "[ARTICLE_TITLE]\nLoad Title\n[MAIN_ARTICLE]\n"
@@ -160,6 +164,25 @@ class TestSaveListLoadArticle(unittest.TestCase):
         self.assertEqual(loaded["deck"], "Load Test")
         self.assertIn("Load body.", loaded["article"])
         self.assertIn("Load Title", loaded["article"])
+        self.assertEqual(loaded["reviewWords"], ["term1", "Term Two"])
+
+    def test_load_saved_article_uses_non_excluded_generation_targets(self):
+        result = save_article(
+            "Target Test",
+            [],
+            "[ARTICLE_TITLE]\nTargets\n[MAIN_ARTICLE]\nAlpha and Beta.",
+            generation_metadata={
+                "targets": [
+                    {"text": "Alpha", "category": "required"},
+                    {"text": "Beta", "category": "optional"},
+                    {"text": "Hidden", "category": "excluded"},
+                ],
+            },
+        )
+
+        loaded = load_saved_article(str(result["markdown"]))
+
+        self.assertEqual(loaded["reviewWords"], ["Alpha", "Beta"])
 
     def test_legacy_article_uses_title_and_day_fallbacks(self):
         legacy_path = self.tmp_dir / "2025-01-01-deck-120000-001-abcdef.md"

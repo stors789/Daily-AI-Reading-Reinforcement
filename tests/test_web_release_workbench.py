@@ -50,8 +50,36 @@ class ReleaseWorkbenchTests(unittest.TestCase):
         ):
             with self.subTest(view=view):
                 self.assertIn(f'data-view="{view}"', self.html)
-        for panel in ("generate", "practice", "practice-history", "scoring", "prompts", "api"):
+        for panel in ("generate", "practice", "articles", "practice-history", "scoring", "prompts", "api"):
             self.assertIn(f'data-view-panel="{panel}"', self.html)
+
+    def test_articles_navigation_is_a_real_view_with_consistent_entry_and_exit(self) -> None:
+        self.assertRegex(
+            self.html,
+            r'id="historyPanel"[^>]*data-view-panel="articles"[^>]*hidden',
+        )
+        set_view = self.js[
+            self.js.index("function setView(view)") : self.js.index("function capability(id)")
+        ]
+        self.assertIn("releaseState.view = view", set_view)
+        self.assertIn('if (view === "articles")', set_view)
+        self.assertNotRegex(
+            set_view,
+            r'if \(view === "articles"\)[\s\S]*?return;[\s\S]*?releaseState\.view = view',
+        )
+        self.assertIn('.workbench-nav-item[data-view="articles"]', self.js)
+        self.assertIn('.workbench-nav-item[data-view="generate"]', self.js)
+
+    def test_article_review_words_are_opt_in_and_highlighted_safely(self) -> None:
+        self.assertIn("showReviewWords: false", self.js)
+        self.assertIn('id="reviewWordsToggle"', self.js)
+        self.assertIn('id="reviewWordsList" hidden', self.js)
+        self.assertIn("function highlightReviewWords", self.js)
+        self.assertIn("escapeHtml(raw.slice(cursor, start))", self.js)
+        self.assertIn("state.showReviewWords = false", self.js)
+        self.assertIn("reviewWords: payload.reviewWords || []", self.js)
+        self.assertIn(".review-word-highlight", self.css)
+        self.assertIn('.review-words-list[hidden]', self.css)
 
     def test_practice_surface_has_both_entry_paths_and_editing_controls(self) -> None:
         for required in (

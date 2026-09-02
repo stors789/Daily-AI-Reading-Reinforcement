@@ -13,7 +13,7 @@ from typing import Any, Iterable, Mapping
 
 from .atomic_persistence import atomic_write_json, atomic_write_text, path_lock
 from .rendering import parse_article_response, render_article_html
-from .utils import slugify
+from .utils import clean_text, slugify
 
 # Compatibility default for callers that do not supply a host storage path.
 # Desktop and Anki adapters provide their own location instead.
@@ -180,6 +180,7 @@ def load_saved_article(
         "targetUsage": deepcopy(manifest.get("target_usage", [])),
         "unusedTargets": deepcopy(manifest.get("unused_targets", [])),
         "targetReuse": deepcopy(manifest.get("target_reuse", {})),
+        "reviewWords": _manifest_review_words(manifest),
     }
 
 
@@ -419,6 +420,44 @@ def _manifest_target_keys(manifest: Mapping[str, Any]) -> tuple[set[str], set[st
             if str(key).strip() and isinstance(value, (int, float)) and not isinstance(value, bool) and value > 0
         )
     return identifiers - {""}, terms - {""}
+
+
+def _manifest_review_words(manifest: Mapping[str, Any]) -> list[str]:
+    """Return stable, display-safe review terms without exposing card fields."""
+    words: list[str] = []
+    seen: set[str] = set()
+
+    def add(value: Any) -> None:
+        word = clean_text(value)
+        key = word.casefold()
+        if word and key not in seen:
+            seen.add(key)
+            words.append(word)
+
+    targets = manifest.get("targets")
+    if isinstance(targets, list):
+        for row in targets:
+            if not isinstance(row, Mapping):
+                continue
+            if str(row.get("category") or "").strip().lower() == "excluded":
+                continue
+            for key in ("term", "target", "text", "expression"):
+                if row.get(key) is not None:
+                    add(row.get(key))
+                    break
+
+    if not words:
+        usage = manifest.get("target_usage")
+        if isinstance(usage, list):
+            for row in usage:
+                if isinstance(row, str):
+                    add(row)
+                elif isinstance(row, Mapping) and row.get("used") is not False:
+                    for key in ("term", "target", "text", "expression"):
+                        if row.get(key) is not None:
+                            add(row.get(key))
+                            break
+    return words
 
 
 def _reuse_string_aliases(row: Mapping[str, Any], *keys: str) -> set[str]:

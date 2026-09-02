@@ -333,6 +333,7 @@ class AddonReleaseServiceTests(unittest.TestCase):
             }, OperationContext("save-target-article"))
         self.assertTrue(Path(result["savedArticle"]["markdown"]).is_file())
         self.assertTrue(Path(result["savedArticle"]["html"]).is_file())
+        self.assertEqual(result["reviewWords"], ["Alpha"])
         self.assertEqual(len(result["history"]), 1)
 
         payload = self.service.study_signals_payload([

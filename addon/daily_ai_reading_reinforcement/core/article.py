@@ -3,7 +3,7 @@
 from __future__ import annotations
 
 from pathlib import Path
-from typing import Any
+from typing import Any, Mapping
 
 try:
     from ..dairr_core import article as _article  # type: ignore[import-not-found]
@@ -17,12 +17,19 @@ time = _article.time
 uuid = _article.uuid
 
 
-def save_article(deck_name_value: str, cards: list[Any], article: str) -> dict[str, Path]:
+def save_article(
+    deck_name_value: str,
+    cards: list[Any],
+    article: str,
+    *,
+    generation_metadata: Mapping[str, Any] | None = None,
+) -> dict[str, Path]:
     return _article.save_article(
         deck_name_value,
         cards,
         article,
         articles_dir=ARTICLES_DIR,
+        generation_metadata=generation_metadata,
     )
 
 

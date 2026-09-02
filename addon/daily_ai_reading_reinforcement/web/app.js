@@ -45,6 +45,10 @@
    readingHistoricalArticle: false,
    currentArticlePath: "",
    currentArticleDay: "",
+   currentArticleParsed: null,
+   reviewWords: [],
+   reviewWordHighlights: [],
+   showReviewWords: false,
    dayStart: 0,
     dayEnd: 0,
   };
@@ -231,6 +235,9 @@
       reviewNotesEmpty: "暂无复习笔记。",
       readingTabArticle: "文章",
       readingTabNotes: "笔记",
+      showReviewWords: "显示复习词",
+      hideReviewWords: "隐藏复习词",
+      reviewWordsEmpty: "这篇文章没有保存复习词信息。",
       sourceTerms: "来源词条",
       fallbackTitle: "阅读文章",
       selectDeckShort: "请选择卡组",
@@ -429,6 +436,9 @@
       reviewNotesEmpty: "No review notes yet.",
       readingTabArticle: "Article",
       readingTabNotes: "Notes",
+      showReviewWords: "Show review words",
+      hideReviewWords: "Hide review words",
+      reviewWordsEmpty: "No review-word metadata was saved for this article.",
       sourceTerms: "Source terms",
       fallbackTitle: "Reading Article",
       selectDeckShort: "Choose a deck",
@@ -627,6 +637,9 @@
       reviewNotesEmpty: "復習メモはまだありません。",
       readingTabArticle: "文章",
       readingTabNotes: "ノート",
+      showReviewWords: "復習語を表示",
+      hideReviewWords: "復習語を隠す",
+      reviewWordsEmpty: "この記事には復習語の情報が保存されていません。",
       sourceTerms: "元の語句",
       fallbackTitle: "読解文章",
       selectDeckShort: "デッキを選択",
@@ -1000,6 +1013,7 @@
     updateTranslationToggleLabels();
     if (el.readingTabArticle) el.readingTabArticle.textContent = tr("readingTabArticle");
     if (el.readingTabNotes) el.readingTabNotes.textContent = tr("readingTabNotes");
+    updateReviewWordsDisplay(false);
     
     document.querySelectorAll('[data-i18n]').forEach(element => {
       const key = element.getAttribute('data-i18n');
@@ -1612,7 +1626,38 @@
       });
   }
 
-  function renderParagraphs(text) {
+  function escapeRegExp(value) {
+    return String(value).replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
+  }
+
+  function highlightReviewWords(text, words) {
+    const raw = String(text || "");
+    const candidates = Array.from(new Set((words || [])
+      .map((word) => String(word || "").trim())
+      .filter(Boolean)))
+      .sort((left, right) => right.length - left.length);
+    if (!candidates.length) return escapeHtml(raw);
+    const alternatives = candidates.map(escapeRegExp).join("|");
+    let matcher;
+    try {
+      matcher = new RegExp(`(^|[^\\p{L}\\p{N}_])(${alternatives})(?=$|[^\\p{L}\\p{N}_])`, "giu");
+    } catch (_error) {
+      matcher = new RegExp(`(^|[^A-Za-z0-9_])(${alternatives})(?=$|[^A-Za-z0-9_])`, "gi");
+    }
+    let html = "";
+    let cursor = 0;
+    let match;
+    while ((match = matcher.exec(raw)) !== null) {
+      const start = match.index + match[1].length;
+      const end = start + match[2].length;
+      html += escapeHtml(raw.slice(cursor, start));
+      html += `<mark class="review-word-highlight">${escapeHtml(raw.slice(start, end))}</mark>`;
+      cursor = end;
+    }
+    return html + escapeHtml(raw.slice(cursor));
+  }
+
+  function renderParagraphs(text, highlightWords = []) {
     const raw = String(text || "");
     const lines = raw.split(/\n/);
     const segments = [];
@@ -1658,7 +1703,7 @@
     return segments
       .filter((seg) => seg.paragraph)
       .map((seg, idx) => {
-        const bodyHtml = escapeHtml(seg.paragraph).replace(/\n/g, "<br>");
+        const bodyHtml = highlightReviewWords(seg.paragraph, highlightWords).replace(/\n/g, "<br>");
         if (!seg.translation) {
           return `<div class="reading-para-group"><p class="reading-para">${bodyHtml}</p></div>`;
         }
@@ -1670,6 +1715,61 @@
         return `<div class="reading-para-group"><p class="reading-para">${bodyHtml} ${toggleHtml}</p>${translationHtml}</div>`;
       })
       .join("");
+  }
+
+  function normalizeReviewWordData(payload) {
+    const words = [];
+    const highlights = [];
+    const seenWords = new Set();
+    const seenHighlights = new Set();
+    const add = (target, seen, value) => {
+      const text = String(value || "").trim();
+      const key = text.toLocaleLowerCase();
+      if (!text || text.length > 240 || seen.has(key)) return;
+      seen.add(key);
+      target.push(text);
+    };
+    (Array.isArray(payload.reviewWords) ? payload.reviewWords : []).forEach((word) => {
+      add(words, seenWords, word);
+      add(highlights, seenHighlights, word);
+    });
+    const deriveWordsFromEvidence = words.length === 0;
+    const evidence = [
+      ...(Array.isArray(payload.targetUsage) ? payload.targetUsage : []),
+      ...(Array.isArray(payload.targetOutcomes) ? payload.targetOutcomes : []),
+    ];
+    evidence.forEach((row) => {
+      if (!row || typeof row !== "object" || row.used === false) return;
+      if (deriveWordsFromEvidence) add(words, seenWords, row.target || row.term || row.text);
+      [row.actualSurfaceForms, row.actual_surface_forms, row.surface_forms].forEach((forms) => {
+        if (Array.isArray(forms)) forms.forEach((form) => add(highlights, seenHighlights, form));
+      });
+      add(highlights, seenHighlights, row.actualSurfaceForm || row.actual_surface_form || row.surface_form);
+    });
+    return { words: words.slice(0, 500), highlights: highlights.slice(0, 1000) };
+  }
+
+  function renderCurrentArticleBody() {
+    if (!el.articleScroll || !state.currentArticleParsed) return;
+    const highlights = state.showReviewWords ? state.reviewWordHighlights : [];
+    el.articleScroll.innerHTML = `
+      <div class="reading-document">
+        <section class="reading-body">
+          ${renderParagraphs(state.currentArticleParsed.mainArticle, highlights)}
+        </section>
+      </div>
+    `;
+  }
+
+  function updateReviewWordsDisplay(rerenderBody = true) {
+    const toggle = document.getElementById("reviewWordsToggle");
+    const list = document.getElementById("reviewWordsList");
+    if (toggle) {
+      toggle.setAttribute("aria-pressed", state.showReviewWords ? "true" : "false");
+      toggle.textContent = `${tr(state.showReviewWords ? "hideReviewWords" : "showReviewWords")} (${state.reviewWords.length})`;
+    }
+    if (list) list.hidden = !state.showReviewWords;
+    if (rerenderBody) renderCurrentArticleBody();
   }
 
   function updateTranslationToggleLabels() {
@@ -1698,6 +1798,11 @@
 
   function renderArticle(payload) {
     const parsed = parseArticleResponse(payload.article);
+    const reviewWordData = normalizeReviewWordData(payload);
+    state.currentArticleParsed = parsed;
+    state.reviewWords = reviewWordData.words;
+    state.reviewWordHighlights = reviewWordData.highlights;
+    state.showReviewWords = false;
     const generatedAt = payload.generatedAt || new Date().toLocaleString();
     state.readingHistoricalArticle = Boolean(payload.isHistorical);
     state.currentArticlePath = payload.markdownPath || "";
@@ -1717,16 +1822,25 @@
         <div class="reading-kicker">${tr("sourceDeck")} · ${escapeHtml(payload.deckName || "")}</div>
         <h1>${escapeHtml(parsed.title)}</h1>
         <div class="reading-meta">${tr("generatedAt")} · ${escapeHtml(generatedAt)}</div>
+        ${state.reviewWords.length ? `
+          <div class="review-words-controls">
+            <button class="secondary-button review-words-toggle" id="reviewWordsToggle" type="button" aria-pressed="false"></button>
+            <div class="review-words-list" id="reviewWordsList" hidden>
+              ${state.reviewWords.map((word) => `<span class="review-word-chip">${escapeHtml(word)}</span>`).join("")}
+            </div>
+          </div>
+        ` : `<div class="reading-meta review-words-empty">${tr("reviewWordsEmpty")}</div>`}
       `;
       el.readingHeader.hidden = false;
     }
-    el.articleScroll.innerHTML = `
-      <div class="reading-document">
-        <section class="reading-body">
-          ${renderParagraphs(parsed.mainArticle)}
-        </section>
-      </div>
-    `;
+    renderCurrentArticleBody();
+    const reviewWordsToggle = document.getElementById("reviewWordsToggle");
+    if (reviewWordsToggle) reviewWordsToggle.addEventListener("click", () => {
+      state.showReviewWords = !state.showReviewWords;
+      updateReviewWordsDisplay();
+      if (state.writingMode === "vertical") alignVerticalArticleRight();
+    });
+    updateReviewWordsDisplay(false);
     const notesHtml = renderReviewNotes(parsed.reviewNotes);
     el.notesPanel.innerHTML = notesHtml
       ? notesHtml
@@ -1757,6 +1871,10 @@
       state.readingHistoricalArticle = false;
       state.currentArticlePath = "";
       state.currentArticleDay = "";
+      state.currentArticleParsed = null;
+      state.reviewWords = [];
+      state.reviewWordHighlights = [];
+      state.showReviewWords = false;
       document.body.classList.remove("historical-reading");
       state.writingMode = "horizontal";
       state.readingTab = "article";
@@ -1928,6 +2046,8 @@
       }
       if (event === "articleLoaded") {
         closeHistoryPanel();
+        const generateNav = document.querySelector('.workbench-nav-item[data-view="generate"]');
+        if (generateNav) generateNav.click();
         const loadedPayload = {
           deckName: payload.deck || "",
           article: payload.article || "",
@@ -1937,6 +2057,8 @@
           generatedDay: payload.generated_day || "",
           isHistorical: true,
           articleCard: null,
+          reviewWords: payload.reviewWords || [],
+          targetUsage: payload.targetUsage || [],
         };
         // A historical document does not necessarily match the deck/cards
         // currently selected in the workspace, so it must never be saved as
@@ -1973,7 +2095,7 @@
       closeDesktopSettingsPanel();
       state.historySelectedDeck = HISTORY_ALL_DECKS;
       state.historySelectedDate = null;
-      el.historyPanel.style.display = "";
+      el.historyPanel.hidden = false;
       send("listArticles");
     }
   }
@@ -2176,7 +2298,7 @@
 
   function closeHistoryPanel() {
     if (el.historyPanel) {
-      el.historyPanel.style.display = "none";
+      el.historyPanel.hidden = true;
     }
   }
 
@@ -2207,13 +2329,20 @@
 
   if (el.historyButton) {
     el.historyButton.addEventListener("click", () => {
+      const articlesNav = document.querySelector('.workbench-nav-item[data-view="articles"]');
+      if (articlesNav && !articlesNav.classList.contains("active")) {
+        articlesNav.click();
+        return;
+      }
       openHistoryPanel();
     });
   }
 
   if (el.historyCloseButton) {
     el.historyCloseButton.addEventListener("click", () => {
-      closeHistoryPanel();
+      const generateNav = document.querySelector('.workbench-nav-item[data-view="generate"]');
+      if (generateNav) generateNav.click();
+      else closeHistoryPanel();
     });
   }
 
@@ -2754,11 +2883,6 @@
   }
 
   function setView(view) {
-    if (view === "articles") {
-      const historyButton = $("historyButton");
-      if (historyButton) historyButton.click();
-      return;
-    }
     releaseState.view = view;
     qa("[data-view-panel]").forEach((panel) => {
       const active = panel.dataset.viewPanel === view;
@@ -2771,6 +2895,10 @@
       if (active) button.setAttribute("aria-current", "page");
       else button.removeAttribute("aria-current");
     });
+    if (view === "articles") {
+      const historyButton = $("historyButton");
+      if (historyButton) historyButton.click();
+    }
     if (view === "practice-history") sendV2("listPracticeSessions", {}, { channel: "practiceHistory" });
     if (view === "scoring" && !releaseState.scoringConfig) sendV2("getScoringConfig");
     if (view === "prompts") loadPromptTemplate();
@@ -3626,6 +3754,8 @@
               htmlPath: saved.html || "",
               targetOutcomes: result.targetOutcomes || [],
               generationWarnings: result.warnings || [],
+              reviewWords: result.reviewWords || [],
+              targetOutcomes: result.targetOutcomes || [],
             }});
           }
           showToast(result.warnings && result.warnings.length
