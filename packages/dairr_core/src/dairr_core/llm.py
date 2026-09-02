@@ -9,6 +9,11 @@ import urllib.request
 from dataclasses import dataclass
 from typing import Any
 
+from .article_generation import (
+    ArticleGenerationRequest,
+    format_legacy_article_text,
+    parse_article_generation_response,
+)
 from .config import DEFAULT_CONFIG, PROVIDER_PROFILES, reasoning_intent_from_config
 from .prompt import render_article_prompt
 from .prompt_templates import RenderedPrompt, ResponseMode
@@ -145,12 +150,28 @@ def generate_article(
     cancelled: Any = None,
 ) -> str:
     rendered = render_article_prompt(config, deck_name_value, cards, selected_fields, preset)
-    return request_chat_completion(
+    completion = request_chat_completion(
         config,
         rendered,
         timeout=timeout,
         cancelled=cancelled,
-    ).content
+    )
+    if completion.parsed.mode is ResponseMode.PLAIN_TEXT:
+        return completion.content
+
+    result = parse_article_generation_response(
+        ArticleGenerationRequest(
+            str(preset.get("article_language") or "Generated article")
+        ),
+        completion.parsed.data,
+        mode=ResponseMode.STRUCTURED,
+        finish_reason=completion.finish_reason,
+    )
+    return format_legacy_article_text(
+        result.title,
+        result.article,
+        result.paragraph_translations,
+    )
 
 
 def request_chat_completion(

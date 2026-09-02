@@ -180,6 +180,36 @@ class ArticleGenerationResult:
         }
 
 
+def format_legacy_article_text(
+    title: str,
+    article: str,
+    translations: Iterable[str] = (),
+) -> str:
+    """Build the marker-based article format consumed by existing hosts.
+
+    Structured generation is the shared-core contract, while the current Anki
+    and desktop renderers still consume the historical marker format.  Keep
+    this conversion in the core so every generation path uses the same
+    paragraph/translation alignment rather than exposing raw JSON as an
+    article.
+    """
+    paragraphs = [item.strip() for item in re.split(r"\n\s*\n", article) if item.strip()]
+    translated = [str(item).strip() for item in translations]
+    body_parts: list[str] = []
+    for index, paragraph in enumerate(paragraphs):
+        body_parts.append(paragraph)
+        if index < len(translated) and translated[index]:
+            body_parts.append(f"[T] {translated[index]}")
+    if not paragraphs:
+        body_parts.append(article.strip())
+    body = "\n\n".join(body_parts)
+    return (
+        f"[ARTICLE_TITLE]\n{title.strip()}\n"
+        f"[MAIN_ARTICLE]\n{body}\n"
+        "[REVIEW_NOTES]\n"
+    )
+
+
 @dataclass(frozen=True, slots=True)
 class PreparedArticleGeneration:
     generation_request: ArticleGenerationRequest
@@ -318,6 +348,8 @@ def _structured_result(
         warnings.append("The response did not include an article title.")
 
     translations_value = _first_value(data, ("paragraph_translations", "translations"))
+    if isinstance(translations_value, Mapping):
+        translations_value = _ordered_paragraph_translation_values(translations_value)
     translations, skipped_translations = _string_list(translations_value, nested_keys=("translation", "text"))
     if skipped_translations:
         warnings.append("Ignored invalid paragraph-translation entries.")
@@ -689,6 +721,19 @@ def _string_list(
         else:
             skipped += 1
     return tuple(result), skipped
+
+
+def _ordered_paragraph_translation_values(value: Mapping[Any, Any]) -> list[Any]:
+    """Return translation-map values in paragraph order when keys are numbered."""
+    items = list(value.items())
+    numbered: list[tuple[int, int, Any]] = []
+    for position, (key, item) in enumerate(items):
+        match = re.fullmatch(r"(?:paragraph[\s_-]*)?(\d+)", str(key).strip(), flags=re.IGNORECASE)
+        if match is None:
+            return [entry for _name, entry in items]
+        numbered.append((int(match.group(1)), position, item))
+    numbered.sort(key=lambda entry: (entry[0], entry[1]))
+    return [item for _number, _position, item in numbered]
 
 
 def _surface_key(value: str) -> str:

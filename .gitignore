@@ -24,3 +24,4 @@ apps/desktop/node_modules/
 apps/desktop/src-tauri/target/
 release-assets/
 *.release.json
+/.idea/

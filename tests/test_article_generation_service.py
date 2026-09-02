@@ -230,6 +230,23 @@ class ArticleGenerationServiceTests(unittest.TestCase):
         )
         self.assertEqual((result.title, result.article, result.paragraph_translations), ("Alt", "Body", ("T",)))
 
+    def test_numbered_paragraph_translation_mapping_is_ordered_and_accepted(self) -> None:
+        result = parse_article_generation_response(
+            request(),
+            {
+                "title": "Mapped translations",
+                "article": "One.\n\nTwo.\n\nTen.",
+                "paragraph_translations": {
+                    "paragraph_10": "十。",
+                    "paragraph_2": "二。",
+                    "paragraph_1": "一。",
+                },
+            },
+            mode=ResponseMode.STRUCTURED,
+        )
+        self.assertEqual(result.paragraph_translations, ("一。", "二。", "十。"))
+        self.assertFalse(any("translation" in warning.lower() for warning in result.warnings))
+
     def test_end_to_end_generation_pipeline_uses_transport_and_parses_result(self) -> None:
         transport = FakeTransport('{"title":"T","article":"Body","unused_targets":["optional phrase"]}')
         result = generate_target_aware_article(

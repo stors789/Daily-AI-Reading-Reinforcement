@@ -329,6 +329,51 @@ class TestGenerateArticle(unittest.TestCase):
             "\n".join(message["content"] for message in seen["messages"]),
         )
 
+    def test_structured_generation_returns_renderable_article_instead_of_raw_json(self):
+        config = dict(self.base_config)
+        config.update({
+            "selected_provider_profile": "custom",
+            "base_url": "https://opencode.example/v1",
+            "ai_prompt_config": {
+                "schema_version": 1,
+                "task_overrides": {},
+                "provider_overrides": {},
+                "profile_overrides": {},
+            },
+        })
+        provider_content = {
+            "title": "The Observatory Ledger",
+            "article": "First paragraph.\n\nSecond paragraph.",
+            "paragraph_translations": {
+                "paragraph_2": "第二段。",
+                "paragraph_1": "第一段。",
+            },
+            "target_usage": [
+                {"target": "ledger", "category": "noun", "surface_form": "ledger"}
+            ],
+            "unused_targets": [],
+        }
+        response = json.dumps({
+            "choices": [{
+                "message": {"content": json.dumps(provider_content, ensure_ascii=False)},
+                "finish_reason": "stop",
+            }]
+        }).encode("utf-8")
+
+        with patch("urllib.request.urlopen", lambda *_args, **_kwargs: MockHTTPResponse(response)):
+            article = generate_article(
+                config, "Deck", [self._make_mock_card()], ["Front"], self.preset
+            )
+
+        self.assertEqual(
+            article,
+            "[ARTICLE_TITLE]\nThe Observatory Ledger\n"
+            "[MAIN_ARTICLE]\nFirst paragraph.\n\n[T] 第一段。\n\n"
+            "Second paragraph.\n\n[T] 第二段。\n"
+            "[REVIEW_NOTES]\n",
+        )
+        self.assertNotIn('"target_usage"', article)
+
 
 if __name__ == "__main__":
     unittest.main()
