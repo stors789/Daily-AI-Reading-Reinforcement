@@ -8,6 +8,7 @@ import urllib.error
 import urllib.request
 from dataclasses import dataclass
 from typing import Any
+from uuid import uuid4
 
 from .article_generation import (
     ArticleGenerationRequest,
@@ -53,9 +54,16 @@ class ChatCompletionResult:
 class OpenAICompatibleTransport:
     """Real transport for the shared practice/article operation services."""
 
-    def __init__(self, config: dict[str, Any], *, timeout: float = 90) -> None:
+    def __init__(
+        self,
+        config: dict[str, Any],
+        *,
+        timeout: float = 90,
+        session_id: str | None = None,
+    ) -> None:
         self._config = dict(config)
         self._timeout = float(timeout)
+        self._session_id = _provider_session_id(self._config, session_id)
         if self._timeout <= 0:
             raise ProviderTransportError("invalid_timeout", "AI request timeout must be positive.")
 
@@ -67,6 +75,7 @@ class OpenAICompatibleTransport:
             self._config,
             request.body,
             timeout=self._timeout,
+            session_id=self._session_id,
         )
         _raise_if_cancelled(cancellation)
         content, finish_reason = _chat_content(response_payload)
@@ -77,14 +86,21 @@ def max_tokens_for_request(config: dict[str, Any], preset: dict[str, str]) -> in
     return int(config.get("max_tokens") or DEFAULT_CONFIG["max_tokens"])
 
 
-def fetch_openai_compatible_models(base_url: str, api_key: str) -> list[str]:
+def fetch_openai_compatible_models(
+    base_url: str,
+    api_key: str,
+    *,
+    provider_id: str = "custom",
+    session_id: str | None = None,
+) -> list[str]:
     url = f"{base_url.rstrip('/')}/models"
     request = urllib.request.Request(
         url,
         headers={
             "Authorization": f"Bearer {api_key}",
             "Content-Type": "application/json",
-            "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36",
+            "User-Agent": "DAIRR/model-discovery",
+            **_provider_specific_headers(provider_id, session_id),
         },
         method="GET",
     )
@@ -110,7 +126,14 @@ def fetch_openai_compatible_models(base_url: str, api_key: str) -> list[str]:
     return sorted(set(models), key=str.lower)
 
 
-def test_openai_compatible_config(base_url: str, api_key: str, model: str) -> dict[str, Any]:
+def test_openai_compatible_config(
+    base_url: str,
+    api_key: str,
+    model: str,
+    *,
+    provider_id: str = "custom",
+    session_id: str | None = None,
+) -> dict[str, Any]:
     """Make a tiny real chat request to verify endpoint, credentials and model."""
     url = f"{base_url.rstrip('/')}/chat/completions"
     data = json.dumps({
@@ -123,6 +146,7 @@ def test_openai_compatible_config(base_url: str, api_key: str, model: str) -> di
         "Authorization": f"Bearer {api_key}",
         "Content-Type": "application/json",
         "User-Agent": "DAIRR/config-test",
+        **_provider_specific_headers(provider_id, session_id),
     }, method="POST")
     try:
         with urllib.request.urlopen(request, timeout=30) as response:
@@ -290,6 +314,7 @@ def _submit_provider_body(
     body: dict[str, Any],
     *,
     timeout: float,
+    session_id: str | None = None,
 ) -> Any:
     provider_id = clean_provider_id(config.get("selected_provider_profile"))
     provider = next((p for p in PROVIDER_PROFILES if p["id"] == provider_id), PROVIDER_PROFILES[-1])
@@ -309,6 +334,7 @@ def _submit_provider_body(
                 "Authorization": f"Bearer {api_key}",
                 "Content-Type": "application/json",
                 "User-Agent": "DAIRR/provider-transport",
+                **_provider_specific_headers(provider_id, session_id),
             },
             method="POST",
         )
@@ -332,6 +358,33 @@ def _submit_provider_body(
         raise ProviderTransportError("malformed_provider_json", "AI provider returned malformed JSON.") from None
     except (ValueError, TypeError):
         raise ProviderTransportError("invalid_provider_url", "AI provider URL is invalid.") from None
+
+
+def _provider_session_id(config: dict[str, Any], session_id: str | None = None) -> str | None:
+    """Return one opaque ID for the lifetime of an OpenCode conversation."""
+    provider_id = clean_provider_id(config.get("selected_provider_profile"))
+    if not _provider_profile(provider_id).get("session_header"):
+        return None
+    candidate = str(session_id or config.get("provider_session_id") or "").strip()
+    valid_characters = all(
+        character.isalnum() or character in "-_.:" for character in candidate
+    )
+    if candidate and len(candidate) <= 128 and valid_characters:
+        return candidate
+    return f"dairr-{uuid4().hex}"
+
+
+def _provider_specific_headers(provider_id: str, session_id: str | None) -> dict[str, str]:
+    provider = _provider_profile(clean_provider_id(provider_id))
+    header = str(provider.get("session_header") or "")
+    if not header:
+        return {}
+    stable_id = _provider_session_id({"selected_provider_profile": provider["id"]}, session_id)
+    return {header: str(stable_id)}
+
+
+def _provider_profile(provider_id: str) -> dict[str, Any]:
+    return next((profile for profile in PROVIDER_PROFILES if profile["id"] == provider_id), PROVIDER_PROFILES[-1])
 
 
 def _chat_content(response_payload: Any) -> tuple[str, str]:

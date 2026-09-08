@@ -403,7 +403,12 @@ window.addEventListener("error", function (event) {
             return
 
         def task(_context: Any) -> dict[str, Any]:
-            models = fetch_openai_compatible_models(base_url, api_key)
+            models = fetch_openai_compatible_models(
+                base_url,
+                api_key,
+                provider_id=clean_provider_id(settings.get("providerId")),
+                session_id=request_id,
+            )
             if not models:
                 raise RuntimeError("No models were returned by this provider.")
             return {"models": models}
@@ -429,7 +434,13 @@ window.addEventListener("error", function (event) {
             return
 
         def task(_context: Any) -> dict[str, Any]:
-            return test_openai_compatible_config(base_url, api_key, model)
+            return test_openai_compatible_config(
+                base_url,
+                api_key,
+                model,
+                provider_id=clean_provider_id(settings.get("providerId")),
+                session_id=request_id,
+            )
 
         self._operations.submit(
             request_id,

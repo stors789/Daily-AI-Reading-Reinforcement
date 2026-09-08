@@ -65,6 +65,22 @@ PROVIDER_PROFILES = [
         "compatibility_notes": "OpenAI-compatible chat completions through /api/v1/chat/completions.",
     },
     {
+        "id": "opencode-go",
+        "name": "OpenCode Go",
+        "base_url": "https://opencode.ai/zen/go/v1",
+        "chat_completions_path": "/chat/completions",
+        "default_model": "glm-5.3-flash",
+        "model": "glm-5.3-flash",
+        "docs_url": "https://opencode.ai/docs/go/",
+        "verified_at": "2026-09-08",
+        "auth_notes": "Bearer token from OpenCode Go.",
+        "compatibility_notes": (
+            "OpenCode Go chat-completions models. DAIRR sends a stable "
+            "x-opencode-session value for each operation/conversation."
+        ),
+        "session_header": "x-opencode-session",
+    },
+    {
         "id": "custom",
         "name": "Custom compatible API",
         "base_url": "",

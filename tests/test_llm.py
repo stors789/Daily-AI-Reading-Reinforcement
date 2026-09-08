@@ -107,6 +107,21 @@ class TestFetchOpenAICompatibleModels(unittest.TestCase):
 
         self.assertEqual(urls_seen[0], "https://api.example.com/v1/models")
 
+    def test_opencode_go_model_fetch_includes_session_header(self):
+        def mock_urlopen(request, timeout=None):
+            headers = {key.lower(): value for key, value in request.header_items()}
+            self.assertEqual(headers["x-opencode-session"], "conversation-42")
+            self.assertEqual(headers["user-agent"], "DAIRR/model-discovery")
+            return MockHTTPResponse(b'{"data": []}')
+
+        with patch("urllib.request.urlopen", mock_urlopen):
+            fetch_openai_compatible_models(
+                "https://opencode.ai/zen/go/v1",
+                "test-key",
+                provider_id="opencode-go",
+                session_id="conversation-42",
+            )
+
     def test_http_error(self):
         def mock_urlopen(request, timeout=None):
             raise urllib.error.HTTPError(
@@ -148,6 +163,17 @@ class TestOpenAICompatibleConfig(unittest.TestCase):
         with patch("urllib.request.urlopen", lambda *_args, **_kwargs: MockHTTPResponse(b'{}')):
             with self.assertRaisesRegex(RuntimeError, "invalid chat completion"):
                 test_openai_compatible_config("https://api.example.com/v1", "secret", "model-a")
+
+    def test_non_opencode_config_test_does_not_send_session_header(self):
+        def mock_urlopen(request, timeout=None):
+            headers = {key.lower(): value for key, value in request.header_items()}
+            self.assertNotIn("x-opencode-session", headers)
+            return MockHTTPResponse(b'{"choices":[{"message":{"content":"OK"}}]}')
+
+        with patch("urllib.request.urlopen", mock_urlopen):
+            test_openai_compatible_config(
+                "https://api.example.com/v1", "secret", "model-a", provider_id="custom"
+            )
 
 
 class TestGenerateArticle(unittest.TestCase):

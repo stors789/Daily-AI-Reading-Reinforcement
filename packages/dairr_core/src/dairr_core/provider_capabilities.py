@@ -147,5 +147,6 @@ def known_provider_capabilities(provider_id: str) -> ProviderCapabilities:
         ),
         "deepseek": ProviderCapabilities("deepseek"),
         "qwen": ProviderCapabilities("qwen"),
+        "opencode-go": ProviderCapabilities("opencode-go"),
     }
     return known.get(normalized, ProviderCapabilities(normalized or "custom"))

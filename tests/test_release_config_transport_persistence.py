@@ -239,6 +239,45 @@ class ProviderTransportIntegrationTests(unittest.TestCase):
         self.assertEqual(response.content, '{"article":"A"}')
         self.assertEqual(response.finish_reason, "stop")
 
+    def test_opencode_transport_reuses_stable_conversation_header(self) -> None:
+        config = self.config(
+            selected_provider_profile="opencode-go",
+            base_url="https://opencode.ai/zen/go/v1",
+        )
+        rendered = render_article_prompt(config, "Deck", [Card()], ["Front"], self.preset())
+        request = ModelRequestSettings("glm-5.3-flash", max_output_tokens=12).build(
+            known_provider_capabilities("opencode-go"), rendered
+        )
+        seen = []
+
+        def opener(http_request, timeout=None):
+            headers = {key.lower(): value for key, value in http_request.header_items()}
+            seen.append(headers.get("x-opencode-session"))
+            return Response({"choices": [{"message": {"content": "A"}, "finish_reason": "stop"}]})
+
+        transport = OpenAICompatibleTransport(config, session_id="practice-session-7")
+        with patch("urllib.request.urlopen", opener):
+            transport.complete(request, cancellation=CancellationToken())
+            transport.complete(request, cancellation=CancellationToken())
+        self.assertEqual(seen, ["practice-session-7", "practice-session-7"])
+
+    def test_other_provider_transport_has_no_opencode_session_header(self) -> None:
+        config = self.config(selected_provider_profile="openrouter")
+        rendered = render_article_prompt(config, "Deck", [Card()], ["Front"], self.preset())
+        request = ModelRequestSettings("model-a", max_output_tokens=12).build(
+            known_provider_capabilities("openrouter"), rendered
+        )
+
+        def opener(http_request, timeout=None):
+            headers = {key.lower(): value for key, value in http_request.header_items()}
+            self.assertNotIn("x-opencode-session", headers)
+            return Response({"choices": [{"message": {"content": "A"}, "finish_reason": "stop"}]})
+
+        with patch("urllib.request.urlopen", opener):
+            OpenAICompatibleTransport(config, session_id="must-not-leak").complete(
+                request, cancellation=CancellationToken()
+            )
+
     def test_http_error_never_exposes_provider_body_key_or_prompt(self) -> None:
         config = self.config()
         private_prompt = "PRIVATE DIARY CONTENT"

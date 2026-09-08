@@ -1094,7 +1094,11 @@ def _safe_api_settings_payload(config: Mapping[str, Any]) -> dict[str, Any]:
     return result
 
 
-def _provider_context(config: Mapping[str, Any]) -> tuple[str, Any, ModelRequestSettings, OpenAICompatibleTransport]:
+def _provider_context(
+    config: Mapping[str, Any],
+    *,
+    session_id: str | None = None,
+) -> tuple[str, Any, ModelRequestSettings, OpenAICompatibleTransport]:
     provider_id = str(config.get("selected_provider_profile") or "custom")
     capabilities = known_provider_capabilities(provider_id)
     settings = ModelRequestSettings(
@@ -1106,7 +1110,9 @@ def _provider_context(config: Mapping[str, Any]) -> tuple[str, Any, ModelRequest
         use_native_structured_output=bool(config.get("use_native_structured_output", False)),
         extra_body=(config.get("extra_body") if isinstance(config.get("extra_body"), Mapping) else {}),
     )
-    return provider_id, capabilities, settings, OpenAICompatibleTransport(dict(config), timeout=90)
+    return provider_id, capabilities, settings, OpenAICompatibleTransport(
+        dict(config), timeout=90, session_id=session_id
+    )
 
 
 def _strict_reasoning_intent(raw: Any) -> ReasoningIntent:
@@ -1441,7 +1447,9 @@ def _run_release_operation(action: str, payload: dict[str, Any], context: Operat
         session_id = str(payload.get("sessionId") or "")
         session, expected_revision = _practice_review_snapshot(session_id, payload)
         config = _load_generation_config()
-        provider_id, capabilities, settings, transport = _provider_context(config)
+        provider_id, capabilities, settings, transport = _provider_context(
+            config, session_id=session_id
+        )
         completed = _practice_service().review(
             session,
             str(payload.get("translation") or ""),
@@ -1479,7 +1487,9 @@ def _run_release_operation(action: str, payload: dict[str, Any], context: Operat
         }
     if action == "generateTargetAware":
         config = _load_generation_config()
-        provider_id, capabilities, settings, transport = _provider_context(config)
+        provider_id, capabilities, settings, transport = _provider_context(
+            config, session_id=context.operation_id
+        )
         targets = tuple(
             GenerationTarget(
                 str(item.get("id") or ""),
@@ -2011,7 +2021,11 @@ def handle_action(action: str, payload: dict[str, Any]) -> dict[str, Any]:
                 if not base_url:
                     return {"event": "error", "payload": {"message": "Enter an API base URL before fetching models."}}
                 
-                models = _llm.fetch_openai_compatible_models(base_url, api_key)
+                models = _llm.fetch_openai_compatible_models(
+                    base_url,
+                    api_key,
+                    provider_id=_utils.clean_provider_id(settings.get("providerId")),
+                )
                 if not models:
                     return {"event": "error", "payload": {"message": "No models were returned by this provider."}}
                 return {"event": "modelsFetched", "payload": {"models": models}}
@@ -2033,7 +2047,16 @@ def handle_action(action: str, payload: dict[str, Any]) -> dict[str, Any]:
             model = str(settings.get("model") or config.get("model") or "").strip()
             if not api_key or not base_url or not model:
                 return {"event": "error", "payload": {"message": "API key, base URL, and model are required for testing."}}
-            result = _llm.test_openai_compatible_config(base_url, api_key, model)
+            result = _llm.test_openai_compatible_config(
+                base_url,
+                api_key,
+                model,
+                provider_id=str(
+                    settings.get("providerId")
+                    or config.get("selected_provider_profile")
+                    or "custom"
+                ),
+            )
             return {"event": "apiSettingsTested", "payload": result}
         except Exception:
             return {"event": "error", "payload": {"message": "The API settings test failed. Check the provider settings and connection."}}

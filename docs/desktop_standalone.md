@@ -46,6 +46,12 @@ Uses the official MoMo API provider and requires `MOMO_TOKEN` or `Maimemo_key`. 
 
 Explicit demo/test data. It requires no Anki or external credential. A real-provider failure never falls back to mock success; mock generation occurs only when mock/demo was selected.
 
+### OpenCode Go model provider
+
+Open **API / Reasoning**, choose the permanent **OpenCode Go** provider preset, and save a named API profile with the Go key. The preset uses `https://opencode.ai/zen/go/v1` and the OpenAI-compatible `/chat/completions` endpoint. DAIRR identifies itself with a product-specific user agent and sends `x-opencode-session` only for this provider. Practice reviews reuse the DAIRR practice-session ID; other asynchronous AI conversations reuse their operation ID. This keeps the value stable within one conversation without leaking the header to other providers.
+
+DAIRR currently supports the Go models exposed through `/chat/completions`; models that require `/responses` or `/messages` need separate transport adapters and should not be selected yet. API keys remain local credentials and must not be committed or included in diagnostics.
+
 ## Run and diagnose
 
 From the repository root:

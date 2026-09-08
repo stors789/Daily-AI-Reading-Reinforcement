@@ -2688,6 +2688,7 @@
     el.fetchModelsButton.disabled = true;
     send("fetchModels", {
       settings: {
+        providerId: el.providerSelect.value,
         baseUrl,
         apiKey: el.apiKeyInput.value,
       },
@@ -2703,7 +2704,12 @@
     }
     el.testApiSettingsButton.disabled = true;
     setStatus("testingApiSettings");
-    send("testApiSettings", { settings: { baseUrl, model, apiKey: el.apiKeyInput.value } });
+    send("testApiSettings", { settings: {
+      providerId: el.providerSelect.value,
+      baseUrl,
+      model,
+      apiKey: el.apiKeyInput.value,
+    } });
   });
 
   el.modelSelect.addEventListener("change", () => {

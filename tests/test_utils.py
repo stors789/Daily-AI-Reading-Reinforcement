@@ -50,6 +50,12 @@ class TestCleanText(unittest.TestCase):
     def test_bool(self):
         self.assertEqual(clean_text(True), "True")
 
+    def test_opencode_go_is_a_first_class_provider_profile(self):
+        profile = next(item for item in PROVIDER_PROFILES if item["id"] == "opencode-go")
+        self.assertEqual(profile["base_url"], "https://opencode.ai/zen/go/v1")
+        self.assertEqual(profile["session_header"], "x-opencode-session")
+        self.assertEqual(clean_provider_id("opencode-go"), "opencode-go")
+
 
 class TestCleanBaseUrl(unittest.TestCase):
 
