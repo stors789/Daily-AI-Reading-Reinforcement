@@ -50,7 +50,7 @@ try:
     from .dairr_core.target_selection import (  # type: ignore[import-not-found]
         ManualOverride, select_targets,
     )
-    from .dairr_core.rendering import parse_article_response  # type: ignore[import-not-found]
+    from .dairr_core.rendering import format_article_text, parse_article_response  # type: ignore[import-not-found]
 except ImportError:
     from dairr_core.article_generation import (
         ArticleGenerationRequest, GenerationTarget, generate_target_aware_article,
@@ -84,7 +84,7 @@ except ImportError:
     from dairr_core.study_signals import CardStudySignals
     from dairr_core.target_selection import TargetCategory
     from dairr_core.target_selection import ManualOverride, select_targets
-    from dairr_core.rendering import parse_article_response
+    from dairr_core.rendering import format_article_text, parse_article_response
 
 
 _CAMEL_BOUNDARY = re.compile(r"_([a-z])")
@@ -638,7 +638,7 @@ class AddonReleaseService:
         )
         response = result.to_dict()
         if bool(payload.get("saveArticle")):
-            article_text = _legacy_article_text(
+            article_text = format_article_text(
                 result.title, result.article, result.paragraph_translations
             )
             outcomes = [item.to_dict() for item in result.target_outcomes]
@@ -820,29 +820,6 @@ def _article_practice_material(
         sources = [source for source, _reference in pairs]
         references = [reference for _source, reference in pairs]
     return "\n\n".join(sources), references, str(parsed.get("title") or "")
-
-
-def _legacy_article_text(
-    title: str,
-    article: str,
-    translations: Iterable[str],
-) -> str:
-    """Build the existing Markdown-authoritative article body format."""
-    paragraphs = [item.strip() for item in re.split(r"\n\s*\n", article) if item.strip()]
-    translated = list(translations)
-    body_parts: list[str] = []
-    for index, paragraph in enumerate(paragraphs):
-        body_parts.append(paragraph)
-        if index < len(translated) and translated[index].strip():
-            body_parts.append(f"[T] {translated[index].strip()}")
-    if not paragraphs:
-        body_parts.append(article.strip())
-    body = "\n\n".join(body_parts)
-    return (
-        f"[ARTICLE_TITLE]\n{title.strip()}\n"
-        f"[MAIN_ARTICLE]\n{body}\n"
-        "[REVIEW_NOTES]\n"
-    )
 
 
 def _direction(value: Any, *, article: bool = False) -> TranslationDirection:

@@ -32,6 +32,10 @@ Notable project changes are recorded here. DAIRR has not assigned a final public
 - Removed API keys, private text, raw prompts/model responses, provider bodies, and arbitrary exception text from public diagnostics/errors.
 - Add-on packaging strips credential-like config values and excludes user-owned history/practice files.
 
+### Fixed
+
+- Display structured model responses as readable articles with paragraph translations, including JSON articles already in history (#3).
+
 ### Compatibility and limitations
 
 - Existing Markdown articles and legacy configuration remain readable; migrations preserve unknown compatible fields.

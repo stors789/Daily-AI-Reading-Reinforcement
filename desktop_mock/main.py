@@ -13,7 +13,6 @@ from __future__ import annotations
 
 import json
 import os
-import re
 import secrets
 import sys
 import threading
@@ -97,6 +96,7 @@ from dairr_core.provider_capabilities import (
     ReasoningMode,
     known_provider_capabilities,
 )
+from dairr_core.rendering import format_article_text, parse_article_response
 from dairr_core.scoring import (
     ScoringPreset,
     SettingsMode,
@@ -755,8 +755,6 @@ def _load_desktop_article(path: str) -> dict[str, Any]:
 
 
 def _article_practice_material(raw_article: str, direction: TranslationDirection) -> tuple[str, list[str | None], str]:
-    from dairr_core.rendering import parse_article_response
-
     parsed = parse_article_response(raw_article)
     lines = str(parsed.get("main_article") or "").splitlines()
     pairs: list[tuple[str, str | None]] = []
@@ -790,29 +788,6 @@ def _article_practice_material(raw_article: str, direction: TranslationDirection
         source_values = [source for source, _reference in pairs]
         references = [reference for _source, reference in pairs]
     return "\n\n".join(source_values), references, str(parsed.get("title") or "")
-
-
-def _target_article_markdown(
-    title: str,
-    article: str,
-    paragraph_translations: tuple[str, ...],
-) -> str:
-    """Preserve structured paragraph translations in authoritative Markdown."""
-    paragraphs = [part.strip() for part in re.split(r"\n\s*\n", article) if part.strip()]
-    translations = list(paragraph_translations)
-    body: list[str] = []
-    for index, paragraph in enumerate(paragraphs):
-        body.append(paragraph)
-        if index < len(translations) and str(translations[index]).strip():
-            body.append(f"[T] {str(translations[index]).strip()}")
-    if not paragraphs and article.strip():
-        body.append(article.strip())
-    joined = "\n\n".join(body)
-    return (
-        f"[ARTICLE_TITLE]\n{title.strip()}\n"
-        f"[MAIN_ARTICLE]\n{joined}\n"
-        "[REVIEW_NOTES]\n"
-    )
 
 
 def _practice_repository() -> PracticeRepository:
@@ -1512,7 +1487,7 @@ def _run_release_operation(action: str, payload: dict[str, Any], context: Operat
         )
         response = result.to_dict()
         if payload.get("saveArticle"):
-            legacy_article = _target_article_markdown(
+            legacy_article = format_article_text(
                 result.title, result.article, result.paragraph_translations
             )
             outcomes = [item.to_dict() for item in result.target_outcomes]

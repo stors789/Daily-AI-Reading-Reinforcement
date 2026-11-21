@@ -19,6 +19,7 @@ from .provider_requests import (
     EffectiveRequestSettings,
     build_chat_completion_request,
 )
+from .rendering import normalize_article_response
 from .response_parsing import ParsedModelResponse, ResponseParseError, parse_model_response
 from .utils import clean_provider_id, clean_text
 
@@ -145,12 +146,13 @@ def generate_article(
     cancelled: Any = None,
 ) -> str:
     rendered = render_article_prompt(config, deck_name_value, cards, selected_fields, preset)
-    return request_chat_completion(
+    completion = request_chat_completion(
         config,
         rendered,
         timeout=timeout,
         cancelled=cancelled,
-    ).content
+    )
+    return normalize_article_response(completion.content, structured=completion.parsed.data)
 
 
 def request_chat_completion(

@@ -1,5 +1,6 @@
 # Tests for core/article.py functions using tmp_path.
 
+import json
 import sys
 import time
 import unittest
@@ -118,6 +119,22 @@ class TestSaveListLoadArticle(unittest.TestCase):
         self.assertRegex(listed[0]["generated_day"], r"^\d{4}-\d{2}-\d{2}$")
         self.assertEqual(loaded["title"], "A precise reading title")
         self.assertEqual(loaded["generated_day"], listed[0]["generated_day"])
+
+    def test_reopens_an_article_saved_as_raw_json(self):
+        path = self.tmp_dir / "old.md"
+        stored = "---\ndeck: English\ntitle: Reading Article\n---\n\n" + json.dumps({
+            "title": "Museum",
+            "article": "First paragraph.\n\nSecond paragraph.",
+            "paragraph_translations": ["", "第二段。"],
+        }, ensure_ascii=False)
+        path.write_text(stored, encoding="utf-8")
+
+        article = load_saved_article(str(path))
+
+        self.assertEqual(article["title"], "Museum")
+        self.assertEqual(list_saved_articles()[0]["title"], "Museum")
+        self.assertIn("[MAIN_ARTICLE]\nFirst paragraph.\n\nSecond paragraph.\n\n[T] 第二段。", article["article"])
+        self.assertEqual(path.read_text(encoding="utf-8"), stored)
 
     def test_save_article_html_content(self):
         cards = [self._make_mock_card("hello")]

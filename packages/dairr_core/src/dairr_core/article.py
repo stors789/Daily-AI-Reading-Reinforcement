@@ -12,7 +12,7 @@ from pathlib import Path
 from typing import Any, Iterable, Mapping
 
 from .atomic_persistence import atomic_write_json, atomic_write_text, path_lock
-from .rendering import parse_article_response, render_article_html
+from .rendering import normalize_article_response, parse_article_response, render_article_html
 from .utils import slugify
 
 # Compatibility default for callers that do not supply a host storage path.
@@ -55,11 +55,19 @@ def _legacy_generated_day(generated_at: str) -> str:
     return ""
 
 
-def _article_metadata(text: str, meta: dict[str, str]) -> tuple[str, str]:
+def _article_body(text: str) -> str:
+    if text.startswith("---"):
+        end = text.find("---", 3)
+        if end != -1:
+            text = text[end + 3:].strip()
+    return normalize_article_response(text)
+
+
+def _article_metadata(body: str, meta: dict[str, str]) -> tuple[str, str]:
     """Return title and generated day, with compatibility for old Markdown."""
     title = meta.get("title", "").strip()
-    if not title and "[ARTICLE_TITLE]" in text:
-        title = _article_title(text)
+    if title in ("", "Reading Article") and "[ARTICLE_TITLE]" in body:
+        title = _article_title(body)
     generated_day = meta.get("generated_day", "").strip()
     if not generated_day:
         generated_day = _legacy_generated_day(meta.get("generated_at", ""))
@@ -129,7 +137,7 @@ def list_saved_articles(*, articles_dir: Path | None = None) -> list[dict[str, A
         except Exception:
             continue
         meta = parse_article_frontmatter(text)
-        title, generated_day = _article_metadata(text, meta)
+        title, generated_day = _article_metadata(_article_body(text), meta)
         manifest = _load_manifest(md_file, meta)
         item: dict[str, Any] = {
             "path": str(md_file),
@@ -158,12 +166,7 @@ def load_saved_article(
     article_path = _contained_article_path(Path(path), destination)
     text = article_path.read_text(encoding="utf-8")
     meta = parse_article_frontmatter(text)
-    # Strip frontmatter to get article body
-    body = text
-    if text.startswith("---"):
-        end = text.find("---", 3)
-        if end != -1:
-            body = text[end + 3:].strip()
+    body = _article_body(text)
     html_path = article_path.with_suffix(".html")
     title, generated_day = _article_metadata(body, meta)
     manifest = _load_manifest(article_path, meta)

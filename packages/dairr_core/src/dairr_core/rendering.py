@@ -9,9 +9,53 @@ from __future__ import annotations
 import html
 import re
 import time
-from typing import Any
+from typing import Any, Sequence
 
+from .prompt_templates import ResponseMode
+from .response_parsing import ResponseParseError, parse_model_response
 from .utils import clean_text
+
+
+def format_article_text(title: str, article: str, translations: Sequence[str]) -> str:
+    """Format an article for the reader and Markdown history."""
+    body: list[str] = []
+    for index, paragraph in enumerate(re.split(r"\n\s*\n", article.strip())):
+        body.append(paragraph.strip())
+        if index < len(translations):
+            translation = " ".join(translations[index].splitlines()).strip()
+            if translation:
+                body.append(f"[T] {translation}")
+    article_body = "\n\n".join(body)
+    return (
+        f"[ARTICLE_TITLE]\n{title.strip()}\n"
+        f"[MAIN_ARTICLE]\n{article_body}\n"
+        "[REVIEW_NOTES]\n"
+    )
+
+
+def normalize_article_response(raw: str, *, structured: dict[str, Any] | None = None) -> str:
+    """Convert recognized JSON articles and preserve other response formats."""
+    if structured is None:
+        candidate = raw.lstrip()
+        if not candidate.startswith("{") and not re.match(r"```(?:json)?\s*\{", candidate, re.IGNORECASE):
+            return raw
+        try:
+            structured = parse_model_response(candidate, ResponseMode.STRUCTURED).data
+        except ResponseParseError:
+            return raw
+
+    article = structured.get("article")
+    if not isinstance(article, str) or not article.strip():
+        return raw
+    title = structured.get("title")
+    translations = structured.get("paragraph_translations")
+    if not isinstance(translations, list):
+        translations = []
+    return format_article_text(
+        title if isinstance(title, str) else "",
+        article,
+        [value if isinstance(value, str) else "" for value in translations],
+    )
 
 
 def extract_article_block(raw: str, start_marker: str, end_marker: str = "") -> str:

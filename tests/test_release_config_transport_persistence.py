@@ -199,6 +199,34 @@ class ProviderTransportIntegrationTests(unittest.TestCase):
         self.assertNotIn("reasoning_effort", captured)
         self.assertEqual(captured["response_format"], {"type": "json_object"})
 
+    def test_generation_formats_the_issue_3_json_for_the_reader(self) -> None:
+        provider_article = json.dumps({
+            "title": "The Museum's Final Entry",
+            "article": "An entry in the old museum.\n\nThe curator was benevolent.",
+            "paragraph_translations": ["旧博物馆里的一条记录。", "馆长很仁慈。"],
+            "target_usage": [{
+                "target": "benevolent",
+                "category": "optional",
+                "actual_surface_form": "benevolent",
+            }],
+            "unused_targets": [],
+        }, ensure_ascii=False)
+        expected = (
+            "[ARTICLE_TITLE]\nThe Museum's Final Entry\n"
+            "[MAIN_ARTICLE]\nAn entry in the old museum.\n\n[T] 旧博物馆里的一条记录。\n\n"
+            "The curator was benevolent.\n\n[T] 馆长很仁慈。\n[REVIEW_NOTES]\n"
+        )
+        for mode, content, config in (
+            ("structured", provider_article, self.config()),
+            ("legacy", f"```json\n{provider_article}\n```", self.config(prompt_template="Write an article.")),
+        ):
+            with self.subTest(mode=mode):
+                with patch("urllib.request.urlopen", return_value=Response({
+                    "choices": [{"message": {"content": content}}],
+                })):
+                    article = generate_article(config, "Deck", [Card()], ["Front"], self.preset())
+                self.assertEqual(article, expected)
+
     def test_explicit_reasoning_uses_provider_mapping(self) -> None:
         config = self.config(reasoning={"mode": "explicit", "control": "effort", "effort": "high"})
         captured = {}
